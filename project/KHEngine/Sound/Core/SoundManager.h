@@ -132,6 +132,44 @@ public:
 	/// </summary>
 	void Update();
 
+	/// <summary>
+	/// マスターミュート設定（BGM・SEすべて消音）
+	/// </summary>
+	void SetMasterMute(bool mute);
+	bool IsMasterMuted() const { return isMasterMuted_; }
+	void ToggleMasterMute() { SetMasterMute(!isMasterMuted_); }
+
+	/// <summary>
+	/// BGMミュート設定
+	/// </summary>
+	void SetBGMMute(bool mute);
+	bool IsBGMMuted() const { return isBgmMuted_; }
+	void ToggleBGMMute() { SetBGMMute(!isBgmMuted_); }
+
+	/// <summary>
+	/// SEミュート設定
+	/// </summary>
+	void SetSEMute(bool mute);
+	bool IsSEMuted() const { return isSeMuted_; }
+	void ToggleSEMute() { SetSEMute(!isSeMuted_); }
+
+	/// <summary>
+	/// マスター音量設定（0.0f〜1.0f）
+	/// </summary>
+	void SetMasterVolume(float volume);
+	float GetMasterVolume() const { return masterVolume_; }
+
+	/// <summary>
+	/// SE音量設定（0.0f〜1.0f）
+	/// </summary>
+	void SetSEVolume(float volume);
+	float GetSEVolume() const { return seVolume_; }
+
+	/// <summary>
+	/// ImGuiによるオーディオコントロールUI描画
+	/// </summary>
+	void DrawImGuiAudioControls();
+
 	///<summary>
 	/// XAudio2の取得
 	/// </summary>
@@ -171,4 +209,11 @@ private:
 
 	// 再生中SEボイスのリスト
 	std::vector<IXAudio2SourceVoice*> activeSEVoices_;
+
+	// ミュート状態と音量設定
+	bool isMasterMuted_ = false;
+	bool isBgmMuted_ = false;
+	bool isSeMuted_ = false;
+	float masterVolume_ = 1.0f;
+	float seVolume_ = 1.0f;
 };

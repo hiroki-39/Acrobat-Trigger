@@ -227,8 +227,8 @@ PixelShaderOutput main(VertexShaderOutput input)
                 float32_t NdotV = saturate(abs(dot(normal, toEye)));
                 float32_t rim = pow(1.0f - NdotV, 2.2f);
 
-                // 地面判定（法線が上向きかつ高度が低いエリア）と建造物・山岳判定
-                bool isGroundSurface = (abs(normal.y) > 0.75f && wp.y < 3.5f);
+                // 地面判定（水平かつ高度が低いフラットフロアのみ。傾斜のある山のふもとは山岳として等高線描画）
+                bool isGroundSurface = (normal.y > 0.96f && wp.y < 2.0f);
 
                 float32_t3 holoColor = float32_t3(0.0f, 0.0f, 0.0f);
 
@@ -245,10 +245,12 @@ PixelShaderOutput main(VertexShaderOutput input)
                     float2 gSub = abs(frac(wp.xz / 5.0f - 0.5f) - 0.5f) / fwidth(wp.xz / 5.0f);
                     float subLine = (1.0f - saturate(min(gSub.x, gSub.y))) * 0.35f;
 
-                    // 進行方向（Z軸）へ伸びる滑走路ガイドライン＆発光ドット列（参考画像の斜め・直線の光の列）
+                    // 進行方向（Z軸）へ伸びる滑走路ガイドライン＆発光ドット列
                     float32_t runwayMask = smoothstep(2.2f, 0.2f, abs(frac(wp.x / 28.0f + 0.5f) - 0.5f) * 28.0f);
+                    // 中央の列（X=0付近）のみをピンポイントで除外するマスク（左右端 X=±28m はそのまま維持）
+                    float32_t centerMask = smoothstep(5.0f, 15.0f, abs(wp.x));
                     float32_t dotPattern = smoothstep(0.35f, 0.75f, sin(wp.z * 1.8f)) * smoothstep(280.0f, 30.0f, dist);
-                    float32_t guideDots = runwayMask * dotPattern * 0.85f;
+                    float32_t guideDots = runwayMask * dotPattern * centerMask * 0.85f;
 
                     // 遠方でグリッドのジャギーを抑えつつ美しい光面に収束
                     float32_t gridFade = smoothstep(550.0f, 60.0f, dist);
@@ -266,18 +268,20 @@ PixelShaderOutput main(VertexShaderOutput input)
                     float32_t heightGrad = saturate(wp.y / 65.0f);
                     float32_t3 bldgBase = lerp(float32_t3(0.03f, 0.24f, 0.27f), float32_t3(0.02f, 0.11f, 0.18f), heightGrad);
 
-                    // 水平方向のホログラムスキャンライン（4m間隔のフロアライン）
+                    // 水平方向のホログラムスキャンライン（4m間隔の等高線・フロアライン）
                     float32_t hScan = pow(saturate(sin(wp.y * 1.6f) * 0.5f + 0.5f), 6.0f) * 0.45f;
 
                     // 垂直方向のエッジ・グリッドライン（建物の立体的なワイヤーフレーム感）
+                    // ※山の斜面では垂直グリッドを抑え、等高線（hScan）を主役にして山の起伏を綺麗に表現
                     float2 vGrid = abs(frac(wp.xz / 8.0f - 0.5f) - 0.5f) / max(fwidth(wp.xz / 8.0f), 0.001f);
                     float vLine = (1.0f - saturate(min(vGrid.x, vGrid.y))) * smoothstep(450.0f, 80.0f, dist) * 0.40f;
+                    float wallFactor = saturate(1.0f - saturate(normal.y) * 1.5f);
 
                     // 法線による面ごとの明暗コントラスト（ホログラムの多面体らしさ）
                     float32_t faceShade = 0.65f + 0.35f * abs(normal.x - normal.z * 0.5f);
 
                     float32_t3 rimNeon = float32_t3(0.28f, 1.0f, 0.92f) * (rim * 0.95f);
-                    float32_t3 lineNeon = float32_t3(0.18f, 0.92f, 0.84f) * (hScan + vLine);
+                    float32_t3 lineNeon = float32_t3(0.18f, 0.92f, 0.84f) * (hScan + vLine * wallFactor);
 
                     holoColor = bldgBase * faceShade + rimNeon + lineNeon;
 

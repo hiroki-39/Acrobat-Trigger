@@ -7,6 +7,9 @@
 #include <mfidl.h>
 #include <mfreadwrite.h>
 
+#include "externals/imgui/imgui.h"
+#include <algorithm>
+
 #pragma comment(lib, "mfplat.lib")
 #pragma comment(lib, "mfreadwrite.lib")
 #pragma comment(lib, "mfuuid.lib")
@@ -299,7 +302,8 @@ void SoundManager::PlayBGM(const std::string& filename, float volume, bool loop)
 
 	if (currentBgmName_ == filename && bgmVoice_ != nullptr)
 	{
-		bgmVoice_->SetVolume(volume);
+		bgmVolume_ = volume;
+		bgmVoice_->SetVolume(isBgmMuted_ ? 0.0f : bgmVolume_);
 		if (isBgmPaused_)
 		{
 			bgmVoice_->Start();
@@ -324,7 +328,8 @@ void SoundManager::PlayBGM(const std::string& filename, float volume, bool loop)
 	buf.Flags = XAUDIO2_END_OF_STREAM;
 	buf.LoopCount = loop ? XAUDIO2_LOOP_INFINITE : 0;
 
-	bgmVoice_->SetVolume(volume);
+	bgmVolume_ = volume;
+	bgmVoice_->SetVolume(isBgmMuted_ ? 0.0f : bgmVolume_);
 	bgmVoice_->SubmitSourceBuffer(&buf);
 	bgmVoice_->Start();
 
@@ -380,16 +385,57 @@ void SoundManager::OnGamePlayStateChanged(bool isPlaying)
 
 void SoundManager::SetBGMVolume(float volume)
 {
-	bgmVolume_ = volume;
+	bgmVolume_ = std::clamp(volume, 0.0f, 1.0f);
 	if (bgmVoice_)
 	{
-		bgmVoice_->SetVolume(volume);
+		bgmVoice_->SetVolume(isBgmMuted_ ? 0.0f : bgmVolume_);
 	}
 }
 
 bool SoundManager::IsBGMPlaying() const
 {
 	return bgmVoice_ != nullptr;
+}
+
+void SoundManager::SetMasterMute(bool mute)
+{
+	isMasterMuted_ = mute;
+	if (masteringVoice)
+	{
+		masteringVoice->SetVolume(isMasterMuted_ ? 0.0f : masterVolume_);
+	}
+}
+
+void SoundManager::SetMasterVolume(float volume)
+{
+	masterVolume_ = std::clamp(volume, 0.0f, 1.0f);
+	if (masteringVoice && !isMasterMuted_)
+	{
+		masteringVoice->SetVolume(masterVolume_);
+	}
+}
+
+void SoundManager::SetBGMMute(bool mute)
+{
+	isBgmMuted_ = mute;
+	if (bgmVoice_)
+	{
+		bgmVoice_->SetVolume(isBgmMuted_ ? 0.0f : bgmVolume_);
+	}
+}
+
+void SoundManager::SetSEMute(bool mute)
+{
+	isSeMuted_ = mute;
+	if (isSeMuted_)
+	{
+		StopAllSE();
+	}
+}
+
+void SoundManager::SetSEVolume(float volume)
+{
+	seVolume_ = std::clamp(volume, 0.0f, 1.0f);
 }
 
 void SoundManager::PlaySE(const std::string& filename, float volume)
@@ -401,6 +447,9 @@ void SoundManager::PlaySE(const std::string& filename, float volume)
 		return;
 	}
 #endif
+
+	// SEミュートまたはマスターミュート時は再生スキップ
+	if (isSeMuted_ || isMasterMuted_) return;
 
 	if (filename.empty() || !xAudio2) return;
 
@@ -420,7 +469,7 @@ void SoundManager::PlaySE(const std::string& filename, float volume)
 	buf.Flags = XAUDIO2_END_OF_STREAM;
 	buf.LoopCount = 0;
 
-	voice->SetVolume(volume);
+	voice->SetVolume(volume * seVolume_);
 	voice->SubmitSourceBuffer(&buf);
 	voice->Start();
 
@@ -466,5 +515,101 @@ void SoundManager::Update()
 		{
 			++it;
 		}
+	}
+}
+
+void SoundManager::DrawImGuiAudioControls()
+{
+	ImGui::Spacing();
+	ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.2f, 1.0f), "AUDIO / SOUND");
+	ImGui::Separator();
+
+	// 1. 全ミュートボタン
+	if (isMasterMuted_)
+	{
+		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.85f, 0.25f, 0.25f, 1.0f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.95f, 0.35f, 0.35f, 1.0f));
+		if (ImGui::Button("[全ミュート解除] (Muted)##MasterMute", ImVec2(-1, 30)))
+		{
+			ToggleMasterMute();
+		}
+		ImGui::PopStyleColor(2);
+	}
+	else
+	{
+		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.50f, 0.25f, 1.0f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.30f, 0.60f, 0.35f, 1.0f));
+		if (ImGui::Button("[全ミュート] (Mute All)##MasterMute", ImVec2(-1, 30)))
+		{
+			ToggleMasterMute();
+		}
+		ImGui::PopStyleColor(2);
+	}
+
+	ImGui::Spacing();
+
+	// 2. BGM / SE 個別ミュートボタン
+	float availWidth = ImGui::GetContentRegionAvail().x;
+	float btnWidth = (availWidth - 8.0f) * 0.5f;
+
+	if (isBgmMuted_)
+	{
+		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.75f, 0.25f, 0.25f, 1.0f));
+		if (ImGui::Button("BGM: 消音中##BgmMuteBtn", ImVec2(btnWidth, 26)))
+		{
+			ToggleBGMMute();
+		}
+		ImGui::PopStyleColor();
+	}
+	else
+	{
+		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.45f, 0.65f, 1.0f));
+		if (ImGui::Button("BGM: 再生中##BgmMuteBtn", ImVec2(btnWidth, 26)))
+		{
+			ToggleBGMMute();
+		}
+		ImGui::PopStyleColor();
+	}
+
+	ImGui::SameLine();
+
+	if (isSeMuted_)
+	{
+		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.75f, 0.25f, 0.25f, 1.0f));
+		if (ImGui::Button("SE: 消音中##SeMuteBtn", ImVec2(btnWidth, 26)))
+		{
+			ToggleSEMute();
+		}
+		ImGui::PopStyleColor();
+	}
+	else
+	{
+		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.55f, 0.45f, 1.0f));
+		if (ImGui::Button("SE: 再生中##SeMuteBtn", ImVec2(btnWidth, 26)))
+		{
+			ToggleSEMute();
+		}
+		ImGui::PopStyleColor();
+	}
+
+	ImGui::Spacing();
+
+	// 3. 音量スライダー
+	float masterVol = masterVolume_;
+	if (ImGui::SliderFloat("Master##MasterVol", &masterVol, 0.0f, 1.0f, "%.2f"))
+	{
+		SetMasterVolume(masterVol);
+	}
+
+	float bgmVol = bgmVolume_;
+	if (ImGui::SliderFloat("BGM##BgmVol", &bgmVol, 0.0f, 1.0f, "%.2f"))
+	{
+		SetBGMVolume(bgmVol);
+	}
+
+	float seVol = seVolume_;
+	if (ImGui::SliderFloat("SE##SeVol", &seVol, 0.0f, 1.0f, "%.2f"))
+	{
+		SetSEVolume(seVol);
 	}
 }

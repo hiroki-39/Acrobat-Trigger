@@ -1407,78 +1407,168 @@ class MYADDON_OT_export_scene(bpy.types.Operator, bpy_extras.io_utils.ExportHelp
 class MYADDON_OT_export_objs(bpy.types.Operator):
     bl_idname = "myaddon.myaddon_ot_export_objs"
     bl_label = "OBJ出力"
-    bl_description = "シーン内のメッシュをそれぞれOBJとして一括出力します"
+    bl_description = "メッシュをOBJファイルとして出力します（出力先フォルダや選択対象を指定可能）"
     bl_options = {'REGISTER', 'UNDO'}
 
+    # ディレクトリパス（フォルダ選択）
+    directory: bpy.props.StringProperty(
+        name="出力先フォルダ",
+        description="OBJファイルを出力するディレクトリを選択してください",
+        subtype='DIR_PATH'
+    )
+
+    # 出力対象
+    export_target: bpy.props.EnumProperty(
+        name="出力対象",
+        description="出力するオブジェクトの範囲を選択してください",
+        items=[
+            ('SELECTED', "選択中オブジェクトのみ (Selected Only)", "現在3Dビューで選択されているメッシュのみ出力します"),
+            ('VISIBLE', "表示中の全オブジェクト (All Visible)", "非表示以外のすべてのメッシュを出力します"),
+        ],
+        default='SELECTED'
+    )
+
+    # モデルごとのサブフォルダ作成
+    create_subfolder: bpy.props.BoolProperty(
+        name="モデルごとにサブフォルダを作成",
+        description="チェックONで [フォルダ名/モデル名.obj] の階層構造で出力します（ゲームエンジンの標準構成）",
+        default=True
+    )
+
+    # 座標の原点リセット（ローカル原点で出力）
+    reset_transform: bpy.props.BoolProperty(
+        name="原点(0,0,0)で出力 (Transform Reset)",
+        description="配置座標や回転・スケールをリセットし、原点基準のモデルデータとして出力します",
+        default=True
+    )
+
+    filter_folder: bpy.props.BoolProperty(default=True, options={'HIDDEN'})
+
+    def invoke(self, context, event):
+        import os
+
+        # デフォルト出力先フォルダの計算
+        if not self.directory:
+            blend_filepath = bpy.data.filepath
+            if blend_filepath:
+                json_dir = os.path.dirname(blend_filepath)
+                bt_idx = json_dir.find("blender_tools")
+                if bt_idx != -1:
+                    self.directory = os.path.join(json_dir[:bt_idx], "resources", "3dModels")
+                else:
+                    res_idx = json_dir.find("resources")
+                    if res_idx != -1:
+                        self.directory = os.path.join(json_dir[:res_idx], "resources", "3dModels")
+                    else:
+                        self.directory = os.path.join(json_dir, "resources", "3dModels")
+            else:
+                self.directory = "//"
+
+        # 選択中のメッシュオブジェクトがあるかどうかで初期ターゲットを自動判定
+        selected_meshes = [obj for obj in context.selected_objects if obj.type == 'MESH']
+        if selected_meshes:
+            self.export_target = 'SELECTED'
+        else:
+            self.export_target = 'VISIBLE'
+
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+    def draw(self, context):
+        layout = self.layout
+        layout.label(text="【エクスポート設定】", icon='EXPORT')
+        box = layout.box()
+        box.prop(self, "export_target", expand=True)
+
+        if self.export_target == 'SELECTED':
+            sel_count = len([obj for obj in context.selected_objects if obj.type == 'MESH'])
+            box.label(text=f"選択中のメッシュ数: {sel_count} 個", icon='RESTRICT_SELECT_OFF')
+            if sel_count == 0:
+                box.label(text="※メッシュが選択されていません！", icon='ERROR')
+        else:
+            vis_count = len([obj for obj in context.scene.objects if obj.type == 'MESH' and obj.visible_get()])
+            box.label(text=f"出力予定メッシュ数: {vis_count} 個", icon='HIDE_OFF')
+
+        layout.separator()
+        layout.prop(self, "create_subfolder")
+        layout.prop(self, "reset_transform")
+
     def execute(self, context):
-        print("OBJの一括Exportを開始します。")
+        print("OBJのExportを開始します。")
 
         import os
         import mathutils
 
-        blend_filepath = bpy.data.filepath
-        if not blend_filepath:
-            self.report({'ERROR'}, "まずBlenderファイルを保存してください（保存先パスを基準に出力します）")
+        models_dir = bpy.path.abspath(self.directory)
+        if not os.path.exists(models_dir):
+            try:
+                os.makedirs(models_dir)
+            except Exception as e:
+                self.report({'ERROR'}, f"出力先フォルダを作成できませんでした: {e}")
+                return {'CANCELLED'}
+
+        # 出力対象オブジェクトの抽出
+        if self.export_target == 'SELECTED':
+            target_objects = [obj for obj in context.selected_objects if obj.type == 'MESH']
+            if not target_objects:
+                self.report({'WARNING'}, "出力対象のメッシュが選択されていません。オブジェクトを選択するか、対象を『表示中の全オブジェクト』にしてください。")
+                return {'CANCELLED'}
+        else:
+            target_objects = [obj for obj in context.scene.objects if obj.type == 'MESH' and obj.visible_get()]
+
+        # カメラやフラスタム、行動範囲ガイドなどの補助オブジェクトは除外
+        filtered_objects = []
+        for obj in target_objects:
+            fname = obj.get("file_name", obj.name)
+            if fname in ["GameCamera", "CameraFrustum", "PlayerRangeGuide", "PlayerMoveArea"]:
+                continue
+            if obj.name.startswith("PlayerRangeGuide") or obj.name.startswith("PlayerMoveArea") or obj.name.startswith("CameraFrustum"):
+                continue
+            filtered_objects.append(obj)
+
+        if not filtered_objects:
+            self.report({'WARNING'}, "出力可能なメッシュオブジェクトがありません。")
             return {'CANCELLED'}
 
-        json_dir = os.path.dirname(blend_filepath)
-        # プロジェクトルート（blender_toolsより上の階層）を探す
-        bt_idx = json_dir.find("blender_tools")
-        if bt_idx != -1:
-            models_dir = os.path.join(json_dir[:bt_idx], "resources", "3dModels")
-        else:
-            res_idx = json_dir.find("resources")
-            if res_idx != -1:
-                models_dir = os.path.join(json_dir[:res_idx], "resources", "3dModels")
-            else:
-                models_dir = os.path.join(json_dir, "resources", "3dModels")
-            
-        if not os.path.exists(models_dir):
-            os.makedirs(models_dir)
+        # 元の選択状態・アクティブオブジェクトを退避
+        saved_selected = list(context.selected_objects)
+        saved_active = context.view_layer.objects.active
 
         # 現在の選択状態をクリア
-        for obj in bpy.context.scene.objects:
+        for obj in context.scene.objects:
             obj.select_set(False)
 
         export_count = 0
-        for object in bpy.context.scene.objects:
-            if object.type != 'MESH':
-                continue
-
-            # 非表示（目玉アイコンがオフなど）のメッシュは出力しない
-            if not object.visible_get():
-                continue
-
+        for object in filtered_objects:
             file_name = object.name
             if "file_name" in object and object["file_name"] != "":
                 file_name = object["file_name"]
 
-            # カメラやフラスタム、行動範囲ガイドは出力しない
-            if file_name in ["GameCamera", "CameraFrustum", "PlayerRangeGuide", "PlayerMoveArea"]:
-                continue
-            
             base_name = file_name.split('.')[0]
             if not file_name.endswith(".obj"):
                 file_name += ".obj"
 
-            obj_dir = os.path.join(models_dir, base_name)
-            if not os.path.exists(obj_dir):
-                os.makedirs(obj_dir)
-
-            obj_path = os.path.join(obj_dir, file_name)
+            # サブフォルダを作成するかどうか
+            if self.create_subfolder:
+                obj_dir = os.path.join(models_dir, base_name)
+                if not os.path.exists(obj_dir):
+                    os.makedirs(obj_dir)
+                obj_path = os.path.join(obj_dir, file_name)
+            else:
+                obj_path = os.path.join(models_dir, file_name)
 
             saved_location = object.location.copy()
             saved_rotation = object.rotation_euler.copy()
             saved_scale = object.scale.copy()
-            
-            object.select_set(True)
-            bpy.context.view_layer.objects.active = object
 
-            object.location = mathutils.Vector((0.0, 0.0, 0.0))
-            object.rotation_euler = mathutils.Euler((0.0, 0.0, 0.0), 'XYZ')
-            object.scale = mathutils.Vector((1.0, 1.0, 1.0))
-            
-            bpy.context.view_layer.update()
+            object.select_set(True)
+            context.view_layer.objects.active = object
+
+            if self.reset_transform:
+                object.location = mathutils.Vector((0.0, 0.0, 0.0))
+                object.rotation_euler = mathutils.Euler((0.0, 0.0, 0.0), 'XYZ')
+                object.scale = mathutils.Vector((1.0, 1.0, 1.0))
+                context.view_layer.update()
 
             try:
                 if hasattr(bpy.ops.wm, "obj_export"):
@@ -1489,15 +1579,24 @@ class MYADDON_OT_export_objs(bpy.types.Operator):
             except Exception as e:
                 print(f"Failed to export {obj_path}: {e}")
 
-            object.location = saved_location
-            object.rotation_euler = saved_rotation
-            object.scale = saved_scale
-            bpy.context.view_layer.update()
+            if self.reset_transform:
+                object.location = saved_location
+                object.rotation_euler = saved_rotation
+                object.scale = saved_scale
+                context.view_layer.update()
 
             object.select_set(False)
-            
-        print(f"OBJの一括Exportを完了しました。（{export_count}件）")
-        self.report({'INFO'}, f"OBJの一括Exportを完了しました。（{export_count}件）")
+
+        # 選択状態を復元
+        for obj in saved_selected:
+            if obj.name in context.scene.objects:
+                obj.select_set(True)
+        if saved_active and saved_active.name in context.scene.objects:
+            context.view_layer.objects.active = saved_active
+
+        msg = f"OBJのExportを完了しました。（{export_count}件） -> {models_dir}"
+        print(msg)
+        self.report({'INFO'}, msg)
 
         return {'FINISHED'}
 
@@ -1510,16 +1609,12 @@ class TOPBAR_MT_my_menu(bpy.types.Menu):
 
     #サブメニューを描画する関数
     def draw(self, context):
-        self.layout.operator("wm.url_open_preset", text="Manual", icon='HELP')
-        self.layout.operator(MYADDON_OT_stretch_vertex.bl_idname, text = MYADDON_OT_stretch_vertex.bl_label)
-        self.layout.operator(MYADDON_OT_create_ico_sphere.bl_idname, text = MYADDON_OT_create_ico_sphere.bl_label)
-        self.layout.operator(MYADDON_OT_create_fighter.bl_idname, text = MYADDON_OT_create_fighter.bl_label)
-        self.layout.operator(MYADDON_OT_create_asteroid.bl_idname, text = MYADDON_OT_create_asteroid.bl_label)
-        self.layout.operator(MYADDON_OT_create_player_and_camera.bl_idname, text = MYADDON_OT_create_player_and_camera.bl_label)
-        self.layout.operator(MYADDON_OT_create_player_range_guide.bl_idname, text = MYADDON_OT_create_player_range_guide.bl_label)
-        self.layout.operator(MYADDON_OT_create_game_camera.bl_idname, text = MYADDON_OT_create_game_camera.bl_label)
-        self.layout.operator(MYADDON_OT_export_scene.bl_idname, text = MYADDON_OT_export_scene.bl_label)
-        self.layout.operator(MYADDON_OT_export_objs.bl_idname, text = MYADDON_OT_export_objs.bl_label)
+        layout = self.layout
+        layout.operator("wm.url_open_preset", text="Manual", icon='HELP')
+        layout.separator()
+        layout.operator(MYADDON_OT_export_scene.bl_idname, text="シーン出力 (template.json)", icon='FILE_TICK')
+        layout.separator()
+        layout.operator(MYADDON_OT_export_objs.bl_idname, text="OBJ出力 (選択中 / 一括)", icon='EXPORT')
 
 
     # サブメニューを追加する関数
