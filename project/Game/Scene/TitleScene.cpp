@@ -597,7 +597,7 @@ void TitleScene::Update()
     const float dt = isPlaying ? (1.0f / 60.0f) : 0.0f;
 
     // -------------------------------------------------------------
-    // デバッグカメラ切り替え（F2キー）
+    // デバッグカメラ切り替え（F2キー） / ミュート切り替え（Mキー）
     // -------------------------------------------------------------
     if (input && input->TriggerKey(DIK_F2))
     {
@@ -608,6 +608,10 @@ void TitleScene::Update()
             debugCamera_->SetRotation(camera_->GetRotation());
             debugCamera_->Update();
         }
+    }
+    if (input && input->TriggerKey(DIK_M))
+    {
+        SoundManager::GetInstance()->ToggleMasterMute();
     }
 
     // -------------------------------------------------------------
@@ -1631,6 +1635,9 @@ void TitleScene::Update()
         {
             TriggerStartTransition(false);
         }
+
+        // オーディオ・ミュートコントロール
+        SoundManager::GetInstance()->DrawImGuiAudioControls();
 
         // 最下部にパフォーマンス情報を常時表示
         ImGui::Spacing();

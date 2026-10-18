@@ -1078,6 +1078,11 @@ void GamePlayScene::Update()
 		ReloadLevel();
 	}
 
+	if (input && input->TriggerKey(DIK_M))
+	{
+		SoundManager::GetInstance()->ToggleMasterMute();
+	}
+
 	// デモプレイ中：ゲームプレイ部分は見せず、演出・画面遷移を見せた後タイトルシーンへ戻る
 	if (services && services->IsDemoMode())
 	{
@@ -2040,6 +2045,9 @@ void GamePlayScene::Update()
 		{
 			EngineServices::GetInstance()->SetEditorMode(false);
 		}
+
+		// オーディオ・ミュートコントロール
+		SoundManager::GetInstance()->DrawImGuiAudioControls();
 
 		// 最下部にパフォーマンス情報を常時表示
 		ImGui::Spacing();
