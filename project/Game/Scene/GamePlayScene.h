@@ -73,11 +73,7 @@ private:
     std::unique_ptr<Model> enemyRailModel_;
     std::vector<std::unique_ptr<Object3d>> railVisualizers_;
     std::vector<std::unique_ptr<Object3d>> enemyRailVisualizers_;
-#ifdef ENABLE_EDITOR
-    bool isDrawRail_ = true;
-#else
     bool isDrawRail_ = false;
-#endif
     std::unique_ptr<Skybox> skybox_;
     bool isVirtualSpace_ = true; // スターフォックス風サイバー仮想空間ビジュアル有効フラグ
     void ApplyVirtualSpaceStyle();
@@ -190,8 +186,18 @@ private:
 #endif
     bool isDrawTerrainWireframe_ = false; // 判定計算が行われているポリゴンのみワイヤーフレーム表示（F3キー）
     float cameraShakeTimer_ = 0.0f;
+    int enemyKillShakeFrames_ = 0; // 敵撃破時の微小カメラシェイク（1〜2フレーム）
     float lastLoadTimeMs_ = 0.0f;
     int score_ = 0;
+
+    // 敵撃破時の3Dスコア加算ポップ演出
+    struct ScorePopup {
+        Vector3 worldPos;     // 敵撃破時の3Dワールド座標
+        int score;            // 加算スコア (+100 など)
+        float timer;          // 経過秒数
+        float duration;       // 表示持続時間
+    };
+    std::vector<ScorePopup> scorePopups_;
 
     // 進行フェーズ
     enum class GamePhase {

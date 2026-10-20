@@ -16,7 +16,10 @@ public:
     /// </summary>
     void Update(float gameSpeed = 1.0f);
 
-    void Update3DObjectOnly() { if (object_) object_->Update(); }
+    void Update3DObjectOnly() {
+        if (object_) object_->Update();
+        if (trailObject_) trailObject_->Update();
+    }
 
     /// <summary>
     /// 描画
@@ -33,7 +36,8 @@ public:
     void OnCollision() { isDead_ = true; }
 
 private:
-    std::unique_ptr<Object3d> object_ = nullptr; // 高エネルギーレーザービーム
+    std::unique_ptr<Object3d> object_ = nullptr; // 高エネルギーレーザービーム本体
+    std::unique_ptr<Object3d> trailObject_ = nullptr; // 光の尾（ビームトレイル）
     std::unique_ptr<Object3d> colliderObject_ = nullptr;
     Vector3 velocity_ = { 0.0f, 0.0f, 1.5f }; // 速度ベクトル
     Vector3 rotation_ = { 0.0f, 0.0f, 0.0f }; // 進行方向への向き

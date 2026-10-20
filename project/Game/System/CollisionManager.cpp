@@ -126,10 +126,12 @@ void CollisionManager::CheckPlayerAttacksVsEnemies(CollisionContext& ctx)
         // 敵の死亡判定
         if ((*it)->IsDead())
         {
+            Vector3 deadPos = (*it)->GetPosition();
             if (ctx.score) *ctx.score += 100;
+            if (ctx.onEnemyKilled) ctx.onEnemyKilled(deadPos, 100);
             if (ctx.explosionEffect)
             {
-                ctx.explosionEffect->SetPosition((*it)->GetPosition());
+                ctx.explosionEffect->SetPosition(deadPos);
                 ctx.explosionEffect->Play();
             }
             SoundManager::GetInstance()->PlaySE("small_explosion.mp3", 0.8f);

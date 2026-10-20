@@ -49,9 +49,30 @@ public:
         if (active) {
             logicalPosition_ = localPos;
             baseRotation_ = localRot;
+        } else {
+            // カットシーン終了・スキップ時：位置・基本姿勢・動的姿勢変数を水平巡航状態へリセット
+            logicalPosition_ = { 0.0f, 0.0f, 0.0f };
+            baseRotation_ = { 0.0f, 0.0f, 0.0f };
+            currentPitch_ = 0.0f;
+            currentYaw_ = 0.0f;
+            currentBank_ = 0.0f;
+            velocity_ = { 0.0f, 0.0f };
+            reticlePosition_ = { 0.0f, 0.0f, dynamicReticleDistance_ };
+            Update3DObjectOnly();
         }
     }
     bool IsCutsceneActive() const { return isCutsceneActive_; }
+
+    void ResetPosture() {
+        baseRotation_ = { 0.0f, 0.0f, 0.0f };
+        currentPitch_ = 0.0f;
+        currentYaw_ = 0.0f;
+        currentBank_ = 0.0f;
+        finalBank_ = 0.0f;
+        velocity_ = { 0.0f, 0.0f };
+        reticlePosition_ = { logicalPosition_.x, logicalPosition_.y, logicalPosition_.z + dynamicReticleDistance_ };
+        Update3DObjectOnly();
+    }
 
     void Update(std::list<std::unique_ptr<PlayerBullet>>& bullets, std::list<std::unique_ptr<PlayerMissile>>& missiles, const std::list<std::unique_ptr<Enemy>>& enemies, Object3d* parentCamera = nullptr, float gameSpeed = 1.0f, ArmoredTrainBoss* boss = nullptr);
 
@@ -93,6 +114,8 @@ public:
         if (accessory_) accessory_->Update();
         if (reticle_) reticle_->Update();
         if (frontReticle_) frontReticle_->Update();
+        UpdateGroundMarker();
+        UpdateVerniers(1.0f);
     }
 
     
@@ -104,11 +127,16 @@ public:
     Object3d* GetObject3d() const { return object_.get(); }
     Object3d* GetReticle() const { return reticle_.get(); }
     Object3d* GetFrontReticle() const { return frontReticle_.get(); }
+    Object3d* GetGroundMarkerObject() const { return groundMarkerObject_.get(); }
+    Object3d* GetVernierLeft() const { return vernierLeft_.get(); }
+    Object3d* GetVernierRight() const { return vernierRight_.get(); }
     
     
     void SetReticleColor(const Vector4& color);
     const Vector4& GetReticleColor() const { return reticleColor_; }
     Vector3 GetReticleWorldPosition() const;
+    Vector3 GetFrontReticleWorldPosition() const;
+    bool IsTargetInReticle() const { return isTargetInReticle_; }
 
     void SetLockOn(bool isLockOn, const Vector3& targetPos = { 0, 0, 0 }, Enemy* targetEnemy = nullptr) {
         isLockOn_ = isLockOn;
@@ -198,6 +226,7 @@ public:
     bool IsBanking() const;
     Vector3 GetLeftWingPosition() const;
     Vector3 GetRightWingPosition() const;
+    float GetFinalBank() const { return finalBank_; }
 
 private:
     
@@ -215,6 +244,25 @@ private:
     std::unique_ptr<Object3d> reticle_ = nullptr; 
     std::unique_ptr<Object3d> frontReticle_ = nullptr; 
     std::unique_ptr<Object3d> accessory_ = nullptr; 
+    std::unique_ptr<Object3d> groundMarkerObject_ = nullptr; // 接地マーカー（プロジェクションシャドウ）
+    std::unique_ptr<Object3d> vernierLeft_ = nullptr;        // 左ツインバーニア噴射炎コーン
+    std::unique_ptr<Object3d> vernierRight_ = nullptr;       // 右ツインバーニア噴射炎コーン
+
+    // ロール回避残像（アフターイメージ）用データ構造
+    struct RollAfterImage {
+        std::unique_ptr<Object3d> object = nullptr;
+        float lifeTimer = 0.0f;
+        float maxLife = 12.0f; // 約0.2秒（12フレーム）
+        bool active = false;
+    };
+    static const int MAX_AFTER_IMAGES = 6;
+    std::array<RollAfterImage, MAX_AFTER_IMAGES> rollAfterImages_;
+    float rollAfterImageSpawnTimer_ = 0.0f;
+
+    void UpdateGroundMarker();
+    void UpdateVerniers(float gameSpeed);
+    void UpdateRollAfterImages(float gameSpeed, Object3d* parentCamera);
+
     Object3dCommon* object3dCommon_ = nullptr; 
     Input* input_ = nullptr;
     
@@ -237,12 +285,24 @@ private:
     float targetLimitYMin_ = -4.0f;
     float targetLimitYMax_ = 20.0f;
     float followSpeed_ = 0.12f;
-    float bulletSpeed_ = 3.0f;
+    float bulletSpeed_ = 8.5f; // 偏差撃ち解消のため高速化 (8.5m/フレーム)
     float terrainKnockbackPower_ = 0.35f; // 壁・地面に当たった時の反発速度
     float terrainPushMargin_ = 0.05f;     // めり込み押し戻しマージン
     float terrainCollisionRadius_ = 0.8f; // 地形・障害物との衝突判定球の半径
     float terrainBlockTimer_ = 0.0f;       // 衝突直後の障害物方向への入力遮断タイマー
     Vector2 terrainBlockDir_ = { 0.0f, 0.0f }; // 遮断する方向ベクトル
+
+    // 照準のZ深度適応・エイムアシスト・ヒット確信フィードバック用
+    void UpdateReticleAndAimAssist(const std::list<std::unique_ptr<Enemy>>& enemies, ArmoredTrainBoss* boss, float gameSpeed);
+    Enemy* reticleHoverEnemy_ = nullptr;
+    ArmoredTrainBoss* reticleHoverBoss_ = nullptr;
+    int reticleHoverCarriage_ = -1;
+    Vector3 reticleHoverTargetPos_ = { 0.0f, 0.0f, 0.0f };
+    bool isTargetInReticle_ = false;
+    bool prevTargetInReticle_ = false;
+    float dynamicReticleDistance_ = 45.0f;
+    float reticleSnapAnimTimer_ = 0.0f;
+    Vector3 baseReticleScale_ = { 1.6f, 1.6f, 1.6f };
 
     
     std::string modelName_ = "cube.obj";
@@ -258,6 +318,7 @@ private:
     float currentPitch_ = 0.0f;
     float currentYaw_ = 0.0f;
     float currentBank_ = 0.0f;
+    float finalBank_ = 0.0f;
 
     // プレイヤーの論理的な位置とベース回転
     Vector3 logicalPosition_ = { 0.0f, 0.0f, 0.0f }; 

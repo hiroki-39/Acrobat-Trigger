@@ -17,43 +17,44 @@ void Player::Initialize(Object3dCommon* object3dCommon, uint32_t skyboxTexIndex)
 
     skyboxTexIndex_ = skyboxTexIndex;
 
-    // プレイヤー本体のモデル設定
+    // プレイヤー本体のモデル設定（タイトルシーンのサイバー機体と完全に統一）
     object_ = std::make_unique<Object3d>();
     object_->Initialize(object3dCommon);
     object_->SetModel(modelName_);
+    color_ = { 1.0f, 1.0f, 1.0f, 1.0f }; // タイトルシーンと同一のクリアホワイト（シェーダー発色を完全再現）
     object_->SetColor(color_);
+    object_->SetSelectLightings(8); // タイトルシーンと同一のサイバー仮想空間自機シェーダー（case 8: ホログラム装甲・ネオンパネル・ネオンリム発光）
     object_->SetEnvironmentTextureIndex(skyboxTexIndex);
-    object_->SetEnvironmentCoefficient(reflection_ ? 1.0f : 0.0f);
+    object_->SetEnvironmentCoefficient(0.0f); // ホログラム発光を純粋に保つため環境反射オフ
+    object_->SetEnableLighting(true);
     object_->SetScale(playerScale_);
      
-    
-    // 奥側のレティクル（照準）設定
+    // 奥側のレティクル（敵追従照準枠）設定
     reticle_ = std::make_unique<Object3d>();
     reticle_->Initialize(object3dCommon);
     reticle_->SetModel("crossHair.obj");
-    reticle_->GetModel()->SetColor(reticleColor_);
+    reticleColor_ = { 1.0f, 0.58f, 0.08f, 0.95f }; 
+    reticle_->SetColor(reticleColor_);
     reticle_->SetEnvironmentTextureIndex(skyboxTexIndex);
     reticle_->SetEnvironmentCoefficient(0.0f);
     reticle_->SetEnableLighting(false);
     reticle_->SetSelectLightings(0);
-    reticle_->SetScale(Vector3(1.6f, 1.6f, 1.6f));
+    baseReticleScale_ = Vector3(1.6f, 1.6f, 1.6f);
+    dynamicReticleDistance_ = 45.0f; // 俊敏な照準追従を実現する標準距離45m
+    reticle_->SetScale(baseReticleScale_);
     
-    
+    // 手前側のレティクル（自機前方の赤丸ビルボード・銃口ポインタ）設定
     frontReticle_ = std::make_unique<Object3d>();
     frontReticle_->Initialize(object3dCommon);
-    frontReticle_->SetModel("crossHair.obj");
-    
-    Vector4 frontColor = reticleColor_;
-    frontColor.w = 1.0f;
-    frontReticle_->GetModel()->SetColor(frontColor);
+    frontReticle_->SetModel("frontReticle.obj");
+    frontReticle_->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
     frontReticle_->SetEnvironmentTextureIndex(skyboxTexIndex);
     frontReticle_->SetEnvironmentCoefficient(0.0f);
     frontReticle_->SetEnableLighting(false);
     frontReticle_->SetSelectLightings(0);
-    frontReticle_->SetScale(Vector3(1.7f, 1.7f, 1.7f)); 
+    frontReticle_->SetScale(Vector3(1.2f, 1.2f, 1.2f)); 
     
-    
-    reticlePosition_ = { 0.0f, 0.0f, 40.0f }; 
+    reticlePosition_ = { 0.0f, 0.0f, 45.0f }; 
 
     
     if (auto pp = EngineServices::GetInstance()->GetPostProcess()) {
@@ -102,6 +103,57 @@ void Player::Initialize(Object3dCommon* object3dCommon, uint32_t skyboxTexIndex)
         mountedMissiles_[i]->Update();
         lockOnReticles_[i]->Update();
     }
+
+    // 接地マーカー（プロジェクションシャドウ）の初期化
+    ModelManager::GetInstance()->LoadModel("ground_marker.obj");
+    groundMarkerObject_ = std::make_unique<Object3d>();
+    groundMarkerObject_->Initialize(object3dCommon);
+    groundMarkerObject_->SetModel("ground_marker.obj");
+    groundMarkerObject_->SetEnableLighting(false);
+    groundMarkerObject_->SetSelectLightings(0);
+    groundMarkerObject_->SetColor({ 0.0f, 0.90f, 1.0f, 0.85f });
+    groundMarkerObject_->SetScale({ 2.2f, 1.0f, 2.2f });
+
+    // ツインバーニア（推進噴射炎コーン）の初期化
+    ModelManager::GetInstance()->LoadModel("vernier_cone.obj");
+    vernierLeft_ = std::make_unique<Object3d>();
+    vernierLeft_->Initialize(object3dCommon);
+    vernierLeft_->SetModel("vernier_cone.obj");
+    vernierLeft_->SetParent(object_.get());
+    vernierLeft_->SetTranslate({ -0.55f, -0.05f, -1.85f });
+    vernierLeft_->SetScale({ 0.45f, 0.45f, 1.2f });
+    vernierLeft_->SetEnableLighting(false);
+    vernierLeft_->SetSelectLightings(0);
+    vernierLeft_->SetColor({ 0.35f, 0.90f, 1.0f, 0.95f });
+
+    vernierRight_ = std::make_unique<Object3d>();
+    vernierRight_->Initialize(object3dCommon);
+    vernierRight_->SetModel("vernier_cone.obj");
+    vernierRight_->SetParent(object_.get());
+    vernierRight_->SetTranslate({ 0.55f, -0.05f, -1.85f });
+    vernierRight_->SetScale({ 0.45f, 0.45f, 1.2f });
+    vernierRight_->SetEnableLighting(false);
+    vernierRight_->SetSelectLightings(0);
+    vernierRight_->SetColor({ 0.35f, 0.90f, 1.0f, 0.95f });
+
+    vernierLeft_->Update();
+    vernierRight_->Update();
+
+    // ロール回避残像（ワイヤーフレーム アフターイメージ）オブジェクトプール初期化
+    for (int i = 0; i < MAX_AFTER_IMAGES; ++i) {
+        rollAfterImages_[i].object = std::make_unique<Object3d>();
+        rollAfterImages_[i].object->Initialize(object3dCommon);
+        rollAfterImages_[i].object->SetModel(modelName_);
+        rollAfterImages_[i].object->SetColor({ 0.15f, 0.85f, 1.0f, 0.0f });
+        rollAfterImages_[i].active = false;
+        rollAfterImages_[i].lifeTimer = 0.0f;
+    }
+
+    // 共有モデル player.obj 本体のマテリアルカラーを不透明ホワイトに完全リセット
+    if (auto pModel = ModelManager::GetInstance()->FindModel(modelName_)) {
+        pModel->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+    }
+    object_->SetColor(color_);
 
     SetPowerUpLevel(0);
     ResetBoost();
@@ -327,6 +379,7 @@ void Player::Update(std::list<std::unique_ptr<PlayerBullet>>& bullets, std::list
 
     prevLogicalPosition_ = logicalPosition_;
     Move(gameSpeed);
+    UpdateReticleAndAimAssist(enemies, boss, gameSpeed);
     Attack(bullets, missiles, enemies, parentCamera, gameSpeed, boss);
 
     if (invincibilityTimer_ > 0.0f) {
@@ -352,6 +405,10 @@ void Player::Update(std::list<std::unique_ptr<PlayerBullet>>& bullets, std::list
         if (mountedMissiles_[i]) mountedMissiles_[i]->Update();
         if (lockOnReticles_[i]) lockOnReticles_[i]->Update();
     }
+
+    UpdateGroundMarker();
+    UpdateVerniers(gameSpeed);
+    UpdateRollAfterImages(gameSpeed, parentCamera);
 }
 
 void Player::Draw() {
@@ -359,12 +416,17 @@ void Player::Draw() {
 
     // カットシーン演出中は照準UIを非表示にして映画的没入感を高める
     if (!isCutsceneActive_) {
-        if (reticle_) {
-            reticle_->Draw();
-        }
-        if (frontReticle_) {
-            frontReticle_->Draw();
-        }
+        // 奥照準・手前照準ともに、GamePlayScene::DrawUI（最前面2D UIオーバーレイ）で
+        // スターフォックス風のデュアル・スクエア・レティクルとして描画（地形潜り込み・Z遮蔽・解像度低下を完全解消）
+        // reticle_->Draw();
+        // if (frontReticle_) {
+        //     frontReticle_->Draw();
+        // }
+    }
+
+    // 接地マーカー（プロジェクションシャドウ）描画（自機生存時）
+    if (!isDead_ && groundMarkerObject_) {
+        groundMarkerObject_->Draw();
     }
     
     bool shouldDrawPlayer = true;
@@ -383,7 +445,6 @@ void Player::Draw() {
         }
         for (int i = 0; i < maxMissiles_; ++i) {
             if (mountedMissiles_[i]) {
-                
                 if (currentWeapon_ == WeaponType::MISSILE && missileReloadTimer_ <= 0.0f) {
                     mountedMissiles_[i]->Draw();
                 }
@@ -391,8 +452,165 @@ void Player::Draw() {
         }
     }
     
+    // ロール回避残像（ワイヤーフレーム アフターイメージ）描画
+    if (!isDead_ && object3dCommon_) {
+        bool hasActiveAfterImage = false;
+        for (int i = 0; i < MAX_AFTER_IMAGES; ++i) {
+            if (rollAfterImages_[i].active && rollAfterImages_[i].object) {
+                hasActiveAfterImage = true;
+                break;
+            }
+        }
+        if (hasActiveAfterImage) {
+            object3dCommon_->SetWireframeDrawSetting();
+            for (int i = 0; i < MAX_AFTER_IMAGES; ++i) {
+                if (rollAfterImages_[i].active && rollAfterImages_[i].object) {
+                    rollAfterImages_[i].object->Draw();
+                }
+            }
+            object3dCommon_->SetCommonDrawSetting();
+        }
+    }
+
     for (int i = 0; i < MAX_MISSILES; ++i) {
         if (lockOnReticles_[i]) lockOnReticles_[i]->Draw();
+    }
+}
+
+// -------------------------------------------------------------
+// 接地マーカー（プロジェクションシャドウ）更新処理
+// -------------------------------------------------------------
+void Player::UpdateGroundMarker() {
+    if (!groundMarkerObject_) return;
+
+    // 自機の地上高度を算出（playerLimitYMin_ を地面基準面とする）
+    float groundLevelY = playerLimitYMin_ - 0.45f;
+    float currentY = logicalPosition_.y;
+    float altitude = (std::max)(0.0f, currentY - groundLevelY);
+    float maxAltitude = (std::max)(1.0f, playerLimitYMax_ - groundLevelY);
+    float altitudeRatio = (std::clamp)(altitude / maxAltitude, 0.0f, 1.0f);
+
+    // 高度に応じた動的スケール：
+    // 地面近くではコンパクトに締まり (2.2m)、上昇するほど淡く広がる (3.8m)
+    float markerScale = 2.2f + 1.6f * altitudeRatio;
+    groundMarkerObject_->SetScale({ markerScale, 1.0f, markerScale });
+
+    // 投影位置：Xは自機の直下、Yは地面直上、Zは自機と同等（わずかに前方に配置して視認性向上）
+    float markerZ = logicalPosition_.z + 0.5f;
+    groundMarkerObject_->SetTranslate({ logicalPosition_.x, groundLevelY, markerZ });
+
+    // 自機のバンク角（左右ロール傾き）に連動してマーカーも回転し姿勢を投影
+    groundMarkerObject_->SetRotation({ 0.0f, 0.0f, currentBank_ * 0.45f });
+
+    // 高度に応じた透明度（アルファ減衰）：
+    // 地面近くでは鮮烈に発光（0.88f）、上空では淡く溶け込む（0.22f）
+    float alpha = 0.88f - 0.66f * altitudeRatio;
+    groundMarkerObject_->SetColor({ 0.0f, 0.92f, 1.0f, alpha });
+
+    groundMarkerObject_->Update();
+}
+
+// -------------------------------------------------------------
+// ツインバーニア（推進噴射炎コーン）更新処理
+// -------------------------------------------------------------
+void Player::UpdateVerniers(float gameSpeed) {
+    if (!vernierLeft_ || !vernierRight_) return;
+
+    static float vernierPulsePhase = 0.0f;
+    vernierPulsePhase += 0.35f * gameSpeed;
+    float pulse = 1.0f + 0.08f * std::sinf(vernierPulsePhase);
+
+    // ブースト中判定
+    bool boostActive = isBoosting_ || isCutsceneActive_;
+
+    // コーンの基本スケールとカラー
+    float baseScaleZ = boostActive ? 2.4f : 1.25f;
+    float scaleX = boostActive ? 0.55f : 0.42f;
+    Vector3 vernierScale = { scaleX * pulse, scaleX * pulse, baseScaleZ * pulse };
+
+    Vector4 vernierColor;
+    if (boostActive) {
+        // ブースト時：超高温ネオンオレンジ〜マゼンタ
+        vernierColor = { 1.0f, 0.38f, 0.08f, 1.0f };
+    } else {
+        // 通常時：鮮烈なネオンシアン＋白ハイライト
+        vernierColor = { 0.30f, 0.90f, 1.0f, 0.92f };
+    }
+
+    vernierLeft_->SetScale(vernierScale);
+    vernierRight_->SetScale(vernierScale);
+
+    vernierLeft_->SetColor(vernierColor);
+    vernierRight_->SetColor(vernierColor);
+
+    vernierLeft_->Update();
+    vernierRight_->Update();
+}
+
+// -------------------------------------------------------------
+// ロール回避残像（アフターイメージ）更新処理
+// -------------------------------------------------------------
+void Player::UpdateRollAfterImages(float gameSpeed, Object3d* parentCamera) {
+    // ロール中の残像スポーン処理
+    if (isRolling_ && rollTimer_ > 0.0f) {
+        rollAfterImageSpawnTimer_ -= gameSpeed;
+        if (rollAfterImageSpawnTimer_ <= 0.0f) {
+            rollAfterImageSpawnTimer_ = 2.5f; // 約2〜3フレームごとに1体スポーン
+
+            // 空きスロットまたは最も古いスロットを探す
+            int targetIdx = -1;
+            float maxAge = -1.0f;
+            for (int i = 0; i < MAX_AFTER_IMAGES; ++i) {
+                if (!rollAfterImages_[i].active) {
+                    targetIdx = i;
+                    break;
+                }
+                if (rollAfterImages_[i].lifeTimer > maxAge) {
+                    maxAge = rollAfterImages_[i].lifeTimer;
+                    targetIdx = i;
+                }
+            }
+
+            if (targetIdx >= 0) {
+                auto& img = rollAfterImages_[targetIdx];
+                img.active = true;
+                img.lifeTimer = 0.0f;
+                img.maxLife = 12.0f; // 約0.2秒（12フレーム）
+
+                if (img.object) {
+                    if (parentCamera) {
+                        img.object->SetParent(parentCamera);
+                    }
+                    // 現在の自機の姿勢（Translate, Rotation, Scale）をスナップショット記録
+                    img.object->SetTranslate(object_->GetTranslate());
+                    img.object->SetRotation(object_->GetRotation());
+                    img.object->SetScale(object_->GetScale());
+                }
+            }
+        }
+    } else {
+        rollAfterImageSpawnTimer_ = 0.0f;
+    }
+
+    // 既存残像の寿命進行とフェードアウト
+    for (int i = 0; i < MAX_AFTER_IMAGES; ++i) {
+        if (!rollAfterImages_[i].active) continue;
+
+        rollAfterImages_[i].lifeTimer += gameSpeed;
+        if (rollAfterImages_[i].lifeTimer >= rollAfterImages_[i].maxLife) {
+            rollAfterImages_[i].active = false;
+            continue;
+        }
+
+        // 残り寿命に応じたアルファフェードアウト (0.65f -> 0.0f)
+        float lifeRatio = rollAfterImages_[i].lifeTimer / rollAfterImages_[i].maxLife;
+        float alpha = 0.65f * (1.0f - lifeRatio);
+
+        if (rollAfterImages_[i].object) {
+            // クールな半透明ネオンシアン（加算合成的に残像が浮かぶ）
+            rollAfterImages_[i].object->SetColor({ 0.15f, 0.85f, 1.0f, alpha });
+            rollAfterImages_[i].object->Update();
+        }
     }
 }
 
@@ -405,12 +623,10 @@ void Player::DrawCollider() {
 void Player::SetReticleColor(const Vector4& color) {
     reticleColor_ = color;
     if (reticle_) {
-        reticle_->GetModel()->SetColor(reticleColor_);
+        reticle_->SetColor(reticleColor_);
     }
     if (frontReticle_) {
-        Vector4 frontColor = reticleColor_;
-        frontColor.w = 1.0f; 
-        frontReticle_->GetModel()->SetColor(frontColor);
+        frontReticle_->SetColor({ 1.0f, 0.25f, 0.25f, 0.95f });
     }
 }
 
@@ -418,6 +634,203 @@ Vector3 Player::GetReticleWorldPosition() const {
     if (!reticle_) return {0,0,0};
     const Matrix4x4& mat = reticle_->GetmatWorld();
     return { mat.m[3][0], mat.m[3][1], mat.m[3][2] };
+}
+
+Vector3 Player::GetFrontReticleWorldPosition() const {
+    if (!object_) return {0,0,0};
+    const Matrix4x4& mat = object_->GetmatWorld();
+    // 自機の前方方向ベクトル（Z軸）
+    Vector3 forward = { mat.m[2][0], mat.m[2][1], mat.m[2][2] };
+    float len = std::sqrt(forward.x * forward.x + forward.y * forward.y + forward.z * forward.z);
+    if (len > 0.0001f) {
+        forward.x /= len;
+        forward.y /= len;
+        forward.z /= len;
+    }
+    // 仕様書: 手前照準の3D座標 = 自機の座標 + (自機の正面方向ベクトル × 手前距離 D1)
+    // 自機機首前方14mに配置（自機移動・ピッチ・ロール・首振りに完全同期）
+    float frontDist = 14.0f;
+    return Vector3{
+        mat.m[3][0] + forward.x * frontDist,
+        mat.m[3][1] + forward.y * frontDist,
+        mat.m[3][2] + forward.z * frontDist
+    };
+}
+
+// -------------------------------------------------------------
+// 照準のZ深度適応・エイムアシスト・ヒット確信フィードバック処理
+// -------------------------------------------------------------
+void Player::UpdateReticleAndAimAssist(const std::list<std::unique_ptr<Enemy>>& enemies, ArmoredTrainBoss* boss, float gameSpeed) {
+    if (!reticle_) return;
+
+    Vector3 playerWorldPos = GetWorldPosition();
+    Vector3 reticleWorldPos = GetReticleWorldPosition();
+
+    Vector3 aimDir = {
+        reticleWorldPos.x - playerWorldPos.x,
+        reticleWorldPos.y - playerWorldPos.y,
+        reticleWorldPos.z - playerWorldPos.z
+    };
+    float aimLen = std::sqrtf(aimDir.x * aimDir.x + aimDir.y * aimDir.y + aimDir.z * aimDir.z);
+    if (aimLen > 0.0001f) {
+        aimDir.x /= aimLen;
+        aimDir.y /= aimLen;
+        aimDir.z /= aimLen;
+    } else {
+        aimDir = { 0.0f, 0.0f, 1.0f };
+    }
+
+    Enemy* bestEnemy = nullptr;
+    ArmoredTrainBoss* bestBoss = nullptr;
+    int bestCarriage = -1;
+    Vector3 bestTargetPos = { 0.0f, 0.0f, 0.0f };
+    float bestScore = 999999.0f;
+    float bestProjDist = dynamicReticleDistance_;
+
+    // 1. 通常敵のスキャン
+    for (const auto& enemy : enemies) {
+        if (!enemy || enemy->IsDead()) continue;
+
+        Vector3 ePos = enemy->GetColliderCenter();
+        Vector3 toE = { ePos.x - playerWorldPos.x, ePos.y - playerWorldPos.y, ePos.z - playerWorldPos.z };
+        float projDist = toE.x * aimDir.x + toE.y * aimDir.y + toE.z * aimDir.z;
+
+        // 自機の前方の実効交戦距離（10m 〜 130m）内の敵のみスキャン
+        if (projDist < 10.0f || projDist > 130.0f) continue;
+
+        Vector3 closestPt = {
+            playerWorldPos.x + aimDir.x * projDist,
+            playerWorldPos.y + aimDir.y * projDist,
+            playerWorldPos.z + aimDir.z * projDist
+        };
+
+        Vector3 diff = { ePos.x - closestPt.x, ePos.y - closestPt.y, ePos.z - closestPt.z };
+        float offsetDist = std::sqrtf(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z);
+
+        // 照準枠の許容半径（プレイヤーが自力で狙って撃つ感覚を重視したタイトな判定: 50mで約2.9m）
+        float thresholdRadius = 1.6f + projDist * 0.026f;
+
+        if (offsetDist < thresholdRadius) {
+            float score = offsetDist / thresholdRadius;
+            if (score < bestScore) {
+                bestScore = score;
+                bestEnemy = enemy.get();
+                bestBoss = nullptr;
+                bestCarriage = -1;
+                bestTargetPos = ePos;
+                bestProjDist = projDist;
+            }
+        }
+    }
+
+    // 2. ボス（ArmoredTrainBoss）のスキャン
+    if (boss && !boss->IsDefeated()) {
+        int carriageCount = static_cast<int>(boss->GetCarriages().size());
+        for (int cIdx = 0; cIdx < carriageCount; ++cIdx) {
+            if (boss->IsCarriageDestroyed(cIdx)) continue;
+
+            Vector3 bPos = boss->GetCarriagePosition(cIdx);
+            Vector3 toB = { bPos.x - playerWorldPos.x, bPos.y - playerWorldPos.y, bPos.z - playerWorldPos.z };
+            float projDist = toB.x * aimDir.x + toB.y * aimDir.y + toB.z * aimDir.z;
+
+            // ボス実効射程（10m 〜 160m）
+            if (projDist < 10.0f || projDist > 160.0f) continue;
+
+            Vector3 closestPt = {
+                playerWorldPos.x + aimDir.x * projDist,
+                playerWorldPos.y + aimDir.y * projDist,
+                playerWorldPos.z + aimDir.z * projDist
+            };
+
+            Vector3 diff = { bPos.x - closestPt.x, bPos.y - closestPt.y, bPos.z - closestPt.z };
+            float offsetDist = std::sqrtf(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z);
+            // ボス吸い付き許容半径も適切に引き締め
+            float thresholdRadius = 3.2f + projDist * 0.035f;
+
+            if (offsetDist < thresholdRadius) {
+                float score = offsetDist / thresholdRadius;
+                if (score < bestScore) {
+                    bestScore = score;
+                    bestEnemy = nullptr;
+                    bestBoss = boss;
+                    bestCarriage = cIdx;
+                    bestTargetPos = bPos;
+                    bestProjDist = projDist;
+                }
+            }
+        }
+    }
+
+    // 判定結果の更新
+    if (bestEnemy || bestBoss) {
+        isTargetInReticle_ = true;
+        reticleHoverEnemy_ = bestEnemy;
+        reticleHoverBoss_ = bestBoss;
+        reticleHoverCarriage_ = bestCarriage;
+        reticleHoverTargetPos_ = bestTargetPos;
+
+        // 敵のメッシュ厚み・半径（通常敵: 約5〜6m、ボス車体: 約14m）を差し引き、
+        // 必ず敵のモデル前面（手前側）に照準枠を配置。敵の立体モデルに埋もれてオクルード（消滅）するのを完全に防止！
+        float frontMargin = (bestBoss != nullptr) ? 14.0f : 6.0f;
+        float targetDist = std::clamp(bestProjDist - frontMargin, 20.0f, 220.0f);
+        dynamicReticleDistance_ += (targetDist - dynamicReticleDistance_) * 0.35f * gameSpeed;
+
+        // 初回捕捉時：スナップ収束アニメーション開始
+        if (!prevTargetInReticle_) {
+            reticleSnapAnimTimer_ = 1.0f;
+        }
+    } else {
+        isTargetInReticle_ = false;
+        reticleHoverEnemy_ = nullptr;
+        reticleHoverBoss_ = nullptr;
+        reticleHoverCarriage_ = -1;
+
+        // 敵がいない時は標準距離 45.0f へスムーズに復帰
+        dynamicReticleDistance_ += (45.0f - dynamicReticleDistance_) * 0.12f * gameSpeed;
+    }
+
+    // スナップ収束アニメーションタイマー更新
+    if (reticleSnapAnimTimer_ > 0.0f) {
+        reticleSnapAnimTimer_ -= 0.12f * gameSpeed;
+        if (reticleSnapAnimTimer_ < 0.0f) reticleSnapAnimTimer_ = 0.0f;
+    }
+
+    // 距離に応じた視覚スケール補正（遠くの敵でもレティクルが極小にならず敵を囲めるよう調整）
+    float distScaleFactor = std::clamp(dynamicReticleDistance_ / 32.0f, 1.0f, 2.8f);
+
+    if (isTargetInReticle_) {
+        // ヒット確信フィードバック：どんな背景・敵色の上でも際立つ超高輝度ネオンエレクトリックゴールド（黄色）
+        SetReticleColor({ 1.0f, 0.95f, 0.15f, 1.0f });
+
+        // スナップ収束演出：捉えた瞬間にキュッと収束（0.88倍）してから、敵を囲む迫力あるサイズに弾む
+        float snapScale = 1.25f;
+        if (reticleSnapAnimTimer_ > 0.0f) {
+            snapScale = 0.88f + 0.37f * (1.0f - reticleSnapAnimTimer_);
+        } else {
+            // ロックオン中の微細なパルス（脈動）
+            static float pulsePhase = 0.0f;
+            pulsePhase += 0.15f * gameSpeed;
+            snapScale = 1.25f + 0.06f * std::sinf(pulsePhase);
+        }
+
+        Vector3 finalScale = {
+            baseReticleScale_.x * distScaleFactor * snapScale,
+            baseReticleScale_.y * distScaleFactor * snapScale,
+            baseReticleScale_.z * distScaleFactor * snapScale
+        };
+        reticle_->SetScale(finalScale);
+    } else {
+        // 通常状態：地形（シアン・白系）に対して最大の補色コントラストを発揮するエレクトリックオレンジ
+        SetReticleColor({ 1.0f, 0.58f, 0.08f, 0.95f });
+        Vector3 finalScale = {
+            baseReticleScale_.x * distScaleFactor,
+            baseReticleScale_.y * distScaleFactor,
+            baseReticleScale_.z * distScaleFactor
+        };
+        reticle_->SetScale(finalScale);
+    }
+
+    prevTargetInReticle_ = isTargetInReticle_;
 }
 
 // プレイヤーの移動とカメラ追従処理
@@ -512,12 +925,10 @@ void Player::Move(float gameSpeed) {
     playerLimitYMax_ += (targetLimitYMax_ - playerLimitYMax_) * limitLerpSpeed;
 
     // -------------------------------------------------------------
-    // 1. 照準（レティクル）の先行移動（スターフォックス仕様）：
-    // スティック操作時、まずレティクルが俊敏に先行して目標方向へ動く
+    // 1. レティクルの先行移動（プレイヤー入力に応じたキビキビとした照準移動）
     // -------------------------------------------------------------
     float reticleSpeedX = currentSpeedX * 1.55f;
     float reticleSpeedY = currentSpeed * 1.55f;
-
     float targetVelX = inputX * reticleSpeedX;
     float targetVelY = inputY * reticleSpeedY;
 
@@ -531,38 +942,34 @@ void Player::Move(float gameSpeed) {
         }
     }
 
-    // レティクルの機敏な加減速
+    // レティクル速度の加減速（滑らかな慣性）
     float reticleAccel = 0.28f * gameSpeed;
     velocity_.x += (targetVelX - velocity_.x) * reticleAccel;
     velocity_.y += (targetVelY - velocity_.y) * reticleAccel;
 
-    // レティクル位置の更新
     reticlePosition_.x += velocity_.x * gameSpeed;
     reticlePosition_.y += velocity_.y * gameSpeed;
     reticlePosition_.x = std::clamp(reticlePosition_.x, -playerLimitX_ * 1.05f, playerLimitX_ * 1.05f);
     reticlePosition_.y = std::clamp(reticlePosition_.y, playerLimitYMin_ * 1.05f, playerLimitYMax_ * 1.05f);
-    float reticleDistance = 35.0f;
-    reticlePosition_.z = logicalPosition_.z + reticleDistance;
+    reticlePosition_.z = logicalPosition_.z + dynamicReticleDistance_;
 
     // -------------------------------------------------------------
-    // 2. 自機の遅延追従（スプリング / Lerp補間）：
-    // 機体は先行するレティクルを追いかけるように滑らかに追従する
+    // 2. 自機の遅延追従（レティクルを追いかけるスターフォックス特有の浮遊感・操作感）
     // -------------------------------------------------------------
     float shipFollowLerp = 0.13f * gameSpeed;
     logicalPosition_.x += (reticlePosition_.x - logicalPosition_.x) * shipFollowLerp;
     logicalPosition_.y += (reticlePosition_.y - logicalPosition_.y) * shipFollowLerp;
-
     logicalPosition_.x = std::clamp(logicalPosition_.x, -playerLimitX_, playerLimitX_);
     logicalPosition_.y = std::clamp(logicalPosition_.y, playerLimitYMin_, playerLimitYMax_);
 
     // -------------------------------------------------------------
-    // 機体姿勢制御（ロールとヨーの分離、スターフォックス仕様）：
-    // 1. 横移動時のバンク（Roll/Z軸回転）: スティック入力に応じて最大50度(約0.87rad)傾ける
-    // 2. 首振り（Yaw/Y軸回転）: 自機からレティクルへの方向を向く
-    // 3. ピッチ（Pitch/X軸回転）: 上下移動時に機首を向ける
+    // 3. 機体姿勢制御（ロールとヨーの分離、スターフォックス仕様）
+    // 1. 横移動時のバンク（Roll/Z軸回転）：スティック入力に応じて最大50度(約0.87rad)傾ける
+    // 2. 首振り（Yaw/Y軸回転）：自機からレティクルへの方向を向く
+    // 3. ピッチ（Pitch/X軸回転）：上下移動時に機首を向ける
     // -------------------------------------------------------------
-    const float maxBankAngle = 0.87f; // 約50度
-    const float maxYawAngle = 0.22f;  // 約12.6度
+    const float maxBankAngle = 0.87f;  // 約50度
+    const float maxYawAngle = 0.22f;   // 約12.6度
     const float maxPitchAngle = 0.35f; // 約20度
 
     float targetBank = 0.0f;
@@ -581,7 +988,7 @@ void Player::Move(float gameSpeed) {
         if (logicalPosition_.y > playerLimitYMin_) targetPitch = maxPitchAngle;  // 機首下げ
     }
 
-    // 滑らかな姿勢追従（揺れのない滑らかな復帰）
+    // 滑らかな姿勢追従（揺れの少ない滑らかな復帰）
     float bankSpeed = 0.16f * gameSpeed;
     currentBank_ += (targetBank - currentBank_) * bankSpeed;
 
@@ -597,25 +1004,15 @@ void Player::Move(float gameSpeed) {
         float rollAngle = (static_cast<float>(rollTimer_) / rollMaxTime_) * 3.14159265f * 2.0f;
         finalBank += rollAngle * -rollDirection_;
     }
+    finalBank_ = finalBank;
 
     // -------------------------------------------------------------
     // レティクル自体のロール回転を弱める（ほぼ水平を保つ）
     // -------------------------------------------------------------
-    float reticleRoll = finalBank * 0.08f; // 最大傾斜50度に対し、レティクルは4度程度に抑制
+    float reticleRoll = finalBank * 0.08f; // 最大傾斜50度に対して、レティクルは4度程度に抑制
     reticle_->SetTranslate(reticlePosition_);
     reticle_->SetRotation(Vector3(0.0f, 0.0f, reticleRoll));
     reticle_->Update();
-
-    if (frontReticle_) {
-        Vector3 frontReticlePos = {
-            logicalPosition_.x + (reticlePosition_.x - logicalPosition_.x) * 0.45f,
-            logicalPosition_.y + (reticlePosition_.y - logicalPosition_.y) * 0.45f,
-            logicalPosition_.z + (reticlePosition_.z - logicalPosition_.z) * 0.45f
-        };
-        frontReticle_->SetTranslate(frontReticlePos);
-        frontReticle_->SetRotation(Vector3(0.0f, 0.0f, reticleRoll * 0.5f));
-        frontReticle_->Update();
-    }
 
     // スクリーン基準の回転を機体のローカル座標へマッピング
     float visualPitch = currentPitch_ * std::cos(finalBank) + currentYaw_ * std::sin(finalBank);
@@ -632,6 +1029,20 @@ void Player::Move(float gameSpeed) {
         logicalPosition_.y + modelPosOffset_.y, 
         logicalPosition_.z + modelPosOffset_.z
     ));
+    object_->Update();
+
+    // -------------------------------------------------------------
+    // 手前照準（赤丸 / frontReticle_）: 3D自機追従ビルボード
+    // 仕様書: PosNear = PosShip + (DirForward * DistNear)
+    //         LookAt(PosCamera); // ビルボード
+    // 親は自機 object_ のため自機の移動・首振りに完全同期（遅延ゼロ）。
+    // 自機のロール角を打ち消すことでプレイヤー画面に対して常に正対真円を維持！
+    // -------------------------------------------------------------
+    if (frontReticle_) {
+        frontReticle_->SetTranslate(Vector3(0.0f, 0.0f, 8.5f));
+        frontReticle_->SetRotation(Vector3(0.0f, 0.0f, -finalBank));
+        frontReticle_->Update();
+    }
 }
 
 // プレイヤーの攻撃（弾・ミサイル発射）処理
@@ -823,49 +1234,66 @@ void Player::Attack(std::list<std::unique_ptr<PlayerBullet>>& bullets, std::list
         const Matrix4x4& mat = object_->GetmatWorld();
         Vector3 playerPos = { mat.m[3][0], mat.m[3][1], mat.m[3][2] };
         
+        // 自機正面ベクトル
+        Vector3 forwardVec = { mat.m[2][0], mat.m[2][1], mat.m[2][2] };
+        float fLen = std::sqrt(forwardVec.x * forwardVec.x + forwardVec.y * forwardVec.y + forwardVec.z * forwardVec.z);
+        if (fLen > 0.0001f) { forwardVec.x /= fLen; forwardVec.y /= fLen; forwardVec.z /= fLen; }
+
         Vector3 targetPos = GetReticleWorldPosition();
         
-        if (assistTarget_ && !assistTarget_->IsDead()) {
-            targetPos = assistTarget_->GetColliderCenter();
+        // エイムアシスト（プレイヤー自力でのエイミング感を最優先するため、ごく微弱な25%の引き寄せのみ）
+        if (isTargetInReticle_) {
+            targetPos.x += (reticleHoverTargetPos_.x - targetPos.x) * 0.25f;
+            targetPos.y += (reticleHoverTargetPos_.y - targetPos.y) * 0.25f;
+            targetPos.z += (reticleHoverTargetPos_.z - targetPos.z) * 0.25f;
         }
-        
-        Vector3 direction = {
-            targetPos.x - playerPos.x,
-            targetPos.y - playerPos.y,
-            targetPos.z - playerPos.z
-        };
-        
-        float length = std::sqrtf(direction.x * direction.x + direction.y * direction.y + direction.z * direction.z);
-        if (length > 0.0f) {
-            direction.x /= length;
-            direction.y /= length;
-            direction.z /= length;
-        }
-        
-        Vector3 velocity = {
-            direction.x * bulletSpeed_,
-            direction.y * bulletSpeed_,
-            direction.z * bulletSpeed_
-        };
 
         if (isDoubleShot_) {
-            // 2連装: プレイヤーの機体の姿勢（右方向ベクトル）に合わせて左右から発射
+            // 2連装: 左右の銃口から目標座標（奥照準）へ向けて正確に集束射出（コンバージェンス射撃）
             Vector3 rightDir = { mat.m[0][0], mat.m[0][1], mat.m[0][2] };
             float offsetAmount = 2.0f;
-            Vector3 rightOffset = { playerPos.x + rightDir.x * offsetAmount, playerPos.y + rightDir.y * offsetAmount, playerPos.z + rightDir.z * offsetAmount };
-            Vector3 leftOffset = { playerPos.x - rightDir.x * offsetAmount, playerPos.y - rightDir.y * offsetAmount, playerPos.z - rightDir.z * offsetAmount };
+            Vector3 rightOffset = { playerPos.x + rightDir.x * offsetAmount + forwardVec.x * 1.5f, playerPos.y + rightDir.y * offsetAmount + forwardVec.y * 1.5f, playerPos.z + rightDir.z * offsetAmount + forwardVec.z * 1.5f };
+            Vector3 leftOffset = { playerPos.x - rightDir.x * offsetAmount + forwardVec.x * 1.5f, playerPos.y - rightDir.y * offsetAmount + forwardVec.y * 1.5f, playerPos.z - rightDir.z * offsetAmount + forwardVec.z * 1.5f };
+
+            Vector3 rightDirToTarget = { targetPos.x - rightOffset.x, targetPos.y - rightOffset.y, targetPos.z - rightOffset.z };
+            float rLen = std::sqrtf(rightDirToTarget.x * rightDirToTarget.x + rightDirToTarget.y * rightDirToTarget.y + rightDirToTarget.z * rightDirToTarget.z);
+            if (rLen > 0.0001f) { rightDirToTarget.x /= rLen; rightDirToTarget.y /= rLen; rightDirToTarget.z /= rLen; }
+            Vector3 rightVelocity = { rightDirToTarget.x * bulletSpeed_, rightDirToTarget.y * bulletSpeed_, rightDirToTarget.z * bulletSpeed_ };
+
+            Vector3 leftDirToTarget = { targetPos.x - leftOffset.x, targetPos.y - leftOffset.y, targetPos.z - leftOffset.z };
+            float lLen = std::sqrtf(leftDirToTarget.x * leftDirToTarget.x + leftDirToTarget.y * leftDirToTarget.y + leftDirToTarget.z * leftDirToTarget.z);
+            if (lLen > 0.0001f) { leftDirToTarget.x /= lLen; leftDirToTarget.y /= lLen; leftDirToTarget.z /= lLen; }
+            Vector3 leftVelocity = { leftDirToTarget.x * bulletSpeed_, leftDirToTarget.y * bulletSpeed_, leftDirToTarget.z * bulletSpeed_ };
 
             std::unique_ptr<PlayerBullet> rightBullet = std::make_unique<PlayerBullet>();
-            rightBullet->Initialize(object3dCommon_, rightOffset, velocity, parentCamera, isLockOn_ ? lockOnTargetEnemy_ : nullptr);
+            rightBullet->Initialize(object3dCommon_, rightOffset, rightVelocity, parentCamera, reticleHoverEnemy_);
             bullets.push_back(std::move(rightBullet));
 
             std::unique_ptr<PlayerBullet> leftBullet = std::make_unique<PlayerBullet>();
-            leftBullet->Initialize(object3dCommon_, leftOffset, velocity, parentCamera, isLockOn_ ? lockOnTargetEnemy_ : nullptr);
+            leftBullet->Initialize(object3dCommon_, leftOffset, leftVelocity, parentCamera, reticleHoverEnemy_);
             bullets.push_back(std::move(leftBullet));
         } else {
-            // 通常の1発発射
+            // 通常の1発発射: 機首銃口から奥照準の中心へ向けて射出
+            Vector3 muzzlePos = { playerPos.x + forwardVec.x * 2.2f, playerPos.y + forwardVec.y * 2.2f, playerPos.z + forwardVec.z * 2.2f };
+            Vector3 direction = {
+                targetPos.x - muzzlePos.x,
+                targetPos.y - muzzlePos.y,
+                targetPos.z - muzzlePos.z
+            };
+            float length = std::sqrtf(direction.x * direction.x + direction.y * direction.y + direction.z * direction.z);
+            if (length > 0.0f) {
+                direction.x /= length;
+                direction.y /= length;
+                direction.z /= length;
+            }
+            Vector3 velocity = {
+                direction.x * bulletSpeed_,
+                direction.y * bulletSpeed_,
+                direction.z * bulletSpeed_
+            };
+
             std::unique_ptr<PlayerBullet> newBullet = std::make_unique<PlayerBullet>();
-            newBullet->Initialize(object3dCommon_, playerPos, velocity, parentCamera, isLockOn_ ? lockOnTargetEnemy_ : nullptr);
+            newBullet->Initialize(object3dCommon_, muzzlePos, velocity, parentCamera, reticleHoverEnemy_);
             bullets.push_back(std::move(newBullet));
         }
 
