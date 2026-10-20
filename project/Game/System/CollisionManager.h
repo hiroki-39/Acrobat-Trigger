@@ -52,6 +52,9 @@ struct CollisionContext {
 
     // ボス撃破コールバック
     std::function<void()> onBossDefeated = nullptr;
+
+    // 敵撃破コールバック（座標と加算スコアを通知して微小カメラシェイク＆スコアポップ演出を発火）
+    std::function<void(const Vector3& pos, int score)> onEnemyKilled = nullptr;
 };
 
 /// <summary>

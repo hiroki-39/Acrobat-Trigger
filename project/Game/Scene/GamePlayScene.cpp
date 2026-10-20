@@ -633,7 +633,11 @@ void GamePlayScene::Initialize()
 	player_->GetReticle()->SetParent(cameraObject_.get());
 	if (player_->GetFrontReticle())
 	{
-		player_->GetFrontReticle()->SetParent(cameraObject_.get());
+		player_->GetFrontReticle()->SetParent(player_->GetObject3d());
+	}
+	if (player_->GetGroundMarkerObject())
+	{
+		player_->GetGroundMarkerObject()->SetParent(cameraObject_.get());
 	}
 
 
@@ -1364,37 +1368,8 @@ void GamePlayScene::Update()
 			Vector3 prevRightWing = player_->GetRightWingPosition();
 
 
-			Enemy* nearestEnemy = nullptr;
-			float minDistanceSq = 10000.0f;
-			float assistRadius = 10.0f;
-			Vector3 reticlePos = player_->GetReticleWorldPosition();
-
-
-			const Matrix4x4& wMat = player_->GetObject3d()->GetmatWorld();
-			Vector3 playerPos = { wMat.m[3][0], wMat.m[3][1], wMat.m[3][2] };
-
-			for (auto& enemy : enemies_)
-			{
-				if (enemy->IsDead()) continue;
-				Vector3 enemyPos = enemy->GetColliderCenter();
-
-				float dz = enemyPos.z - playerPos.z;
-
-				if (dz > 0.0f && dz < 300.0f)
-				{
-
-					float dx = enemyPos.x - reticlePos.x;
-					float dy = enemyPos.y - reticlePos.y;
-					float distSqXY = dx * dx + dy * dy;
-
-					if (distSqXY < (assistRadius * assistRadius) && distSqXY < minDistanceSq)
-					{
-						minDistanceSq = distSqXY;
-						nearestEnemy = enemy.get();
-					}
-				}
-			}
-			player_->SetAssistTarget(nearestEnemy);
+			// エイムアシストは Player::UpdateReticleAndAimAssist で精密に一元管理
+			player_->SetAssistTarget(nullptr);
 
 			// レール進行度に応じた動的移動制限の適用
 			if (!mainRails_.empty() && mainRails_[0]->IsValid() && railCameraController_)
@@ -1499,9 +1474,6 @@ void GamePlayScene::Update()
 
 			if ((*it)->GetCurrentPhase() == PlayerMissile::Phase::FLIGHT)
 			{
-				thrusterEffect_.SetPosition((*it)->GetPosition());
-				thrusterEffect_.Play();
-
 				missileSmokeEffect_.SetPosition((*it)->GetPosition());
 				missileSmokeEffect_.Play();
 			}
@@ -1593,6 +1565,13 @@ void GamePlayScene::Update()
 				SoundManager::GetInstance()->PlaySE("explosion.mp3", 1.0f);
 				cameraShakeTimer_ = 1.0f;
 			}
+		};
+
+		colCtx.onEnemyKilled = [this](const Vector3& pos, int addScore) {
+			// 1. 敵撃破時のごくわずかな微小カメラシェイク（1〜2フレームだけ数ピクセル振動）
+			enemyKillShakeFrames_ = 2;
+			// 2. 敵撃破座標にスコア加算ポップアップ演出を登録
+			scorePopups_.push_back({ pos, addScore, 0.0f, 0.65f });
 		};
 
 		if (collisionManager_)
@@ -1765,9 +1744,41 @@ void GamePlayScene::Update()
 	}
 
 
+	// 敵撃破時のスコア加算ポップアップ演出の更新
+	for (auto it = scorePopups_.begin(); it != scorePopups_.end();)
+	{
+		it->timer += (1.0f / 60.0f) * gameSpeed_;
+		if (it->timer >= it->duration) {
+			it = scorePopups_.erase(it);
+		} else {
+			++it;
+		}
+	}
+
 	if (activeCamera_)
-	{ // カメラシェイク処琁E
-		if (cameraShakeTimer_ > 0.0f) { cameraShakeTimer_ -= 1.0f; float p = cameraShakeTimer_ / 20.0f; float shakePower = 2.0f * p; Vector3 pos = activeCamera_->GetTranslate(); pos.x += ((rand() % 100) / 50.0f - 1.0f) * shakePower; pos.y += ((rand() % 100) / 50.0f - 1.0f) * shakePower; activeCamera_->SetTranslate(pos); } activeCamera_->Update();
+	{
+		// 1. 通常の大きなカメラシェイク（被弾・ボス爆発）
+		if (cameraShakeTimer_ > 0.0f)
+		{
+			cameraShakeTimer_ -= 1.0f;
+			float p = cameraShakeTimer_ / 20.0f;
+			float shakePower = 2.0f * p;
+			Vector3 pos = activeCamera_->GetTranslate();
+			pos.x += ((rand() % 100) / 50.0f - 1.0f) * shakePower;
+			pos.y += ((rand() % 100) / 50.0f - 1.0f) * shakePower;
+			activeCamera_->SetTranslate(pos);
+		}
+		// 2. 敵撃破時のごくわずかなマイクロシェイク（1〜2フレームだけ微小に振動・数ピクセル程度）
+		if (enemyKillShakeFrames_ > 0)
+		{
+			--enemyKillShakeFrames_;
+			float killShakePower = 0.22f; // ごく微小（酔わない数ピクセル振動）
+			Vector3 pos = activeCamera_->GetTranslate();
+			pos.x += ((rand() % 100) / 50.0f - 1.0f) * killShakePower;
+			pos.y += ((rand() % 100) / 50.0f - 1.0f) * killShakePower;
+			activeCamera_->SetTranslate(pos);
+		}
+		activeCamera_->Update();
 	}
 	for (auto& model : modelInstances) if (model) model->Update();
 	if (isDrawRail_)
@@ -1815,19 +1826,24 @@ void GamePlayScene::Update()
 		const Matrix4x4& wMat = player_->GetObject3d()->GetmatWorld();
 		Vector3 worldPos = { wMat.m[3][0], wMat.m[3][1], wMat.m[3][2] };
 
+		// タイトルシーンと完全に同一：自機マトリクスに親子付けし、機体姿勢・ロール・傾きに完全追従
+		thrusterEffect_.SetParentMatrix(&player_->GetObject3d()->GetmatWorld());
+		thrusterEffect_.SetPosition({ 0.0f, -0.22f, -3.00f });
 
-		Vector3 backward = { -wMat.m[2][0], -wMat.m[2][1], -wMat.m[2][2] };
-		float length = std::sqrt(backward.x * backward.x + backward.y * backward.y + backward.z * backward.z);
-		if (length > 0.0f)
+		if (!player_->IsDead())
 		{
-			backward.x /= length; backward.y /= length; backward.z /= length;
+			// 巡航時はクールな高エネルギーシアンブルー、ブースト時やロール回避時はブレイジングオレンジ
+			if (player_->IsBoosting() || player_->IsRolling())
+			{
+				thrusterEffect_.SetBaseColor({ 1.0f, 0.55f, 0.1f, 1.0f });
+			}
+			else
+			{
+				thrusterEffect_.SetBaseColor({ 0.5f, 0.85f, 1.0f, 1.0f });
+			}
+			thrusterEffect_.Play();
 		}
-		float offsetDistance = 1.8f;
-		worldPos.x += backward.x * offsetDistance;
-		worldPos.y += backward.y * offsetDistance;
-		worldPos.z += backward.z * offsetDistance;
 
-		thrusterEffect_.SetPosition(worldPos);
 		thrusterEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
 		explosionEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
 		hitEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
@@ -3516,6 +3532,9 @@ void GamePlayScene::UpdateOpeningCutscene(float dt)
 		if (player_)
 		{
 			player_->SetCutsceneOverride(false);
+			player_->SetTranslate({ 0.0f, 0.0f, 0.0f });
+			player_->SetRotation({ 0.0f, 0.0f, 0.0f });
+			player_->ResetPosture();
 		}
 		if (railCameraController_)
 		{
@@ -3678,9 +3697,259 @@ void GamePlayScene::DrawCutsceneUI()
 		return;
 	}
 
-	// スケーリング比率（1280x720 基準）
 	float scale = std::min(screenW / 1280.0f, screenH / 720.0f);
 	if (scale < 0.3f) scale = 0.3f;
+
+	// ===== 弾道予告ガイドライン（手前照準 / 銃口 -> 奥照準） =====
+	if (gamePhase_ == GamePhase::PLAYING && player_ && !player_->IsDead() && activeCamera_)
+	{
+		Vector3 pStart = player_->GetFrontReticleWorldPosition();
+		Vector3 pEnd = player_->GetReticleWorldPosition();
+
+		const Matrix4x4& vMat = activeCamera_->GetViewMatrix();
+		const Matrix4x4& pMat = activeCamera_->GetProjectionMatrix();
+		Matrix4x4 vpMat = vMat * pMat;
+
+		auto WorldToScreen = [&](const Vector3& world) -> std::pair<bool, ImVec2> {
+			float w = world.x * vpMat.m[0][3] + world.y * vpMat.m[1][3] + world.z * vpMat.m[2][3] + vpMat.m[3][3];
+			if (w < 0.1f) return { false, ImVec2(0, 0) };
+			float x = (world.x * vpMat.m[0][0] + world.y * vpMat.m[1][0] + world.z * vpMat.m[2][0] + vpMat.m[3][0]) / w;
+			float y = (world.x * vpMat.m[0][1] + world.y * vpMat.m[1][1] + world.z * vpMat.m[2][1] + vpMat.m[3][1]) / w;
+			float sx = viewPos.x + (x * 0.5f + 0.5f) * screenW;
+			float sy = viewPos.y + (-y * 0.5f + 0.5f) * screenH;
+			return { true, ImVec2(sx, sy) };
+		};
+
+		auto [okStart, ptStart] = WorldToScreen(pStart);
+		auto [okEnd, ptEnd] = WorldToScreen(pEnd);
+
+		Vector3 pLeftWing = player_->GetLeftWingPosition();
+		Vector3 pRightWing = player_->GetRightWingPosition();
+		auto [okLeft, ptLeft] = WorldToScreen(pLeftWing);
+		auto [okRight, ptRight] = WorldToScreen(pRightWing);
+
+		// 1. 弾道予告線（ユーザー指示により非表示）
+		/*
+		if (okEnd)
+		{
+			bool isLocked = player_->IsTargetInReticle();
+			ImU32 lineCol = isLocked ? IM_COL32(255, 235, 50, 76) : IM_COL32(220, 245, 255, 56);
+			ImU32 shadowCol = IM_COL32(0, 0, 0, 36);
+
+			auto DrawMuzzleRay = [&](const ImVec2& ptMuzzle) {
+				float dist = std::hypot(ptEnd.x - ptMuzzle.x, ptEnd.y - ptMuzzle.y);
+				if (dist > 8.0f)
+				{
+					int segs = (std::max)(2, (int)(dist / 16.0f));
+					for (int i = 0; i < segs; ++i)
+					{
+						if (i % 2 == 0)
+						{
+							float t0 = (float)i / segs;
+							float t1 = (float)(i + 1) / segs;
+							ImVec2 pA(ptMuzzle.x + (ptEnd.x - ptMuzzle.x) * t0, ptMuzzle.y + (ptEnd.y - ptMuzzle.y) * t0);
+							ImVec2 pB(ptMuzzle.x + (ptEnd.x - ptMuzzle.x) * t1, ptMuzzle.y + (ptEnd.y - ptMuzzle.y) * t1);
+							drawList->AddLine(pA, pB, shadowCol, 2.2f * scale);
+							drawList->AddLine(pA, pB, lineCol, 1.2f * scale);
+						}
+					}
+				}
+			};
+
+			if (okLeft) DrawMuzzleRay(ptLeft);
+			if (okRight) DrawMuzzleRay(ptRight);
+		}
+		*/
+
+		// 2. ダブルレティクル【スターフォックス風デュアル・スクエア・レティクル】
+		// ① 手前照準（インナー四角フレーム / 自機銃口HUD）
+		// 自機機首の正面方向に完全同期し、自機の主翼ロール角に合わせてフレームがリアルタイムに傾く！
+		if (okStart)
+		{
+			// 自機のZ軸回転（ロール角・主翼傾き）を画面上の角度として直接算出！
+			// 自機が右に30度傾いたら（右バンク）、右翼が下がり左翼が上がるため dy > 0 となり、手前レティクルも右に30度傾く！
+			float rollAngle = 0.0f;
+			if (okLeft && okRight)
+			{
+				float dx = ptRight.x - ptLeft.x;
+				float dy = ptRight.y - ptLeft.y;
+				rollAngle = std::atan2(dy, dx);
+			}
+			else
+			{
+				rollAngle = player_->GetFinalBank();
+			}
+
+			float cosR = std::cos(rollAngle);
+			float sinR = std::sin(rollAngle);
+			// 画面上での自機ローカル基底ベクトル: u=(cos, sin), v=(-sin, cos)
+			ImVec2 axisU(cosR, sinR);
+			ImVec2 axisV(-sinR, cosR);
+
+			float innerSize = 21.0f * scale;      // インナーフレーム半幅（奥照準28.0fに対して程よいサイズ感）
+			float cornerLen = 8.5f * scale;       // L字の角の長さ（四角枠としてしっかり視認できる長さ）
+			float stroke = 2.4f * scale;          // 線の太さ
+			float shadowStroke = stroke + 2.6f;   // 黒縁アウトライン太さ（背景遮断用）
+
+			// 2つの照準の色を統一（通常時: 純白ホワイト + 黒縁アウトライン、ロック時: 高輝度ゴールド）
+			bool isLocked = player_->IsTargetInReticle();
+			ImU32 innerColor = isLocked ? IM_COL32(255, 230, 45, 255) : IM_COL32(255, 255, 255, 255);
+			ImU32 shadowColor = IM_COL32(0, 0, 0, 230);
+
+			ImVec2 c = ptStart;
+
+			// コーナーブラケット描画ヘルパーラムダ（回転対応）
+			auto DrawRotatedCorner = [&](float uDist, float vDist, float du, float dv, ImU32 col, float th) {
+				ImVec2 cornerPos(c.x + axisU.x * uDist + axisV.x * vDist, c.y + axisU.y * uDist + axisV.y * vDist);
+				ImVec2 armU(cornerPos.x + axisU.x * du, cornerPos.y + axisU.y * du);
+				ImVec2 armV(cornerPos.x + axisV.x * dv, cornerPos.y + axisV.y * dv);
+				drawList->AddLine(cornerPos, armU, col, th);
+				drawList->AddLine(cornerPos, armV, col, th);
+			};
+
+			// 四隅のL字ブラケット [ ] （極太黒アウトライン付きでシアン背景・オーロラでも完全視認）
+			for (int pass = 0; pass < 2; ++pass)
+			{
+				ImU32 col = (pass == 0) ? shadowColor : innerColor;
+				float th = (pass == 0) ? shadowStroke : stroke;
+
+				// 左上
+				DrawRotatedCorner(-innerSize, -innerSize, cornerLen, cornerLen, col, th);
+				// 右上
+				DrawRotatedCorner(innerSize, -innerSize, -cornerLen, cornerLen, col, th);
+				// 左下
+				DrawRotatedCorner(-innerSize, innerSize, cornerLen, -cornerLen, col, th);
+				// 右下
+				DrawRotatedCorner(innerSize, innerSize, -cornerLen, -cornerLen, col, th);
+			}
+
+			// 中心精密クロスヘア & 銃口ドット（自機正面の射線中心、自機ロール連動）
+			float crossLen = 4.0f * scale;
+			for (int pass = 0; pass < 2; ++pass)
+			{
+				ImU32 col = (pass == 0) ? shadowColor : innerColor;
+				float th = (pass == 0) ? stroke + 2.0f : stroke * 0.85f;
+
+				ImVec2 uA(c.x - axisU.x * crossLen, c.y - axisU.y * crossLen);
+				ImVec2 uB(c.x + axisU.x * crossLen, c.y + axisU.y * crossLen);
+				ImVec2 vA(c.x - axisV.x * crossLen, c.y - axisV.y * crossLen);
+				ImVec2 vB(c.x + axisV.x * crossLen, c.y + axisV.y * crossLen);
+				drawList->AddLine(uA, uB, col, th);
+				drawList->AddLine(vA, vB, col, th);
+			}
+			drawList->AddCircleFilled(c, 2.5f * scale, shadowColor);
+			drawList->AddCircleFilled(c, 1.4f * scale, innerColor);
+		}
+
+		// ② 奥照準（アウター四角フレーム / ターゲット枠） 2D UIスクリーン描画
+		// 仕様書: PosTarget3D = PosShip + (DirAim * DistFar)
+		//         PosScreen2D = WorldToScreen(PosTarget3D)
+		//         UI描画のため地形による遮蔽（Z埋もれ）が発生せず、常にシャープにターゲットを捕捉
+		if (okEnd)
+		{
+			bool isLocked = player_->IsTargetInReticle();
+			float reticleBaseSize = 28.0f * scale; // 基準サイズ（UI解像度スケール対応）
+			float cornerLen = 10.0f * scale;       // L字の角の長さ
+			float stroke = 2.4f * scale;          // 線の太さ
+			float shadowStroke = stroke + 2.4f;   // 黒縁シャドウの太さ
+
+			// 手前照準と同一の白色（ロック時は揃ってゴールド）で統一
+			ImU32 frameColor = isLocked ? IM_COL32(255, 230, 45, 255) : IM_COL32(255, 255, 255, 255);
+			ImU32 shadowColor = IM_COL32(0, 0, 0, 230);
+
+			if (isLocked)
+			{
+				reticleBaseSize *= 0.88f; // スナップ収縮
+			}
+
+			float halfW = reticleBaseSize;
+			float halfH = reticleBaseSize;
+			ImVec2 c = ptEnd; // 奥照準の2D画面座標
+
+			// コーナーブラケット描画ヘルパーラムダ
+			auto DrawCorner = [&](float x, float y, float dx, float dy, ImU32 col, float th) {
+				drawList->AddLine(ImVec2(x, y), ImVec2(x + dx, y), col, th);
+				drawList->AddLine(ImVec2(x, y), ImVec2(x, y + dy), col, th);
+			};
+
+			// 四隅のL字ブラケット [ ] （黒アウトライン付きで雪原や空でも背景同化を完全防止）
+			for (int pass = 0; pass < 2; ++pass)
+			{
+				ImU32 col = (pass == 0) ? shadowColor : frameColor;
+				float th = (pass == 0) ? shadowStroke : stroke;
+
+				// 左上
+				DrawCorner(c.x - halfW, c.y - halfH, cornerLen, cornerLen, col, th);
+				// 右上
+				DrawCorner(c.x + halfW, c.y - halfH, -cornerLen, cornerLen, col, th);
+				// 左下
+				DrawCorner(c.x - halfW, c.y + halfH, cornerLen, -cornerLen, col, th);
+				// 右下
+				DrawCorner(c.x + halfW, c.y + halfH, -cornerLen, -cornerLen, col, th);
+			}
+
+			// 中央精密クロスヘア（十字マーク）
+			float crossSize = 5.0f * scale;
+			drawList->AddLine(ImVec2(c.x - crossSize, c.y), ImVec2(c.x + crossSize, c.y), shadowColor, stroke + 2.0f);
+			drawList->AddLine(ImVec2(c.x, c.y - crossSize), ImVec2(c.x, c.y + crossSize), shadowColor, stroke + 2.0f);
+			drawList->AddLine(ImVec2(c.x - crossSize, c.y), ImVec2(c.x + crossSize, c.y), frameColor, stroke);
+			drawList->AddLine(ImVec2(c.x, c.y - crossSize), ImVec2(c.x, c.y + crossSize), frameColor, stroke);
+
+			// 敵ロックオン時のサークルインジケーター演出
+			if (isLocked)
+			{
+				float ringRadius = halfW * 1.35f;
+				drawList->AddCircle(c, ringRadius, IM_COL32(255, 210, 35, 120), 24, 1.8f * scale);
+			}
+		}
+
+		// 3. 敵撃破時のスコア加算ポップアップ演出（3D座標に「+100」などが一瞬ポップして消える）
+		for (const auto& popup : scorePopups_)
+		{
+			float t = popup.timer / popup.duration;
+			if (t >= 1.0f) continue;
+
+			// 時間経過でふわっと少し上へ上昇
+			Vector3 popWorld = popup.worldPos + Vector3(0.0f, popup.timer * 3.5f, 0.0f);
+			auto [okPop, ptPop] = WorldToScreen(popWorld);
+			if (okPop)
+			{
+				// 透明度（後半25%で滑らかにフェードアウト）
+				float alpha = (t < 0.75f) ? 1.0f : (1.0f - (t - 0.75f) / 0.25f);
+				int a = std::clamp((int)(alpha * 255), 0, 255);
+				int shadowA = std::clamp((int)(alpha * 230), 0, 230);
+
+				// 出現時の一瞬のポップ拡大弾性演出
+				float popScale = (t < 0.12f) ? (1.0f + (0.12f - t) * 2.2f) : 1.0f;
+				float fontSize = 22.0f * scale * popScale;
+
+				char buf[32];
+				snprintf(buf, sizeof(buf), "+%d", popup.score);
+
+				ImFont* font = ImGui::GetFont();
+				ImVec2 textSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, buf);
+				ImVec2 textPos(ptPop.x - textSize.x * 0.5f, ptPop.y - textSize.y * 0.5f);
+
+				// デジタルネオンイエロー / ゴールド
+				ImU32 textCol = IM_COL32(255, 235, 45, a);
+				ImU32 shadowCol = IM_COL32(0, 0, 0, shadowA);
+
+				// 8方向の濃い黒縁シャドウ（雪原やオーロラでも完璧に視認できるデジタル輪郭）
+				float o = 1.8f * scale;
+				drawList->AddText(font, fontSize, ImVec2(textPos.x - o, textPos.y), shadowCol, buf);
+				drawList->AddText(font, fontSize, ImVec2(textPos.x + o, textPos.y), shadowCol, buf);
+				drawList->AddText(font, fontSize, ImVec2(textPos.x, textPos.y - o), shadowCol, buf);
+				drawList->AddText(font, fontSize, ImVec2(textPos.x, textPos.y + o), shadowCol, buf);
+				drawList->AddText(font, fontSize, ImVec2(textPos.x - o, textPos.y - o), shadowCol, buf);
+				drawList->AddText(font, fontSize, ImVec2(textPos.x + o, textPos.y - o), shadowCol, buf);
+				drawList->AddText(font, fontSize, ImVec2(textPos.x - o, textPos.y + o), shadowCol, buf);
+				drawList->AddText(font, fontSize, ImVec2(textPos.x + o, textPos.y + o), shadowCol, buf);
+
+				// メインテキスト
+				drawList->AddText(font, fontSize, textPos, textCol, buf);
+			}
+		}
+	}
 
 	// === 上下の黒帯（シネマスコープ・映画風レターボックス演出） ===
 	float barHeightMax = screenH * 0.11f;

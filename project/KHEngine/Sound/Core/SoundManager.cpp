@@ -167,6 +167,8 @@ SoundManager::SoundData SoundManager::SoundLoadWave(const char* filename)
 
 SoundManager::SoundData SoundManager::SoundLoadFile(const std::string& filename)
 {
+	SoundData soundData = {};
+
 	// 論理名を実パスに解決（例: "bgm.mp3" -> "resources/audio/bgm.mp3"）
 	std::string resolved = ResourceLocator::Resolve(filename, ResourceLocator::AssetType::Audio);
 	if (resolved.empty())
@@ -182,7 +184,13 @@ SoundManager::SoundData SoundManager::SoundLoadFile(const std::string& filename)
 	// SourceReaderの作成
 	Microsoft::WRL::ComPtr<IMFSourceReader> pReader;
 	result = MFCreateSourceReaderFromURL(wfilename.c_str(), nullptr, &pReader);
-	assert(SUCCEEDED(result));
+	if (FAILED(result) || !pReader)
+	{
+		char msg[256];
+		snprintf(msg, sizeof(msg), "[SoundManager] Failed to load audio file: %s (HRESULT: 0x%08X)\n", filename.c_str(), static_cast<unsigned int>(result));
+		OutputDebugStringA(msg);
+		return soundData;
+	}
 
 	// PCM形式にフォーマット指定する
 	Microsoft::WRL::ComPtr<IMFMediaType> pPCMType;
@@ -201,7 +209,6 @@ SoundManager::SoundData SoundManager::SoundLoadFile(const std::string& filename)
 	MFCreateWaveFormatExFromMFMediaType(pCurrentType.Get(), &waveFormat, nullptr);
 
 	// コンテナに格納する音声データ
-	SoundData soundData = {};
 	if (waveFormat)
 	{
 		soundData.wfex = *waveFormat;

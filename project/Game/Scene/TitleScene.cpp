@@ -761,8 +761,6 @@ void TitleScene::Update()
             if (isGlitchActive && !glitchStarted_)
             {
                 glitchStarted_ = true;
-                // 分散完了時のグリッチ発生インパクト音再生
-                SoundManager::GetInstance()->PlaySE("small_explosion.mp3", 0.75f);
             }
 
             // ポストプロセス（デジタルグリッチ振動演出: 0.45s以降のみ有効化）

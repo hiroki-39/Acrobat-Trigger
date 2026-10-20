@@ -17,19 +17,30 @@ void PlayerBullet::Initialize(Object3dCommon* object3dCommon, const Vector3& pos
     object_ = std::make_unique<Object3d>();
     object_->Initialize(object3dCommon);
     object_->SetModel("beam.obj"); // 専用レーザービームモデル
-    object_->SetSelectLightings(6); // ビーム発光モード（中心ハイライト + 外縁プラズマ）
+    object_->SetSelectLightings(6); // ビーム発光モード（中心ホワイトハイライト + 外縁プラズマ）
     object_->SetEnableLighting(false); // 自発光
-    object_->SetColor({ 0.1f, 0.9f, 1.0f, 1.0f }); // 鮮烈なプラズマシアン
+    object_->SetColor({ 1.0f, 0.12f, 0.65f, 1.0f }); // 背景シアンの補色となる鮮烈なネオンマゼンタ（ピンク）
     object_->SetTranslate(position);
     object_->SetRotation(rotation_);
-    object_->SetScale({ 0.45f, 0.45f, 4.0f }); // シャープで高速感あふれる長細いビーム形状
+    object_->SetScale({ 1.35f, 1.35f, 11.0f }); // 視認性と迫力を高めた大型ビーム形状
+
+    // 光の尾（ビームトレイル）の生成
+    trailObject_ = std::make_unique<Object3d>();
+    trailObject_->Initialize(object3dCommon);
+    trailObject_->SetModel("beam.obj");
+    trailObject_->SetSelectLightings(6);
+    trailObject_->SetEnableLighting(false);
+    trailObject_->SetColor({ 1.0f, 0.25f, 0.75f, 0.50f }); // わずかに透過したピンクの残光
+    trailObject_->SetTranslate(position);
+    trailObject_->SetRotation(rotation_);
+    trailObject_->SetScale({ 1.0f, 1.0f, 16.0f }); // 大型ビームに合わせた力強いロングトレイル
 
     colliderObject_ = std::make_unique<Object3d>();
     colliderObject_->Initialize(object3dCommon);
     colliderObject_->SetModel("collider_sphere_player.obj");
     colliderObject_->GetModel()->SetColor({ 0.0f, 1.0f, 0.0f, 1.0f });
     colliderObject_->SetTranslate(position);
-    colliderObject_->SetScale({ 2.5f, 2.5f, 2.5f });
+    colliderObject_->SetScale({ 4.2f, 4.2f, 8.0f }); // 高速移動時のすり抜け防止
     previousPosition_ = position;
 }
 
@@ -37,7 +48,7 @@ void PlayerBullet::Update(float gameSpeed) {
     previousPosition_ = object_->GetTranslate();
     Vector3 pos = previousPosition_;
 
-    // ホーミング処理
+    // 微弱な弾道アシスト（急カーブせず直進性を保ちつつ、微小角度・近中距離のみかすり補正）
     if (targetEnemy_ && !targetEnemy_->IsDead()) {
         Vector3 targetPos = targetEnemy_->GetColliderCenter();
         Vector3 toTarget = {
@@ -46,29 +57,28 @@ void PlayerBullet::Update(float gameSpeed) {
             targetPos.z - pos.z
         };
 
-        // ターゲットへの方向を正規化
         float length = std::sqrt(toTarget.x * toTarget.x + toTarget.y * toTarget.y + toTarget.z * toTarget.z);
-        if (length > 0.0f) {
-            toTarget.x /= length;
-            toTarget.y /= length;
-            toTarget.z /= length;
-        }
-
-        // 現在の速度ベクトルの長さ（スピード）を取得
         float speed = std::sqrt(velocity_.x * velocity_.x + velocity_.y * velocity_.y + velocity_.z * velocity_.z);
 
-        // 現在の速度ベクトルを少しずつターゲット方向へ向ける（ホーミングの強さ：0.15f 程度）
-        float homingStrength = 0.15f * gameSpeed;
-        velocity_.x += (toTarget.x * speed - velocity_.x) * homingStrength;
-        velocity_.y += (toTarget.y * speed - velocity_.y) * homingStrength;
-        velocity_.z += (toTarget.z * speed - velocity_.z) * homingStrength;
+        // 距離75m以内、かつ進行方向から約5度以内の極微小なズレのみ（弾の勝手な急旋回を防止し、直進性を最優先）
+        if (length > 0.0f && length < 75.0f && speed > 0.0001f) {
+            Vector3 curDir = { velocity_.x / speed, velocity_.y / speed, velocity_.z / speed };
+            Vector3 targetDir = { toTarget.x / length, toTarget.y / length, toTarget.z / length };
+            float dot = curDir.x * targetDir.x + curDir.y * targetDir.y + curDir.z * targetDir.z;
 
-        // 再度長さをspeedに合わせる（速度が変わらないようにする）
-        float newLength = std::sqrt(velocity_.x * velocity_.x + velocity_.y * velocity_.y + velocity_.z * velocity_.z);
-        if (newLength > 0.0f) {
-            velocity_.x = (velocity_.x / newLength) * speed;
-            velocity_.y = (velocity_.y / newLength) * speed;
-            velocity_.z = (velocity_.z / newLength) * speed;
+            if (dot > 0.996f) { // 約5度以内の極小ズレのみ
+                float homingStrength = 0.009f * gameSpeed;
+                velocity_.x += (targetDir.x * speed - velocity_.x) * homingStrength;
+                velocity_.y += (targetDir.y * speed - velocity_.y) * homingStrength;
+                velocity_.z += (targetDir.z * speed - velocity_.z) * homingStrength;
+
+                float newLength = std::sqrt(velocity_.x * velocity_.x + velocity_.y * velocity_.y + velocity_.z * velocity_.z);
+                if (newLength > 0.0f) {
+                    velocity_.x = (velocity_.x / newLength) * speed;
+                    velocity_.y = (velocity_.y / newLength) * speed;
+                    velocity_.z = (velocity_.z / newLength) * speed;
+                }
+            }
         }
     }
 
@@ -94,6 +104,20 @@ void PlayerBullet::Update(float gameSpeed) {
     }
 
     object_->Update();
+
+    // トレイル（光の尾）の追従更新
+    if (trailObject_) {
+        // メインビームの後端から後方へ伸びるように配置
+        Vector3 trailPos = {
+            pos.x - velocity_.x * 0.45f,
+            pos.y - velocity_.y * 0.45f,
+            pos.z - velocity_.z * 0.45f
+        };
+        trailObject_->SetTranslate(trailPos);
+        trailObject_->SetRotation(rotation_);
+        trailObject_->Update();
+    }
+
     if (colliderObject_) {
         colliderObject_->SetTranslate(pos);
         colliderObject_->Update();
@@ -101,6 +125,10 @@ void PlayerBullet::Update(float gameSpeed) {
 }
 
 void PlayerBullet::Draw() {
+    // トレイルを先に描画し、メインビームを前面に重ねる
+    if (trailObject_) {
+        trailObject_->Draw();
+    }
     if (object_) {
         object_->Draw();
     }

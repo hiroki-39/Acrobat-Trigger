@@ -30,15 +30,16 @@ PixelShaderOutput main(VertexShaderOutput input)
     PixelShaderOutput output;
     
     // マテリアルカラーが白（デフォルト）の場合は鮮やかな蛍光グリーンで発光表示
-    // マテリアルカラーが指定されている場合（コライダーの水色など）はその色を採用
+    // マテリアルカラーが指定されている場合（コライダーの水色や残像など）はその色を採用
     float3 col = gMaterial.color.rgb;
+    float alpha = gMaterial.color.a;
     if (col.r > 0.85f && col.g > 0.85f && col.b > 0.85f)
     {
-        output.color = float32_t4(0.1f, 1.0f, 0.35f, 1.0f); // 鮮やかな蛍光ライムグリーン
+        output.color = float32_t4(0.1f, 1.0f, 0.35f, alpha); // 鮮やかな蛍光ライムグリーン
     }
     else
     {
-        output.color = float32_t4(col, 1.0f);
+        output.color = float32_t4(col, alpha);
     }
     
     return output;
