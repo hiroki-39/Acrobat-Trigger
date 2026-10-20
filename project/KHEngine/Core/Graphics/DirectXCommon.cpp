@@ -210,10 +210,15 @@ void DirectXCommon::CreateSwapChain()
 {
 	HRESULT hr;
 
+	backBufferWidth_ = winApp->GetClientWidth();
+	backBufferHeight_ = winApp->GetClientHeight();
+	if (backBufferWidth_ == 0) backBufferWidth_ = WinApp::kClientWidth;
+	if (backBufferHeight_ == 0) backBufferHeight_ = WinApp::kClientHeight;
+
 	//ウィンドウの幅
-	swapChainDesc.Width = WinApp::kClientWidth;
+	swapChainDesc.Width = backBufferWidth_;
 	//ウィンドウの高さ
-	swapChainDesc.Height = WinApp::kClientHeight;
+	swapChainDesc.Height = backBufferHeight_;
 	//色の形式
 	swapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 	//マルチサンプルしない
@@ -237,6 +242,9 @@ void DirectXCommon::CreateSwapChain()
 
 	//スワップチェーンの生成に失敗した場合起動できない
 	assert(SUCCEEDED(hr));
+
+	// DXGIの自動Alt+Enterを抑止（アプリ側でフルスクリーン制御するため）
+	dxgiFactory->MakeWindowAssociation(winApp->GetHwnd(), DXGI_MWA_NO_ALT_ENTER);
 }
 
 void DirectXCommon::CreateDescriptorHeaps()
@@ -521,19 +529,30 @@ void DirectXCommon::PreDrawSwapchain()
 	//TransitionBarrierを張る
 	commandList->ResourceBarrier(1, &barrier);
 
-	//描画先のRTVを設定 (DSVは不要なのでnullptr)
-	D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle = dsvDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
-	commandList->OMSetRenderTargets(1, &rtvHandles[backBufferIndex], false, &dsvHandle);
+	//描画先のRTVを設定 (スワップチェーン描画にDSVは不要なのでnullptr)
+	commandList->OMSetRenderTargets(1, &rtvHandles[backBufferIndex], false, nullptr);
 
-	//指定した色で画面全体をクリアする
-	float clearColor[] = { 0.1f, 0.25f, 0.5f, 1.0f };
+	//指定した色で画面全体をクリアする (黒クリアでレターボックスの余白を黒く保つ)
+	float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
 	commandList->ClearRenderTargetView(rtvHandles[backBufferIndex], clearColor, 0, nullptr);
 
-	//Viewportを設定
-	commandList->RSSetViewports(1, &viewport);
+	//スワップチェーン全体のViewportを設定
+	D3D12_VIEWPORT scViewport{};
+	scViewport.Width = static_cast<float>(backBufferWidth_);
+	scViewport.Height = static_cast<float>(backBufferHeight_);
+	scViewport.TopLeftX = 0;
+	scViewport.TopLeftY = 0;
+	scViewport.MinDepth = 0.0f;
+	scViewport.MaxDepth = 1.0f;
+	commandList->RSSetViewports(1, &scViewport);
 
-	//Scirssorを設定
-	commandList->RSSetScissorRects(1, &scissorRect);
+	//スワップチェーン全体のScissorを設定
+	D3D12_RECT scScissor{};
+	scScissor.left = 0;
+	scScissor.top = 0;
+	scScissor.right = static_cast<LONG>(backBufferWidth_);
+	scScissor.bottom = static_cast<LONG>(backBufferHeight_);
+	commandList->RSSetScissorRects(1, &scScissor);
 }
 
 void DirectXCommon::PostDraw()
@@ -861,4 +880,49 @@ void DirectXCommon::ExecuteTextureUploadBatch()
 void DirectXCommon::RegisterSrvManager(SrvManager* srv)
 {
 	srvManager = srv;
+}
+
+void DirectXCommon::ResizeSwapChain(uint32_t width, uint32_t height)
+{
+	if (width == 0 || height == 0) return;
+	if (width == backBufferWidth_ && height == backBufferHeight_) return;
+
+	Logger::Log("DirectXCommon::ResizeSwapChain: " + std::to_string(backBufferWidth_) + "x" + std::to_string(backBufferHeight_) + " -> " + std::to_string(width) + "x" + std::to_string(height));
+
+	// GPUの完了を待機
+	fenceValue++;
+	commandQueue->Signal(fence.Get(), fenceValue);
+	if (fence->GetCompletedValue() < fenceValue)
+	{
+		fence->SetEventOnCompletion(fenceValue, fenceEvent);
+		WaitForSingleObject(fenceEvent, INFINITE);
+	}
+
+	// バックバッファの参照を解放（リサイズ前に必須）
+	for (size_t i = 0; i < swapChainResources.size(); ++i)
+	{
+		swapChainResources[i].Reset();
+	}
+
+	// スワップチェーンのバッファをリサイズ
+	HRESULT hr = swapChain->ResizeBuffers(
+		static_cast<UINT>(swapChainResources.size()),
+		width,
+		height,
+		DXGI_FORMAT_R8G8B8A8_UNORM,
+		0
+	);
+	assert(SUCCEEDED(hr));
+
+	// バックバッファの再取得とRTVの再作成
+	for (uint32_t i = 0; i < 2; i++)
+	{
+		hr = swapChain->GetBuffer(i, IID_PPV_ARGS(&swapChainResources[i]));
+		assert(SUCCEEDED(hr));
+
+		device->CreateRenderTargetView(swapChainResources[i].Get(), &rtvDesc, rtvHandles[i]);
+	}
+
+	backBufferWidth_ = width;
+	backBufferHeight_ = height;
 }

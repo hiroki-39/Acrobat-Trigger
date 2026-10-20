@@ -353,7 +353,7 @@ void SceneManager::DrawTransitionSettingsUI()
 	// トランジション方式の切り替え
 	int currentType = static_cast<int>(transitionType_);
 	ImGui::Text("方式切り替え:");
-	if (ImGui::RadioButton("ヘキサゴン (Hexagon - PDF仕様)", &currentType, 1))
+	if (ImGui::RadioButton("ヘキサゴン (Hexagon)", &currentType, 1))
 	{
 		transitionType_ = TransitionType::Hexagon;
 		fadeDuration_ = 0.9f;
@@ -374,7 +374,7 @@ void SceneManager::DrawTransitionSettingsUI()
 
 	if (transitionType_ == TransitionType::Hexagon)
 	{
-		ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.5f, 1.0f), "【ヘキサゴン・トランジション パラメータ (PDF仕様)】");
+		ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.5f, 1.0f), "【ヘキサゴン・トランジション パラメータ】");
 		
 		float origin[2] = { hexOrigin_.x, hexOrigin_.y };
 		if (ImGui::SliderFloat2("波紋起点 (OriginCoord)", origin, 0.0f, 1.0f, "%.2f"))

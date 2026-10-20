@@ -83,8 +83,9 @@ private:
     bool isPlaying_ = true;
 #endif
 
-    // デモプレイ演出用タイマー（一定時間後にタイトルへ戻る）
+    // デモプレイ演出用タイマー（スタート演出完了後にタイトルへ戻る）
     float demoTimer_ = 0.0f;
+    float demoPostIntroDuration_ = 2.0f; // スタート演出終了後、通常飛行を見せる時間（秒）
 
     
     Vector3 currentCameraRot_ = {0.0f, 0.0f, 0.0f};

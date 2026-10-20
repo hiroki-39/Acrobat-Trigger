@@ -231,6 +231,14 @@ static void CreateObjectFromNode(const LevelObjectData& node, const Object3d* pa
 
 		obj->SetScale(node.scale);
 		obj->SetEnvironmentTextureIndex(skyboxTexIndex);
+		obj->SetName(node.name);
+
+		if (node.name.find("Terrain_Background_Mountains") != std::string::npos ||
+			modelName.find("Terrain_Background_Mountains") != std::string::npos ||
+			node.name.find("Background_Mountains") != std::string::npos)
+		{
+			obj->SetBackgroundMountain(true);
+		}
 
 		// 背景専用オブジェクト（山岳遠景など）はコリジョン判定を無効化
 		if (node.name.find("Background") != std::string::npos || modelName.find("Background") != std::string::npos)
@@ -1087,20 +1095,27 @@ void GamePlayScene::Update()
 		SoundManager::GetInstance()->ToggleMasterMute();
 	}
 
-	// デモプレイ中：ゲームプレイ部分は見せず、演出・画面遷移を見せた後タイトルシーンへ戻る
+	// デモプレイ中：スタート演出（降下・マテリアライズ）が完了し、少し通常飛行を見せてからタイトルへ戻る
 	if (services && services->IsDemoMode())
 	{
-		demoTimer_ += dt;
-		// 画面遷移（明転約0.9秒）完了後、ゲーム画面を約1.6秒見せてからタイトルへ戻る（合計2.5秒）
-		if (demoTimer_ >= 2.5f)
+		// スタート降下演出（START_CUTSCENE）が完了した後にタイマーを進める
+		if (gamePhase_ != GamePhase::START_CUTSCENE)
 		{
-			auto sceneManager = GetSceneManager();
-			if (sceneManager && !sceneManager->IsTransitioning())
+			demoTimer_ += dt;
+			if (demoTimer_ >= demoPostIntroDuration_)
 			{
-				float fadeDur = sceneManager->GetFadeDuration();
-				Vector4 fadeCol = sceneManager->GetFadeColor();
-				sceneManager->ChangeScene("TITLE", fadeDur, fadeCol);
+				auto sceneManager = GetSceneManager();
+				if (sceneManager && !sceneManager->IsTransitioning())
+				{
+					float fadeDur = sceneManager->GetFadeDuration();
+					Vector4 fadeCol = sceneManager->GetFadeColor();
+					sceneManager->ChangeScene("TITLE", fadeDur, fadeCol);
+				}
 			}
+		}
+		else
+		{
+			demoTimer_ = 0.0f;
 		}
 	}
 	else
@@ -2272,6 +2287,22 @@ void GamePlayScene::Update()
 					SoundManager::GetInstance()->SetBGMVolume(bgmVol);
 				}
 
+				if (services && services->IsDemoMode())
+				{
+					ImGui::Separator();
+					ImGui::TextColored(ImVec4(0.0f, 0.9f, 1.0f, 1.0f), "【デモプレイ制御 (Demo Mode)】");
+					ImGui::SliderFloat("スタート演出完了後の待機時間 (秒)##DemoPostIntro", &demoPostIntroDuration_, 0.5f, 6.0f, "%.1f 秒");
+					if (gamePhase_ != GamePhase::START_CUTSCENE)
+					{
+						ImGui::ProgressBar(std::clamp(demoTimer_ / demoPostIntroDuration_, 0.0f, 1.0f), ImVec2(-1, 14));
+						ImGui::TextColored(ImVec4(0.2f, 0.9f, 0.5f, 1.0f), "タイトル帰還まで: %.1f / %.1f 秒", demoTimer_, demoPostIntroDuration_);
+					}
+					else
+					{
+						ImGui::TextDisabled("※スタート演出（降下）再生中... 完了後にカウント開始");
+					}
+				}
+
 				// リセット処理
 				if (doReset)
 				{
@@ -3320,7 +3351,7 @@ void GamePlayScene::Draw()
 		}
 
 		// シェーダー側の実体化波（solidT）と完全に同一の進行度計算
-		float solidT = std::clamp((terrainMaterializeProgress_ - 0.48f) / 0.52f, 0.0f, 1.0f);
+		float solidT = std::clamp((terrainMaterializeProgress_ - 0.54f) / 0.46f, 0.0f, 1.0f);
 		if (solidT <= 0.0001f)
 		{
 			return false; // まだ実体化波がスタートしていない（ワイヤーフレーム段階では一切非表示）
@@ -3627,7 +3658,14 @@ void GamePlayScene::StartOpeningCutscene()
 	{
 		if (model)
 		{
-			model->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
+			if (model->IsBackgroundMountain())
+			{
+				model->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f }); // Terrain_Background_Mountainsはスタート演出を行わず最初から通常表示
+			}
+			else
+			{
+				model->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
+			}
 		}
 	}
 	for (auto& obstacle : obstacles_)
@@ -3752,8 +3790,7 @@ void GamePlayScene::StartOpeningCutscene()
 		railCameraController_->SetCinematicCamera(true, camLocalPos, lookTarget, 1.0f);
 	}
 
-	// システム起動音再生
-	SoundManager::GetInstance()->PlaySE("Alarm01.wav", 0.65f);
+
 }
 
 void GamePlayScene::UpdateOpeningCutscene(float dt)
@@ -3775,10 +3812,17 @@ void GamePlayScene::UpdateOpeningCutscene(float dt)
 	{
 		// 演出終了：通常ゲームプレイへ遷移（操作解放）
 		gamePhase_ = GamePhase::PLAYING;
-		missionStartTextTimer_ = 1.2f; // MISSION START表示をプレイ開始後もしばらく維持
+		missionStartTextTimer_ = 0.0f; // MISSION START表示をプレイ開始後もしばらく維持
 		terrainMaterializeProgress_ = 1.0f;
 		playerReconstructAlpha_ = 1.0f;
 		reconstructShards_.clear();
+
+		// ラジアルブラー等のポストプロセス演出を通常復帰
+		if (auto pp = services->GetPostProcess())
+		{
+			pp->SetEffectActive("RadialBlur", false);
+			pp->GetData()->radialBlurIntensity = 0.0f;
+		}
 
 		// 地形・障害物のマテリアルアルファを通常（1.0）へ完全復帰
 		for (auto& model : modelInstances)
@@ -3827,7 +3871,17 @@ void GamePlayScene::UpdateOpeningCutscene(float dt)
 		// 地形オブジェクト・障害物に進行度を反映（シェーダー側で手前から奥850mへ光の波が走る）
 		for (auto& model : modelInstances)
 		{
-			if (model) model->SetColor({ 1.0f, 1.0f, 1.0f, terrainMaterializeProgress_ });
+			if (model)
+			{
+				if (model->IsBackgroundMountain())
+				{
+					model->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f }); // Terrain_Background_Mountainsはスタート演出を行わず最初から通常表示
+				}
+				else
+				{
+					model->SetColor({ 1.0f, 1.0f, 1.0f, terrainMaterializeProgress_ });
+				}
+			}
 		}
 		for (auto& obstacle : obstacles_)
 		{
@@ -3847,14 +3901,14 @@ void GamePlayScene::UpdateOpeningCutscene(float dt)
 
 		// カメラ：地面スレスレ至近から徐々に上昇・前進しながら、前方のビル群と地平線を見渡す壮大なクレーンアップ！
 		Vector3 camPos = {
-			2.0f + u * 1.6f,
-			0.45f + u * 2.15f,
-			-12.0f + u * 8.5f
+			2.8f + u * 0.8f,
+			1.6f + u * 1.6f,
+			-14.0f + u * 8.0f
 		};
 		Vector3 lookTarget = {
 			0.0f,
-			1.5f + u * 3.0f,
-			35.0f + u * 10.0f
+			1.8f + u * 1.8f,
+			30.0f + u * 15.0f
 		};
 		if (railCameraController_)
 		{
@@ -3893,13 +3947,21 @@ void GamePlayScene::UpdateOpeningCutscene(float dt)
 			//    四方八方から64個の三角形プリズムが激しくスピンしながら中心へと猛烈に集結！
 			// 2. 終盤（0.70〜0.95）：プリズムがパーツ位置へとギュッと集まりきった瞬間、
 			//    閃光とともに自機がパズルのように急激に実体化して出現！
-			// 3. 完成（0.95〜1.00）：すべてのプリズムが機体装甲へ同化・吸収され、完全実体化！
+			// 3. フラッシュ発光：合体完了時（0.78〜0.98）に機体エッジ・コアが白熱超発光！
+			float flashBoost = 0.0f;
 			if (tRec >= 0.70f)
 			{
 				float subT = (tRec - 0.70f) / 0.25f;
 				float alphaT = std::clamp(subT, 0.0f, 1.0f);
 				// 鋭く立ち上がるイージングで機体が出現
 				playerReconstructAlpha_ = alphaT * alphaT * (3.0f - 2.0f * alphaT);
+
+				// ポリゴンが組み合わさった瞬間の強烈フラッシュ発光（0.78〜0.98）
+				if (tRec >= 0.78f && tRec <= 0.98f)
+				{
+					float fProg = (tRec - 0.78f) / 0.20f;
+					flashBoost = std::sinf(fProg * 3.14159265f) * 2.8f;
+				}
 			}
 			else
 			{
@@ -3908,7 +3970,13 @@ void GamePlayScene::UpdateOpeningCutscene(float dt)
 
 			if (player_)
 			{
-				player_->SetColor({ 1.0f, 1.0f, 1.0f, playerReconstructAlpha_ });
+				Vector4 shipCol = {
+					1.0f + flashBoost * 1.2f,
+					1.0f + flashBoost * 1.5f,
+					1.0f + flashBoost * 1.8f,
+					playerReconstructAlpha_
+				};
+				player_->SetColor(shipCol);
 				player_->SetCutsceneOverride(true, { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f });
 				player_->Update3DObjectOnly(); // 親オブジェクト（自機）のワールド行列を最新化！
 			}
@@ -3992,20 +4060,65 @@ void GamePlayScene::UpdateOpeningCutscene(float dt)
 		{
 			// --- 自機復元完了後のバーニア点火＆待機フェーズ（3.05s〜3.40s） ---
 			playerReconstructAlpha_ = 1.0f;
+			const float kBoosterIgnitionTime = kPhase1Duration + kReconstructTime;
+			float ignitionElapsed = cutsceneTimer_ - kBoosterIgnitionTime; // 0.0 -> 0.35s
+
+			// 点火余熱フラッシュ（点火瞬間に白熱し、0.25秒で通常色へクールダウン）
+			float ignFlash = std::clamp(1.0f - (ignitionElapsed / 0.25f), 0.0f, 1.0f);
+			Vector4 ignCol = {
+				1.0f + ignFlash * 1.4f,
+				1.0f + ignFlash * 1.8f,
+				1.0f + ignFlash * 2.2f,
+				1.0f
+			};
+
 			if (player_)
 			{
-				player_->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+				player_->SetColor(ignCol);
 				player_->SetCutsceneOverride(true, { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f });
 
 				// 自機集束完了（kPhase1Duration + kReconstructTime）でバーニア点火！
-				const float kBoosterIgnitionTime = kPhase1Duration + kReconstructTime;
 				if (cutsceneTimer_ >= kBoosterIgnitionTime)
 				{
 					if (!player_->IsCutsceneBoosting())
 					{
 						player_->SetCutsceneBoosting(true);
-						SoundManager::GetInstance()->PlaySE("powerup.mp3", 0.75f);
+
+						// 【点火インパクト強化 1: 出撃カメラシェイク（微小な手応え振動）】
+						cameraShakeTimer_ = 8.0f; // 約8フレームの微小インパルス
+
+						// 【点火インパクト強化 2: ラジアルブラー発動（出撃の急加速推進感）】
+						if (auto pp = services->GetPostProcess())
+						{
+							pp->SetEffectActive("RadialBlur", true);
+							pp->GetData()->radialBlurIntensity = 0.08f;
+							pp->GetData()->radialBlurCenterX = 0.5f;
+							pp->GetData()->radialBlurCenterY = 0.55f;
+						}
+
+						// 【点火インパクト強化 3: スピード線（突風・衝撃波）を機体周囲に走らせる】
+						Vector3 shipWPos = player_->GetWorldPosition();
+						windEffect_.SetPosition(shipWPos);
+						for (int w = 0; w < 4; ++w)
+						{
+							windEffect_.Play();
+						}
 					}
+				}
+			}
+
+			// ラジアルブラーの滑らかなフェードアウト（0.35秒かけて 0.08 -> 0.0 へ）
+			if (auto pp = services->GetPostProcess())
+			{
+				float blurFade = std::clamp(1.0f - (ignitionElapsed / 0.35f), 0.0f, 1.0f);
+				if (blurFade > 0.001f)
+				{
+					pp->GetData()->radialBlurIntensity = 0.08f * blurFade * blurFade;
+				}
+				else
+				{
+					pp->SetEffectActive("RadialBlur", false);
+					pp->GetData()->radialBlurIntensity = 0.0f;
 				}
 			}
 
@@ -4286,9 +4399,9 @@ void GamePlayScene::DrawCutsceneUI()
 		}
 
 		// ② 奥照準（アウター四角フレーム / ターゲット枠） 2D UIスクリーン描画
-		// 仕様書: PosTarget3D = PosShip + (DirAim * DistFar)
-		//         PosScreen2D = WorldToScreen(PosTarget3D)
-		//         UI描画のため地形による遮蔽（Z埋もれ）が発生せず、常にシャープにターゲットを捕捉
+		// PosTarget3D = PosShip + (DirAim * DistFar)
+		// PosScreen2D = WorldToScreen(PosTarget3D)
+		// UI描画のため地形による遮蔽（Z埋もれ）が発生せず、常にシャープにターゲットを捕捉
 		if (okEnd)
 		{
 			bool isLocked = player_->IsTargetInReticle();
@@ -4520,12 +4633,12 @@ void GamePlayScene::DrawCutsceneUI()
 			renderTextItem(readyItem, alpha);
 		}
 	}
-	else if ((gamePhase_ == GamePhase::START_CUTSCENE && cutsceneTimer_ >= 3.20f) || (gamePhase_ == GamePhase::PLAYING && missionStartTextTimer_ > 0.0f))
+	else if (gamePhase_ == GamePhase::START_CUTSCENE && cutsceneTimer_ >= 3.20f && cutsceneTimer_ < 4.60f)
 	{
 		float alpha = 1.0f;
-		if (gamePhase_ == GamePhase::PLAYING)
+		if (cutsceneTimer_ >= 4.20f)
 		{
-			alpha = std::clamp(missionStartTextTimer_ / 1.2f, 0.0f, 1.0f);
+			alpha = 1.0f - std::clamp((cutsceneTimer_ - 4.20f) / 0.40f, 0.0f, 1.0f);
 		}
 
 		const UITextItem* startItem = textMgr ? textMgr->GetTextItem("CutsceneMissionStart", "GAMEPLAY") : nullptr;

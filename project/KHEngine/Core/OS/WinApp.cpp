@@ -1,4 +1,4 @@
-﻿#include "WinApp.h"
+#include "WinApp.h"
 
 
 #pragma comment(lib, "winmm.lib")
@@ -36,6 +36,9 @@ LRESULT WinApp::WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparm)
 
 void WinApp::Initialize()
 {
+	// DPI Awareness の設定 (Per-Monitor v2 でOSによる不自然なスケーリングを防止)
+	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
 	// システムタイマーの分解能を上げる
 	timeBeginPeriod(1);
 
@@ -101,18 +104,69 @@ bool WinApp::ProcessMessage()
 {
 	MSG msg{};
 
-	//windowsにメッセージが来たら最優先で処理する
-	if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
+	//windowsにメッセージが来たら最優先で処理する（キューにあるメッセージを全て処理）
+	while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
 	{
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
-	}
 
-	//もし終了メッセージが来ていたらtrueを返す
-	if (msg.message == WM_QUIT)
-	{
-		return true;
+		//もし終了メッセージが来ていたらtrueを返す
+		if (msg.message == WM_QUIT)
+		{
+			return true;
+		}
 	}
 
 	return false;
+}
+
+uint32_t WinApp::GetClientWidth() const
+{
+	if (!hwnd) return kClientWidth;
+	RECT rect{};
+	GetClientRect(hwnd, &rect);
+	return static_cast<uint32_t>(rect.right - rect.left);
+}
+
+uint32_t WinApp::GetClientHeight() const
+{
+	if (!hwnd) return kClientHeight;
+	RECT rect{};
+	GetClientRect(hwnd, &rect);
+	return static_cast<uint32_t>(rect.bottom - rect.top);
+}
+
+void WinApp::ToggleFullscreen()
+{
+	if (!hwnd) return;
+
+	DWORD style = GetWindowLong(hwnd, GWL_STYLE);
+
+	if (isFullscreen_)
+	{
+		// ウィンドウモードに戻す
+		SetWindowLong(hwnd, GWL_STYLE, (style & ~WS_POPUP) | WS_OVERLAPPEDWINDOW);
+		SetWindowPlacement(hwnd, &windowPlacement_);
+		SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+			SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+			SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+		isFullscreen_ = false;
+	}
+	else
+	{
+		// フルスクリーンにする
+		MONITORINFO mi = { sizeof(mi) };
+		windowPlacement_.length = sizeof(WINDOWPLACEMENT);
+		if (GetWindowPlacement(hwnd, &windowPlacement_) &&
+			GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY), &mi))
+		{
+			SetWindowLong(hwnd, GWL_STYLE, (style & ~WS_OVERLAPPEDWINDOW) | WS_POPUP);
+			SetWindowPos(hwnd, HWND_TOP,
+				mi.rcMonitor.left, mi.rcMonitor.top,
+				mi.rcMonitor.right - mi.rcMonitor.left,
+				mi.rcMonitor.bottom - mi.rcMonitor.top,
+				SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+			isFullscreen_ = true;
+		}
+	}
 }
