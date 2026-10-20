@@ -2599,6 +2599,29 @@
             },
             "is_destructible": true,
             "texture_path": "gray.png"
+        },
+        {
+            "type": "MESH",
+            "name": "billding_1",
+            "transform": {
+                "translation": [
+                    92.05831146240234,
+                    701.3004150390625,
+                    25.844717025756836
+                ],
+                "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                ],
+                "scale": [
+                    1.0,
+                    1.0,
+                    1.0
+                ]
+            },
+            "is_destructible": true,
+            "texture_path": "cream color.png"
         }
     ]
 }

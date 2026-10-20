@@ -424,9 +424,12 @@ void Player::Draw() {
         // }
     }
 
-    // 接地マーカー（プロジェクションシャドウ）描画（自機生存時）
+    // 接地マーカー（プロジェクションシャドウ）描画（自機生存時かつ自機が表示されている時）
     if (!isDead_ && groundMarkerObject_) {
-        groundMarkerObject_->Draw();
+        float playerAlpha = object_ ? object_->GetColor().w : 1.0f;
+        if (playerAlpha > 0.05f) {
+            groundMarkerObject_->Draw();
+        }
     }
     
     bool shouldDrawPlayer = true;

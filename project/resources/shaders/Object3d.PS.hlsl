@@ -231,6 +231,8 @@ PixelShaderOutput main(VertexShaderOutput input)
                 bool isGroundSurface = (normal.y > 0.96f && wp.y < 2.0f);
 
                 float32_t3 holoColor = float32_t3(0.0f, 0.0f, 0.0f);
+                float wireFrameMesh = 0.0f;
+                float cleanWireMesh = 0.0f;
 
                 if (isGroundSurface)
                 {
@@ -238,12 +240,21 @@ PixelShaderOutput main(VertexShaderOutput input)
                     float32_t3 groundBase = float32_t3(0.015f, 0.14f, 0.16f);
 
                     // メイングリッド（20m間隔の鋭いエメラルドライン）
-                    float2 gMain = abs(frac(wp.xz / 20.0f - 0.5f) - 0.5f) / fwidth(wp.xz / 20.0f);
+                    float2 gMain = abs(frac(wp.xz / 20.0f - 0.5f) - 0.5f) / max(fwidth(wp.xz / 20.0f), 0.001f);
                     float mainLine = 1.0f - saturate(min(gMain.x, gMain.y));
 
                     // サブグリッド（5m間隔の繊細なデジタルメッシュ）
-                    float2 gSub = abs(frac(wp.xz / 5.0f - 0.5f) - 0.5f) / fwidth(wp.xz / 5.0f);
+                    float2 gSub = abs(frac(wp.xz / 5.0f - 0.5f) - 0.5f) / max(fwidth(wp.xz / 5.0f), 0.001f);
                     float subLine = (1.0f - saturate(min(gSub.x, gSub.y))) * 0.35f;
+
+                    wireFrameMesh = saturate(mainLine * 0.9f + subLine);
+
+                    // 【ワイヤーフレーム形成用クリーンメッシュ】
+                    // 気持ち悪いモアレ（干渉縞）を防ぐため、サブグリッドは除外し、
+                    // 25m間隔の洗練されたSFメインラインのみを使用 ＋ 遠方は自然に間引いてフェード
+                    float2 gClean = abs(frac(wp.xz / 25.0f - 0.5f) - 0.5f) / max(fwidth(wp.xz / 25.0f), 0.001f);
+                    float cleanLine = 1.0f - saturate(min(gClean.x, gClean.y));
+                    cleanWireMesh = cleanLine * smoothstep(260.0f, 40.0f, dist);
 
                     // 進行方向（Z軸）へ伸びる滑走路ガイドライン＆発光ドット列
                     float32_t runwayMask = smoothstep(2.2f, 0.2f, abs(frac(wp.x / 28.0f + 0.5f) - 0.5f) * 28.0f);
@@ -254,7 +265,7 @@ PixelShaderOutput main(VertexShaderOutput input)
 
                     // 遠方でグリッドのジャギーを抑えつつ美しい光面に収束
                     float32_t gridFade = smoothstep(550.0f, 60.0f, dist);
-                    float32_t totalGrid = saturate(mainLine * 0.9f + subLine) * gridFade;
+                    float32_t totalGrid = wireFrameMesh * gridFade;
 
                     float32_t3 neonCyan = float32_t3(0.20f, 0.98f, 0.88f);
                     float32_t3 brightWhiteCyan = float32_t3(0.65f, 1.0f, 0.96f);
@@ -277,6 +288,25 @@ PixelShaderOutput main(VertexShaderOutput input)
                     float vLine = (1.0f - saturate(min(vGrid.x, vGrid.y))) * smoothstep(450.0f, 80.0f, dist) * 0.40f;
                     float wallFactor = saturate(1.0f - saturate(normal.y) * 1.5f);
 
+                    wireFrameMesh = saturate(hScan + vLine * wallFactor);
+
+                    // 【建物・構造物・障害物の完全ワイヤーフレーム骨組み】
+                    // 以前は rim（フレネル）が含まれていたため面全体がべったり塗りつぶされていた問題を完全解消！
+                    // 垂直柱フレーム線（vWire）、水平梁フレーム線（hWire）、直角エッジ（sharpEdge）の「細い線」のみを抽出し、
+                    // 面の内側は 0.0 となって完全に透過（discard）される本物の3D建築ワイヤーフレームを実現！
+                    float2 bldgXZ = abs(frac(wp.xz / 8.0f - 0.5f) - 0.5f) / max(fwidth(wp.xz / 8.0f), 0.001f);
+                    float vWire = 1.0f - saturate(min(bldgXZ.x, bldgXZ.y));
+
+                    float bldgY = abs(frac(wp.y / 6.0f - 0.5f) - 0.5f) / max(fwidth(wp.y / 6.0f), 0.001f);
+                    float hWire = 1.0f - saturate(bldgY);
+
+                    // 面の角（法線の急激な変化による立体稜線エッジ）
+                    float3 dNormal = fwidth(normal);
+                    float sharpEdge = saturate(length(dNormal) * 3.0f);
+
+                    float wireStructure = saturate(max(max(vWire, hWire), sharpEdge));
+                    cleanWireMesh = wireStructure * smoothstep(320.0f, 40.0f, dist);
+
                     // 法線による面ごとの明暗コントラスト（ホログラムの多面体らしさ）
                     float32_t faceShade = 0.65f + 0.35f * abs(normal.x - normal.z * 0.5f);
 
@@ -294,6 +324,83 @@ PixelShaderOutput main(VertexShaderOutput input)
                 float32_t3 horizonFogColor = float32_t3(0.12f, 0.72f, 0.68f);
                 output.color.rgb = lerp(holoColor, horizonFogColor, fogFactor * 0.68f);
                 output.color.a = 1.0f;
+
+                // ===== 仮想空間マテリアライズ・スキャンウェーブ（地形形成演出） =====
+                // gMaterial.color.a が 1.0 未満のとき、2段階の光の波が奔り、世界が形成される！
+                // 段階 1: 完全な虚空（何もない） -> 先行波によりワイヤーフレームが形成される
+                // 段階 2: 後続のスキャン波によりワイヤーフレームにテクスチャ（面）が張られて実体化する
+                if (gMaterial.color.a < 0.999f)
+                {
+                    float materializeProgress = saturate(gMaterial.color.a); // 0.0 -> 1.0
+
+                    // 1. 先行ワイヤー形成波（手前から奥へ疾走し、何もない空間に骨組みを描き出す）
+                    // 前半（0.0〜0.50）で一気に奥950mまで駆け抜け、空間全体にワイヤーフレームを展開！
+                    float wireT = saturate(materializeProgress * 2.0f);
+                    float scanDistWire = lerp(-30.0f, 950.0f, wireT);
+
+                    // 2. 実体化スキャン波（ワイヤーフレームを追って疾走し、テクスチャ面を実体化）
+                    // 第二段階（ワイヤーフレーム骨組み）をじっくり見せるため、
+                    // materializeProgress が 0.48 に達するまで実体化波はスタートしない！
+                    float solidT = saturate((materializeProgress - 0.48f) / 0.52f);
+                    float scanDistSolid = lerp(-60.0f, 850.0f, solidT);
+
+                    float zDist = wp.z - gCamera.worldPosition.z;
+                    // 高さに応じた形成ディレイ：地面が先に走り、ビル群が下から屋上へと光りながらせり上がる！
+                    float heightDelay = max(0.0f, wp.y) * 1.5f;
+                    float scanCoord = zDist + heightDelay;
+
+                    // -------------------------------------------------------------
+                    // 【段階 1: 完全な虚空（何もない空間）】
+                    // ワイヤー形成波より奥の領域：一切何も描画せず discard！
+                    // -------------------------------------------------------------
+                    if (scanCoord > scanDistWire)
+                    {
+                        discard;
+                    }
+
+                    // -------------------------------------------------------------
+                    // 【段階 2: ワイヤーフレーム形成領域】
+                    // 何もない空間からワイヤーフレームが形成されたエリア（実体化波より奥）
+                    // -------------------------------------------------------------
+                    if (scanCoord > scanDistSolid)
+                    {
+                        // クリーンなワイヤーライン（cleanWireMesh > 0.08f）以外は discard して面を完全透過！
+                        if (cleanWireMesh < 0.08f)
+                        {
+                            discard;
+                        }
+
+                        // 先端境界（scanCoord ≈ scanDistWire）：虚空からワイヤーが引かれる瞬間の高輝度フロントパルス！
+                        float wireFrontDelta = abs(scanCoord - scanDistWire);
+                        float wireFrontGlow = smoothstep(25.0f, 0.0f, wireFrontDelta) * 3.5f;
+
+                        // 【ネオンシアン / ホログラフィック仮想空間ワイヤーフレーム】
+                        // 電脳空間のグリッドと調和する、透き通るようなネオンシアン＆アクアの幾何学ライン
+                        float32_t3 wireCyan = float32_t3(0.18f, 0.88f, 1.0f) * saturate(cleanWireMesh * 2.2f);
+                        // 先端境界（scanCoord ≈ scanDistWire）は高エネルギーのホワイトシアンフラッシュ！
+                        float32_t3 frontFlash = float32_t3(0.85f, 0.98f, 1.0f) * wireFrontGlow;
+
+                        output.color.rgb = wireCyan + frontFlash;
+                        output.color.a = 1.0f;
+                    }
+                    else
+                    {
+                        // -------------------------------------------------------------
+                        // 【段階 3: 実体化完了領域（テクスチャ＆面）】
+                        // 後続の実体化スキャン波が通過し、テクスチャ・面が実体化！
+                        // -------------------------------------------------------------
+                        // 最先端エッジ（scanCoord ≈ scanDistSolid）：超高輝度ホワイトシアンのネオンレーザーフロント
+                        float solidDelta = scanCoord - scanDistSolid;
+                        float frontPulse = smoothstep(14.0f, 0.0f, abs(solidDelta));
+                        float32_t3 frontGlow = float32_t3(0.75f, 1.0f, 0.98f) * (frontPulse * 4.5f);
+
+                        // 通過直後の余韻領域（手前 40m）：エメラルドグリッドの共鳴発光
+                        float trailPulse = exp(solidDelta * 0.06f) * saturate(wireFrameMesh * 1.5f + 0.15f);
+                        float32_t3 trailGlow = float32_t3(0.18f, 0.98f, 0.84f) * (trailPulse * 2.8f);
+
+                        output.color.rgb = output.color.rgb + frontGlow + trailGlow;
+                    }
+                }
             }
             break;
         case 8:

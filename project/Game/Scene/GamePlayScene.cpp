@@ -1221,8 +1221,32 @@ void GamePlayScene::Update()
 
 		}
 
+		// ポーズメニューの開閉判定（プレイ中、かつゲームオーバーやクリア中でない場合）
+		if (isPlaying_ && gamePhase_ != GamePhase::GAMEOVER && gamePhase_ != GamePhase::CLEAR)
+		{
+			if (input)
+			{
+				if (input->TriggerKey(DIK_ESCAPE) || input->TriggerKey(DIK_P) || input->TriggerPadButton(XINPUT_GAMEPAD_START))
+				{
+					isPaused_ = !isPaused_;
+					if (isPaused_)
+					{
+						pauseSelectedOption_ = PauseMenuOption::Resume;
+						SoundManager::GetInstance()->PlaySE("button.mp3", 0.6f);
+					}
+					else
+					{
+						SoundManager::GetInstance()->PlaySE("button.mp3", 0.5f);
+					}
+				}
+			}
+		}
 
-		if (isPlaying_)
+		if (isPaused_)
+		{
+			UpdatePauseMenu();
+		}
+		else if (isPlaying_)
 		{
 
 			auto pp = EngineServices::GetInstance()->GetPostProcess();
@@ -1360,7 +1384,7 @@ void GamePlayScene::Update()
 
 	if (player_)
 	{
-		if (isPlaying_ && gamePhase_ != GamePhase::GAMEOVER && gamePhase_ != GamePhase::CLEAR)
+		if (isPlaying_ && !isPaused_ && gamePhase_ != GamePhase::GAMEOVER && gamePhase_ != GamePhase::CLEAR)
 		{
 
 			bool wasBanking = player_->IsBanking();
@@ -1453,7 +1477,7 @@ void GamePlayScene::Update()
 	}
 
 
-	if (isPlaying_)
+	if (isPlaying_ && !isPaused_)
 	{
 		for (auto it = bullets_.begin(); it != bullets_.end(); )
 		{
@@ -1730,28 +1754,19 @@ void GamePlayScene::Update()
 	}
 
 
-	if (input && input->TriggerKey(DIK_ESCAPE))
-	{
-		auto dxCommon = services->GetDirectXCommon();
-		if (dxCommon)
-		{
-			WinApp* winApp = dxCommon->GetWinApp();
-			if (winApp)
-			{
-				::PostMessage(winApp->GetHwnd(), WM_CLOSE, 0, 0);
-			}
-		}
-	}
 
 
 	// 敵撃破時のスコア加算ポップアップ演出の更新
-	for (auto it = scorePopups_.begin(); it != scorePopups_.end();)
+	if (!isPaused_)
 	{
-		it->timer += (1.0f / 60.0f) * gameSpeed_;
-		if (it->timer >= it->duration) {
-			it = scorePopups_.erase(it);
-		} else {
-			++it;
+		for (auto it = scorePopups_.begin(); it != scorePopups_.end();)
+		{
+			it->timer += (1.0f / 60.0f) * gameSpeed_;
+			if (it->timer >= it->duration) {
+				it = scorePopups_.erase(it);
+			} else {
+				++it;
+			}
 		}
 	}
 
@@ -1788,7 +1803,7 @@ void GamePlayScene::Update()
 	}
 
 
-	if (!isPlaying_)
+	if (!isPlaying_ || isPaused_)
 	{
 		for (auto& enemy : enemies_) if (enemy) enemy->Update3DObjectOnly();
 		for (auto& obstacle : obstacles_) if (obstacle) obstacle->Update3DObjectOnly();
@@ -1830,21 +1845,46 @@ void GamePlayScene::Update()
 		thrusterEffect_.SetParentMatrix(&player_->GetObject3d()->GetmatWorld());
 		thrusterEffect_.SetPosition({ 0.0f, -0.22f, -3.00f });
 
+		bool shouldEmitThruster = false;
+
 		if (!player_->IsDead())
 		{
-			// 巡航時はクールな高エネルギーシアンブルー、ブースト時やロール回避時はブレイジングオレンジ
-			if (player_->IsBoosting() || player_->IsRolling())
+			if (gamePhase_ == GamePhase::START_CUTSCENE)
 			{
-				thrusterEffect_.SetBaseColor({ 1.0f, 0.55f, 0.1f, 1.0f });
+				// スタート演出中は、機体が復元完了して点火するタイミング（2.50s以降）のみ放出
+				if (cutsceneTimer_ >= 2.50f || player_->IsCutsceneBoosting())
+				{
+					shouldEmitThruster = true;
+					// 点火時は力強いブレイジングオレンジ
+					thrusterEffect_.SetBaseColor({ 1.0f, 0.55f, 0.1f, 1.0f });
+				}
+			}
+			else if (gamePhase_ == GamePhase::PLAYING)
+			{
+				// 通常プレイ時
+				shouldEmitThruster = true;
+				// 巡航時はクールな高エネルギーシアンブルー、ブースト時やロール回避時はブレイジングオレンジ
+				if (player_->IsBoosting() || player_->IsRolling())
+				{
+					thrusterEffect_.SetBaseColor({ 1.0f, 0.55f, 0.1f, 1.0f });
+				}
+				else
+				{
+					thrusterEffect_.SetBaseColor({ 0.5f, 0.85f, 1.0f, 1.0f });
+				}
+			}
+
+			if (shouldEmitThruster)
+			{
+				thrusterEffect_.Play();
+				thrusterEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
 			}
 			else
 			{
-				thrusterEffect_.SetBaseColor({ 0.5f, 0.85f, 1.0f, 1.0f });
+				// 放出すべきでない期間（カットシーン復元前など）はパーティクルを常にクリアし、frequency自動生成も阻止
+				thrusterEffect_.ClearParticles();
 			}
-			thrusterEffect_.Play();
 		}
-
-		thrusterEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
 		explosionEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
 		hitEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
 		dodgeEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
@@ -3267,9 +3307,42 @@ void GamePlayScene::Draw()
 		model->Draw();
 	}
 
+	// スタート演出中のオブジェクト実体化判定（地形が実体化した領域の敵やリングのみ出現・描画）
+	auto IsMaterializedAt = [&](const Vector3& pos) -> bool {
+		if (gamePhase_ != GamePhase::START_CUTSCENE)
+		{
+			return true;
+		}
+		const float kPhase1Duration = 2.20f;
+		if (cutsceneTimer_ >= kPhase1Duration)
+		{
+			return true; // Phase 1 完了後はすべて出現
+		}
+
+		// シェーダー側の実体化波（solidT）と完全に同一の進行度計算
+		float solidT = std::clamp((terrainMaterializeProgress_ - 0.48f) / 0.52f, 0.0f, 1.0f);
+		if (solidT <= 0.0001f)
+		{
+			return false; // まだ実体化波がスタートしていない（ワイヤーフレーム段階では一切非表示）
+		}
+
+		float scanDistSolid = -60.0f + (850.0f - (-60.0f)) * solidT;
+
+		Vector3 camPos = activeCamera_ ? activeCamera_->GetTranslate() : Vector3{ 0.0f, 0.0f, 0.0f };
+		float zDist = pos.z - camPos.z;
+		float heightDelay = std::max(0.0f, pos.y) * 1.5f;
+		float scanCoord = zDist + heightDelay;
+
+		return (scanCoord <= scanDistSolid);
+	};
+
 	if (object3dCommon) object3dCommon->SetCommonDrawSetting();
 	for (auto& enemy : enemies_)
 	{
+		if (gamePhase_ == GamePhase::START_CUTSCENE && !IsMaterializedAt(enemy->GetPosition()))
+		{
+			continue; // 地形実体化前の領域は非表示
+		}
 		if (enableCulling)
 		{
 			Vector3 ePos = enemy->GetPosition();
@@ -3282,7 +3355,10 @@ void GamePlayScene::Draw()
 	}
 	if (armoredTrainBoss_ && isBossSpawned_)
 	{
-		armoredTrainBoss_->Draw();
+		if (gamePhase_ != GamePhase::START_CUTSCENE || IsMaterializedAt(armoredTrainBoss_->GetPosition()))
+		{
+			armoredTrainBoss_->Draw();
+		}
 	}
 	for (auto& obstacle : obstacles_)
 	{
@@ -3298,6 +3374,10 @@ void GamePlayScene::Draw()
 	}
 	for (auto& ring : enhanceRings_)
 	{
+		if (gamePhase_ == GamePhase::START_CUTSCENE && !IsMaterializedAt(ring->GetPosition()))
+		{
+			continue; // 地形実体化前の領域は非表示
+		}
 		if (enableCulling)
 		{
 			Vector3 rPos = ring->GetPosition();
@@ -3323,14 +3403,19 @@ void GamePlayScene::Draw()
 			}
 			for (auto& enemy : enemies_)
 			{
+				if (gamePhase_ == GamePhase::START_CUTSCENE && !IsMaterializedAt(enemy->GetPosition())) continue;
 				enemy->DrawCollider();
 			}
 			if (armoredTrainBoss_ && isBossSpawned_)
 			{
-				armoredTrainBoss_->DrawCollider();
+				if (gamePhase_ != GamePhase::START_CUTSCENE || IsMaterializedAt(armoredTrainBoss_->GetPosition()))
+				{
+					armoredTrainBoss_->DrawCollider();
+				}
 			}
 			for (auto& ring : enhanceRings_)
 			{
+				if (gamePhase_ == GamePhase::START_CUTSCENE && !IsMaterializedAt(ring->GetPosition())) continue;
 				ring->DrawCollider();
 			}
 			for (auto& bullet : bullets_)
@@ -3373,6 +3458,20 @@ void GamePlayScene::Draw()
 	{
 		if (object3dCommon) object3dCommon->SetCommonDrawSetting();
 		player_->Draw();
+
+		// スタート演出中の自機復元ポリゴン破片描画（Phase 2: 自機集束フェーズ 2.20s〜3.05s のみ描画）
+		if (gamePhase_ == GamePhase::START_CUTSCENE && cutsceneTimer_ >= 2.20f && cutsceneTimer_ < 3.05f)
+		{
+			if (object3dCommon) object3dCommon->SetCommonDrawSetting();
+			for (auto& shard : reconstructShards_)
+			{
+				if (shard.object)
+				{
+					shard.object->SetCamera(activeCamera_);
+					shard.object->Draw();
+				}
+			}
+		}
 	}
 
 
@@ -3389,7 +3488,11 @@ void GamePlayScene::Draw()
 		}
 	}
 
-	thrusterEffect_.Draw();
+	// スラスターエフェクト（自機集束完了・バーニア点火前は絶対に描画しない）
+	if (gamePhase_ != GamePhase::START_CUTSCENE || cutsceneTimer_ >= 3.05f || (player_ && player_->IsCutsceneBoosting()))
+	{
+		thrusterEffect_.Draw();
+	}
 	explosionEffect_.Draw();
 	hitEffect_.Draw();
 	dodgeEffect_.Draw();
@@ -3484,6 +3587,9 @@ void GamePlayScene::DrawUI()
 
 	// ゲームクリア演出用UIテキストの描画
 	DrawClearUI();
+
+	// ポーズメニューUIの描画
+	DrawPauseUI();
 }
 
 void GamePlayScene::StartOpeningCutscene()
@@ -3491,22 +3597,163 @@ void GamePlayScene::StartOpeningCutscene()
 	gamePhase_ = GamePhase::START_CUTSCENE;
 	cutsceneTimer_ = 0.0f;
 	missionStartTextTimer_ = 0.0f;
+	terrainMaterializeProgress_ = 0.0f;
+	playerReconstructAlpha_ = 0.0f;
 
-	// 自機を上空・前方の初期位置にセット（高度+45m、前方+28m、ピッチ約-22度で急降下突入）
+	// ポリゴン破片モデルのロード
+	auto modelMgr = ModelManager::GetInstance();
+	if (modelMgr)
+	{
+		modelMgr->LoadModel("polygon_shard.obj");
+	}
+
+	// スラスター（ブースター炎）を復元完了まで非表示にするため初期クリア
+	thrusterEffect_.ClearParticles();
+
+	// 自機を初期位置（レール原点 0, 0, 0）に待機させ、完全ディゾルブ状態（アルファ0）に設定
 	if (player_)
 	{
-		Vector3 initialPos = { 0.0f, 45.0f, 28.0f };
-		Vector3 initialRot = { -0.38f, 0.0f, 0.0f };
-		player_->SetCutsceneOverride(true, initialPos, initialRot);
+		player_->SetTranslate({ 0.0f, 0.0f, 0.0f });
+		player_->SetRotation({ 0.0f, 0.0f, 0.0f });
+		player_->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f }); // アルファ0で完全消滅ディゾルブ
+		player_->SetSelectLightings(8); // サイバー仮想空間 自機シェーダー（case 8）
+		player_->SetCutsceneBoosting(false);
+		player_->SetCutsceneOverride(true, { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f });
+		player_->Update3DObjectOnly();
 	}
 
-	// カメラを自機の右横・やや斜め後ろにセット（機体と共に上空から下降）
+	// 地形オブジェクト群の初期アルファを 0.0（未形成・暗黒ワイヤーフレーム）に設定
+	for (auto& model : modelInstances)
+	{
+		if (model)
+		{
+			model->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
+		}
+	}
+	for (auto& obstacle : obstacles_)
+	{
+		if (obstacle && obstacle->GetObject3d())
+		{
+			obstacle->GetObject3d()->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
+		}
+	}
+
+	// 自機復元用 36個のポリゴン破片（ReconstructShard）の生成
+	// タイトル画面で四散した破片が逆再生で自機各パーツへと吸い込まれる
+	reconstructShards_.clear();
+	auto services = EngineServices::GetInstance();
+	auto object3dCommon = services ? services->GetObject3dCommon() : nullptr;
+
+	if (object3dCommon)
+	{
+		std::mt19937 rng(13579);
+		std::uniform_real_distribution<float> distRot(-3.14f, 3.14f);
+		std::uniform_real_distribution<float> distRotSpd(-10.0f, 10.0f);
+		std::uniform_real_distribution<float> distNoise(-0.25f, 0.25f);
+
+		// タイトル画面の四散プリズムと完全に一致させた自機パーツ目標地点リスト（64箇所）
+		const Vector3 targetOffsets[64] = {
+			// 機首・ノーズコーン（先端〜付け根）
+			{  0.0f,  0.02f,  2.5f }, {  0.0f, -0.06f,  2.2f }, {  0.0f,  0.10f,  1.9f }, {  0.0f, -0.10f,  1.6f },
+			{ -0.15f, 0.05f,  1.8f }, {  0.15f, 0.05f,  1.8f }, { -0.12f,-0.05f,  1.5f }, {  0.12f,-0.05f,  1.5f },
+			// コックピット・キャノピー周辺
+			{  0.0f,  0.38f,  1.0f }, {  0.0f,  0.42f,  0.6f }, {  0.0f,  0.30f,  0.2f },
+			{ -0.25f, 0.28f,  0.8f }, {  0.25f, 0.28f,  0.8f }, { -0.28f, 0.22f,  0.4f }, {  0.28f, 0.22f,  0.4f },
+			// 胴体コア・上面・下面
+			{  0.0f,  0.15f,  0.0f }, {  0.0f, -0.22f,  0.0f }, {  0.0f,  0.12f, -0.5f }, {  0.0f, -0.18f, -0.5f },
+			{ -0.35f, 0.02f, -0.1f }, {  0.35f, 0.02f, -0.1f }, { -0.42f, 0.05f, -0.6f }, {  0.42f, 0.05f, -0.6f },
+			// 左主翼（付け根〜中間〜翼端〜翼後縁）
+			{ -0.85f, 0.02f,  0.4f }, { -1.45f, 0.04f,  0.1f }, { -2.10f, 0.06f, -0.3f },
+			{ -2.80f, 0.09f, -0.7f }, { -3.50f, 0.12f, -1.1f }, { -3.95f, 0.14f, -1.3f },
+			{ -1.80f,-0.02f, -0.7f }, { -2.60f,-0.02f, -1.1f }, { -3.30f, 0.03f, -1.5f },
+			// 右主翼（付け根〜中間〜翼端〜翼後縁）
+			{  0.85f, 0.02f,  0.4f }, {  1.45f, 0.04f,  0.1f }, {  2.10f, 0.06f, -0.3f },
+			{  2.80f, 0.09f, -0.7f }, {  3.50f, 0.12f, -1.1f }, {  3.95f, 0.14f, -1.3f },
+			{  1.80f,-0.02f, -0.7f }, {  2.60f,-0.02f, -1.1f }, {  3.30f, 0.03f, -1.5f },
+			// 垂直尾翼・V字尾翼
+			{  0.0f,  0.65f, -0.8f }, {  0.0f,  1.05f, -1.2f }, {  0.0f,  1.35f, -1.6f },
+			{ -0.35f, 0.75f, -1.1f }, {  0.35f, 0.75f, -1.1f }, { -0.55f, 1.15f, -1.4f }, {  0.55f, 1.15f, -1.4f },
+			// 左右エアインテーク・エンジンナセル
+			{ -0.65f,-0.18f,  0.3f }, {  0.65f,-0.18f,  0.3f },
+			{ -0.88f,-0.08f, -0.5f }, {  0.88f,-0.08f, -0.5f },
+			// エンジン排気ノズル・アフターバーナー周辺
+			{ -0.52f, 0.00f, -1.8f }, {  0.52f, 0.00f, -1.8f },
+			{ -0.52f,-0.05f, -2.1f }, {  0.52f,-0.05f, -2.1f },
+			{  0.0f, -0.08f, -1.7f }, {  0.0f,  0.05f, -2.0f },
+			// 下部ベントラルフィン・キール
+			{  0.0f, -0.45f, -0.6f }, {  0.0f, -0.65f, -1.1f },
+			{ -0.22f,-0.40f, -0.9f }, {  0.22f,-0.40f, -0.9f }
+		};
+
+		for (int i = 0; i < 64; ++i)
+		{
+			ReconstructShard shard;
+			// 目標位置（自機パーツ位置 ＋ わずかな散乱ノイズ）
+			shard.targetPos = {
+				targetOffsets[i].x + distNoise(rng) * 0.4f,
+				targetOffsets[i].y + distNoise(rng) * 0.4f,
+				targetOffsets[i].z + distNoise(rng) * 0.4f
+			};
+
+			// 開始位置：自機ローカル空間（自機スケール0.5考慮：ローカル半径 18m〜34m → ワールド 9m〜17m）
+			// カメラの視野外・手前ギリギリから一気に自機へ飛び込むダイナミックな配置
+			float phi = std::acosf(1.0f - 2.0f * (static_cast<float>(i) + 0.5f) / 64.0f);
+			float theta = 3.14159265f * (1.0f + std::sqrtf(5.0f)) * static_cast<float>(i);
+			float radius = 18.0f + (i % 8) * 2.2f;
+
+			shard.startPos = {
+				radius * std::sinf(phi) * std::cosf(theta),
+				radius * std::cosf(phi) + 1.2f,
+				radius * std::sinf(phi) * std::sinf(theta) + 1.8f
+			};
+
+			shard.rotation = { distRot(rng), distRot(rng), distRot(rng) };
+			shard.rotSpeed = { distRotSpd(rng) * 1.5f, distRotSpd(rng) * 1.5f, distRotSpd(rng) * 1.5f };
+
+			// スケール：画面ではっきり視認できるよう大幅拡大！（ローカル 2.4〜4.5 → ワールド換算 1.2m〜2.25m）
+			// 自機のノーズや主翼パーツと同等サイズの巨大な三角形クリスタルプリズム！
+			float sc = 2.4f + (i % 5) * 0.52f;
+			shard.scale = { sc, sc, sc };
+
+			// カラー：ブルームとプラズマ発光を強調した超高輝度ネオンカラー
+			int cMod = i % 4;
+			if (cMod == 0)
+				shard.color = { 0.20f, 1.60f, 1.35f, 1.0f }; // エメラルドプラズマ
+			else if (cMod == 1)
+				shard.color = { 0.35f, 1.45f, 1.80f, 1.0f }; // ネオンエレクトリックシアン
+			else if (cMod == 2)
+				shard.color = { 0.10f, 1.30f, 0.95f, 1.0f }; // ディーププラズマ
+			else
+				shard.color = { 1.20f, 1.50f, 1.70f, 1.0f }; // クールホワイトコア（超高エネルギー閃光）
+
+			shard.object = std::make_unique<Object3d>();
+			shard.object->Initialize(object3dCommon);
+			if (player_ && player_->GetObject3d())
+			{
+				shard.object->SetParent(player_->GetObject3d()); // 自機モデルを親に設定！
+			}
+			shard.object->SetModel("polygon_shard.obj");
+			shard.object->SetSelectLightings(6); // ネオン高輝度プラズマ発光シェーダー
+			shard.object->SetColor(shard.color);
+			shard.object->SetScale({ 0.0f, 0.0f, 0.0f }); // 最初は非表示
+			shard.object->SetRotation(shard.rotation);
+			shard.object->SetTranslate(shard.startPos);
+			shard.object->Update();
+
+			reconstructShards_.push_back(std::move(shard));
+		}
+	}
+
+	// 初期カメラ：地面スレスレの超ローアングルから、眼前を走る光の波を見送るドラマチックな構図！
 	if (railCameraController_)
 	{
-		Vector3 camLocalPos = { 8.5f, 46.2f, 24.5f };
-		Vector3 lookTarget = { 0.0f, 45.0f, 31.0f };
+		Vector3 camLocalPos = { 2.0f, 0.45f, -12.0f };
+		Vector3 lookTarget = { 0.0f, 1.5f, 35.0f };
 		railCameraController_->SetCinematicCamera(true, camLocalPos, lookTarget, 1.0f);
 	}
+
+	// システム起動音再生
+	SoundManager::GetInstance()->PlaySE("Alarm01.wav", 0.65f);
 }
 
 void GamePlayScene::UpdateOpeningCutscene(float dt)
@@ -3529,9 +3776,28 @@ void GamePlayScene::UpdateOpeningCutscene(float dt)
 		// 演出終了：通常ゲームプレイへ遷移（操作解放）
 		gamePhase_ = GamePhase::PLAYING;
 		missionStartTextTimer_ = 1.2f; // MISSION START表示をプレイ開始後もしばらく維持
+		terrainMaterializeProgress_ = 1.0f;
+		playerReconstructAlpha_ = 1.0f;
+		reconstructShards_.clear();
+
+		// 地形・障害物のマテリアルアルファを通常（1.0）へ完全復帰
+		for (auto& model : modelInstances)
+		{
+			if (model) model->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+		}
+		for (auto& obstacle : obstacles_)
+		{
+			if (obstacle && obstacle->GetObject3d())
+			{
+				obstacle->GetObject3d()->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+			}
+		}
+
 		if (player_)
 		{
 			player_->SetCutsceneOverride(false);
+			player_->SetCutsceneBoosting(false);
+			player_->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
 			player_->SetTranslate({ 0.0f, 0.0f, 0.0f });
 			player_->SetRotation({ 0.0f, 0.0f, 0.0f });
 			player_->ResetPosture();
@@ -3543,69 +3809,243 @@ void GamePlayScene::UpdateOpeningCutscene(float dt)
 		return;
 	}
 
-	// --- タイムライン進行 ---
-	const float kDiveDuration = 1.8f;       // 自機＆カメラの横並走急降下フェーズ（0.0s〜1.8s）
-	const float kDockDuration = 0.9f;       // 水平復帰＆カメラ回り込みフェーズ（1.8s〜2.7s）
-	// 残り0.3sは背後視点にドッキング完了・前進したままMISSION START突入（2.7s〜3.0s）
+	// --- タイムライン進行（全体 4.7秒） ---
+	const float kPhase1Duration = 2.20f; // [Phase 1: 0.0s〜2.20s] 地形マテリアライズ（虚空からワイヤー形成、余韻の後にスキャン実体化）
+	const float kPhase2Duration = 1.20f; // [Phase 2: 2.20s〜3.40s] 自機リコンストラクト（0.8s集束 ＋ 0.4sバーニア点火）
+	const float kPhase3Duration = 0.90f; // [Phase 3: 3.40s〜4.30s] カメラ回り込み＆照準起動
+	// 残り0.40s: [Phase 4: 4.30s〜4.70s] レターボックス解放＆MISSION START突入
 
-	if (cutsceneTimer_ < kDiveDuration)
+	if (cutsceneTimer_ < kPhase1Duration)
 	{
-		// === フェーズ1: 自機とカメラが一緒に上空前方から急降下（止まらず前進！） ===
-		float t = cutsceneTimer_ / kDiveDuration; // 0.0 -> 1.0
-		// S字イージング (SmoothStep)
-		float u = t * t * (3.0f - 2.0f * t);
+		// =========================================================================
+		// === Phase 1 (0.0s〜1.70s): 地形マテリアライズ（仮想空間の形成をじっくり見せる） ===
+		// =========================================================================
+		float t = cutsceneTimer_ / kPhase1Duration; // 0.0 -> 1.0
+		float u = t * t * (3.0f - 2.0f * t); // SmoothStep
+		terrainMaterializeProgress_ = u;
 
-		// 自機の位置: 高度45m -> 0m、前方28m -> 0m（前空からグイーンと滑空進入）
-		float pY = 45.0f * (1.0f - u);
-		float pZ = 28.0f * (1.0f - u);
-		float pX = std::sinf(t * 3.14159265f) * 1.5f; // 左右にわずかにバンク
-		Vector3 playerPos = { pX, pY, pZ };
-
-		// 自機の回転: ピッチ（機首下げ -0.38rad -> 水平 0.0rad）、ロール
-		float pitch = -0.38f * (1.0f - u);
-		float roll = std::sinf(t * 3.14159265f) * 0.18f;
-		Vector3 playerRot = { pitch, 0.0f, roll };
-
-		if (player_)
+		// 地形オブジェクト・障害物に進行度を反映（シェーダー側で手前から奥850mへ光の波が走る）
+		for (auto& model : modelInstances)
 		{
-			player_->SetCutsceneOverride(true, playerPos, playerRot);
+			if (model) model->SetColor({ 1.0f, 1.0f, 1.0f, terrainMaterializeProgress_ });
+		}
+		for (auto& obstacle : obstacles_)
+		{
+			if (obstacle && obstacle->GetObject3d())
+			{
+				obstacle->GetObject3d()->SetColor({ 1.0f, 1.0f, 1.0f, terrainMaterializeProgress_ });
+			}
 		}
 
-		// カメラ位置: 自機の右横・やや斜め後ろに並走し、機体と共に一緒に下降する！
-		Vector3 camPos = {
-			playerPos.x + 8.5f,
-			playerPos.y + 1.2f,
-			playerPos.z - 3.5f
-		};
-		// 注視点は自機と前方の飛行空間
-		Vector3 lookTarget = { playerPos.x, playerPos.y, playerPos.z + 3.0f };
+		// 自機はまだ未出現（完全透明）
+		playerReconstructAlpha_ = 0.0f;
+		if (player_)
+		{
+			player_->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
+			player_->SetCutsceneOverride(true, { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f });
+		}
 
+		// カメラ：地面スレスレ至近から徐々に上昇・前進しながら、前方のビル群と地平線を見渡す壮大なクレーンアップ！
+		Vector3 camPos = {
+			2.0f + u * 1.6f,
+			0.45f + u * 2.15f,
+			-12.0f + u * 8.5f
+		};
+		Vector3 lookTarget = {
+			0.0f,
+			1.5f + u * 3.0f,
+			35.0f + u * 10.0f
+		};
 		if (railCameraController_)
 		{
 			railCameraController_->SetCinematicCamera(true, camPos, lookTarget, 1.0f);
 		}
 	}
-	else if (cutsceneTimer_ < kDiveDuration + kDockDuration)
+	else if (cutsceneTimer_ < kPhase1Duration + kPhase2Duration)
 	{
-		// === フェーズ2: 水平復帰＆カメラが横から背後へ滑らかに回り込み ===
-		float t2 = (cutsceneTimer_ - kDiveDuration) / kDockDuration; // 0.0 -> 1.0
-		float s = t2 * t2 * (3.0f - 2.0f * t2); // SmoothStep
-
-		// 自機はレール基準位置（0, 0, 0）で水平巡航
-		Vector3 playerPos = { 0.0f, 0.0f, 0.0f };
-		Vector3 playerRot = { 0.0f, 0.0f, 0.0f };
-		if (player_)
+		// =========================================================================
+		// === Phase 2 (1.70s〜2.90s): 自機リコンストラクト（ポリゴン集束＆実体化＆バーニア点火） ===
+		// =========================================================================
+		// 地形形成は完了（通常表示）
+		terrainMaterializeProgress_ = 1.0f;
+		for (auto& model : modelInstances)
 		{
-			player_->SetCutsceneOverride(true, playerPos, playerRot);
+			if (model) model->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+		}
+		for (auto& obstacle : obstacles_)
+		{
+			if (obstacle && obstacle->GetObject3d())
+			{
+				obstacle->GetObject3d()->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+			}
 		}
 
-		// カメラの回り込み軌道:
-		// 始点 P0: 自機横・やや後方 { 8.5f, 1.2f, -3.5f }
-		// 経由点 P1: 自機斜め後ろ { 5.0f, 2.0f, -6.0f }
+		float tPhase2 = (cutsceneTimer_ - kPhase1Duration); // 0.0 -> 1.20s
+		const float kReconstructTime = 0.85f; // 2.20s〜3.05s（0.85秒）で自機ポリゴン集束＆逆ディゾルブ実体化
+
+		if (tPhase2 < kReconstructTime)
+		{
+			// --- 三角形プリズムの高速集束（インプロージョン）＆ 自機パズル型実体化 ---
+			float tRec = tPhase2 / kReconstructTime; // 0.0 -> 1.0
+
+			// 【演出順序の決定版】：
+			// 1. 前半〜中盤（0.0〜0.70）：自機は一切出現せず完全透明（虚空）！
+			//    四方八方から64個の三角形プリズムが激しくスピンしながら中心へと猛烈に集結！
+			// 2. 終盤（0.70〜0.95）：プリズムがパーツ位置へとギュッと集まりきった瞬間、
+			//    閃光とともに自機がパズルのように急激に実体化して出現！
+			// 3. 完成（0.95〜1.00）：すべてのプリズムが機体装甲へ同化・吸収され、完全実体化！
+			if (tRec >= 0.70f)
+			{
+				float subT = (tRec - 0.70f) / 0.25f;
+				float alphaT = std::clamp(subT, 0.0f, 1.0f);
+				// 鋭く立ち上がるイージングで機体が出現
+				playerReconstructAlpha_ = alphaT * alphaT * (3.0f - 2.0f * alphaT);
+			}
+			else
+			{
+				playerReconstructAlpha_ = 0.0f; // 集束完了直前までは影も形もない完全透明！
+			}
+
+			if (player_)
+			{
+				player_->SetColor({ 1.0f, 1.0f, 1.0f, playerReconstructAlpha_ });
+				player_->SetCutsceneOverride(true, { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f });
+				player_->Update3DObjectOnly(); // 親オブジェクト（自機）のワールド行列を最新化！
+			}
+
+			// 64個の三角形プリズムの座標・姿勢更新（空間全方位から中心へ向かって吸入）
+			for (size_t i = 0; i < reconstructShards_.size(); ++i)
+			{
+				auto& shard = reconstructShards_[i];
+				if (!shard.object) continue;
+
+				// 破片ごとに時間差（ディレイ 0.0〜0.14s）を設けて有機的に集束
+				float shardDelay = (i % 8) * 0.018f;
+				// 0.80sまでに全破片が目標位置に到達するように規格化
+				float shardProgress = std::clamp((tRec - shardDelay) / (0.80f - shardDelay), 0.0f, 1.0f);
+
+				// 【キュッと吸い込まれるインプロージョン急加速イージング】：
+				// 0.15までタメ、その後パーツ地点へ向かって3.5次急加速で「キュッ！」と一気に吸入！
+				float convergeT = 0.0f;
+				if (shardProgress > 0.15f)
+				{
+					float subT = (shardProgress - 0.15f) / 0.85f;
+					convergeT = std::pow(subT, 3.5f);
+				}
+
+				// 開始位置から目標パーツ位置へ補間
+				Vector3 currentPos = {
+					shard.startPos.x + (shard.targetPos.x - shard.startPos.x) * convergeT,
+					shard.startPos.y + (shard.targetPos.y - shard.startPos.y) * convergeT,
+					shard.startPos.z + (shard.targetPos.z - shard.startPos.z) * convergeT
+				};
+
+				// 【パズル・スナップ回転】：
+				// 破片が空間にある間は高速ランダム回転
+				// 機体パーツへ吸い込まれる（shardProgress > 0.55）と回転が急制動され、
+				// 自機パーツの姿勢（0, 0, 0）へカチッと吸着スナップ！
+				shard.rotation.x += shard.rotSpeed.x * dt;
+				shard.rotation.y += shard.rotSpeed.y * dt;
+				shard.rotation.z += shard.rotSpeed.z * dt;
+
+				Vector3 currentRot = shard.rotation;
+				if (shardProgress > 0.55f)
+				{
+					float snapT = std::clamp((shardProgress - 0.55f) / 0.38f, 0.0f, 1.0f);
+					float snapSmooth = snapT * snapT * (3.0f - 2.0f * snapT); // SmoothStep
+					currentRot.x = currentRot.x * (1.0f - snapSmooth);
+					currentRot.y = currentRot.y * (1.0f - snapSmooth);
+					currentRot.z = currentRot.z * (1.0f - snapSmooth);
+				}
+
+				// スケール：出現時は瞬時にフル展開し、自機パーツに合体・同化する瞬間（shardProgress > 0.85f）に機体へ吸収
+				float appearT = std::clamp(shardProgress / 0.08f, 0.0f, 1.0f);
+				float shardScale = (appearT * appearT * (3.0f - 2.0f * appearT)) * shard.scale.x;
+				if (shardProgress > 0.85f)
+				{
+					float absorbT = (shardProgress - 0.85f) / 0.15f;
+					shardScale *= (1.0f - absorbT * absorbT);
+				}
+
+				shard.object->SetCamera(activeCamera_);
+				shard.object->SetScale({ shardScale, shardScale, shardScale });
+				shard.object->SetRotation(currentRot);
+				shard.object->SetTranslate(currentPos);
+				shard.object->Update();
+			}
+
+			// カメラ：自機にグッと寄った迫力あるクローズアップ＆ワイド構図！
+			// 自機が画面の大半を占め、カメラの手前や周囲から巨大な三角形プリズムが飛び交う迫真の映像！
+			float q = tRec * tRec * (3.0f - 2.0f * tRec);
+			Vector3 camPos = {
+				2.6f * (1.0f - q * 0.30f),  // 2.6 -> 1.82
+				1.5f * (1.0f - q * 0.42f),  // 1.5 -> 0.87
+				3.8f * (1.0f - q * 0.32f)   // 3.8 -> 2.58
+			};
+			Vector3 lookTarget = { 0.0f, 0.12f * (1.0f - q * 0.2f), 0.35f * (1.0f - q * 0.7f) };
+			if (railCameraController_)
+			{
+				railCameraController_->SetCinematicCamera(true, camPos, lookTarget, 1.0f);
+			}
+		}
+		else
+		{
+			// --- 自機復元完了後のバーニア点火＆待機フェーズ（3.05s〜3.40s） ---
+			playerReconstructAlpha_ = 1.0f;
+			if (player_)
+			{
+				player_->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+				player_->SetCutsceneOverride(true, { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f });
+
+				// 自機集束完了（kPhase1Duration + kReconstructTime）でバーニア点火！
+				const float kBoosterIgnitionTime = kPhase1Duration + kReconstructTime;
+				if (cutsceneTimer_ >= kBoosterIgnitionTime)
+				{
+					if (!player_->IsCutsceneBoosting())
+					{
+						player_->SetCutsceneBoosting(true);
+						SoundManager::GetInstance()->PlaySE("powerup.mp3", 0.75f);
+					}
+				}
+			}
+
+			// 破片は非表示
+			for (auto& shard : reconstructShards_)
+			{
+				if (shard.object) shard.object->SetScale({ 0.0f, 0.0f, 0.0f });
+			}
+
+			// カメラ：自機正面斜め前から力強く機体を捉える（前フェーズからシームレス接続）
+			Vector3 camPos = { 1.82f, 0.87f, 2.58f };
+			Vector3 lookTarget = { 0.0f, 0.10f, 0.10f };
+			if (railCameraController_)
+			{
+				railCameraController_->SetCinematicCamera(true, camPos, lookTarget, 1.0f);
+			}
+		}
+	}
+	else if (cutsceneTimer_ < kPhase1Duration + kPhase2Duration + kPhase3Duration)
+	{
+		// =========================================================================
+		// === Phase 3 (2.90s〜3.80s): カメラが斜め前から背後へ滑らかに回り込み ===
+		// =========================================================================
+		float tPhase3 = (cutsceneTimer_ - (kPhase1Duration + kPhase2Duration)) / kPhase3Duration; // 0.0 -> 1.0
+		float s = tPhase3 * tPhase3 * (3.0f - 2.0f * tPhase3); // SmoothStep
+
+		// 自機はバーニア全開で前進態勢を維持
+		if (player_)
+		{
+			player_->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+			player_->SetCutsceneBoosting(true);
+			player_->SetCutsceneOverride(true, { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f });
+		}
+
+		// カメラの回り込み軌道（2次ベジェ曲線）:
+		// 始点 P0: 自機斜め前至近 { 2.2f, 0.8f, 3.8f }
+		// 経由点 P1: 自機右横・斜め後ろ { 5.8f, 2.2f, -2.0f }
 		// 終点 P2: 通常カメラ位置 { 0.0f, 2.5f, -8.0f }
-		// 2次ベジェ曲線: P(s) = (1-s)^2 * P0 + 2*(1-s)*s * P1 + s^2 * P2
-		Vector3 p0 = { 8.5f, 1.2f, -3.5f };
-		Vector3 p1 = { 5.0f, 2.0f, -6.0f };
+		Vector3 p0 = { 2.2f, 0.8f, 3.8f };
+		Vector3 p1 = { 5.8f, 2.2f, -2.0f };
 		Vector3 p2 = { 0.0f, 2.5f, -8.0f };
 
 		float invS = 1.0f - s;
@@ -3615,18 +4055,22 @@ void GamePlayScene::UpdateOpeningCutscene(float dt)
 			invS * invS * p0.z + 2.0f * invS * s * p1.z + s * s * p2.z
 		};
 
-		// ブレンド率: 1.0 -> 0.0 （背後に回り込みながら通常カメラの姿勢へ完全融合）
+		// ブレンド率: 1.0 -> 0.0（背後に回り込みながら通常カメラの姿勢へ完全同期）
 		float blend = 1.0f - s;
 		if (railCameraController_)
 		{
-			railCameraController_->SetCinematicCamera(true, camPos, playerPos, blend);
+			railCameraController_->SetCinematicCamera(true, camPos, { 0.0f, 0.0f, 0.0f }, blend);
 		}
 	}
 	else
 	{
-		// === フェーズ3: 背後通常視点に合流完了（直後に操作解禁） ===
+		// =========================================================================
+		// === Phase 4 (3.80s〜4.20s): 背後通常視点に完全合流（直後に操作解禁） ===
+		// =========================================================================
 		if (player_)
 		{
+			player_->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+			player_->SetCutsceneBoosting(true);
 			player_->SetCutsceneOverride(true, { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f });
 		}
 		if (railCameraController_)
@@ -3957,13 +4401,13 @@ void GamePlayScene::DrawCutsceneUI()
 
 	if (gamePhase_ == GamePhase::START_CUTSCENE)
 	{
-		if (cutsceneTimer_ < 0.3f)
+		if (cutsceneTimer_ < 0.30f)
 		{
-			barHeight = barHeightMax * (cutsceneTimer_ / 0.3f);
+			barHeight = barHeightMax * (cutsceneTimer_ / 0.30f);
 		}
-		else if (cutsceneTimer_ >= 2.6f)
+		else if (cutsceneTimer_ >= (kCutsceneDuration - 0.50f))
 		{
-			float t = (cutsceneTimer_ - 2.6f) / 0.4f;
+			float t = (cutsceneTimer_ - (kCutsceneDuration - 0.50f)) / 0.50f;
 			barHeight = barHeightMax * (1.0f - std::clamp(t, 0.0f, 1.0f));
 		}
 		else
@@ -3984,12 +4428,33 @@ void GamePlayScene::DrawCutsceneUI()
 		drawList->AddRectFilled(ImVec2(viewPos.x, viewPos.y + screenH - barHeight), ImVec2(viewPos.x + screenW, viewPos.y + screenH), IM_COL32(0, 0, 0, 255));
 	}
 
-	// カットシーン中のみスキップ案内（ゲーム画面右下）＋タイトル空間破壊からの開幕白フラッシュ減衰
+	// カットシーン中のみスキップ案内（ゲーム画面右下）
 	if (gamePhase_ == GamePhase::START_CUTSCENE)
 	{
-
 		const char* skipText = "[SPACE] SKIP";
 		drawList->AddText(ImVec2(viewPos.x + screenW - 140.0f * scale, viewPos.y + screenH - barHeight - 30.0f * scale), IM_COL32(200, 200, 200, 180), skipText);
+
+		// サイバーHUDステータス表示（左下レターボックス上）
+		char statusBuf[64];
+		if (cutsceneTimer_ < 1.70f)
+		{
+			float p = std::clamp(cutsceneTimer_ / 1.70f * 100.0f, 0.0f, 100.0f);
+			snprintf(statusBuf, sizeof(statusBuf), "GRID INITIALIZE: %3.0f%%", p);
+		}
+		else if (cutsceneTimer_ < 2.50f)
+		{
+			float p = std::clamp((cutsceneTimer_ - 1.70f) / 0.80f * 100.0f, 0.0f, 100.0f);
+			snprintf(statusBuf, sizeof(statusBuf), "VESSEL MATERIALIZING: %3.0f%%", p);
+		}
+		else if (cutsceneTimer_ < 3.20f)
+		{
+			snprintf(statusBuf, sizeof(statusBuf), "ALL SYSTEMS ONLINE");
+		}
+		else
+		{
+			snprintf(statusBuf, sizeof(statusBuf), "COMBAT MODE ENGAGED");
+		}
+		drawList->AddText(ImVec2(viewPos.x + 30.0f * scale, viewPos.y + screenH - barHeight - 30.0f * scale), IM_COL32(80, 220, 255, 210), statusBuf);
 	}
 
 	auto imguiManager = EngineServices::GetInstance()->GetImGuiManager();
@@ -4044,9 +4509,9 @@ void GamePlayScene::DrawCutsceneUI()
 	};
 
 	// 演出中のテキスト表示（UITextManagerの登録プロパティを参照）
-	if (gamePhase_ == GamePhase::START_CUTSCENE && cutsceneTimer_ >= 1.8f && cutsceneTimer_ < 2.5f)
+	if (gamePhase_ == GamePhase::START_CUTSCENE && cutsceneTimer_ >= 2.50f && cutsceneTimer_ < 3.20f)
 	{
-		float t = (cutsceneTimer_ - 1.8f) / 0.7f;
+		float t = (cutsceneTimer_ - 2.50f) / 0.70f;
 		float alpha = std::clamp(std::sinf(t * 3.14159265f), 0.0f, 1.0f);
 
 		const UITextItem* readyItem = textMgr ? textMgr->GetTextItem("CutsceneReady", "GAMEPLAY") : nullptr;
@@ -4055,7 +4520,7 @@ void GamePlayScene::DrawCutsceneUI()
 			renderTextItem(readyItem, alpha);
 		}
 	}
-	else if ((gamePhase_ == GamePhase::START_CUTSCENE && cutsceneTimer_ >= 2.5f) || (gamePhase_ == GamePhase::PLAYING && missionStartTextTimer_ > 0.0f))
+	else if ((gamePhase_ == GamePhase::START_CUTSCENE && cutsceneTimer_ >= 3.20f) || (gamePhase_ == GamePhase::PLAYING && missionStartTextTimer_ > 0.0f))
 	{
 		float alpha = 1.0f;
 		if (gamePhase_ == GamePhase::PLAYING)
@@ -4789,8 +5254,6 @@ void GamePlayScene::StartBossWarningSequence()
 	bossWarningSirenTimer_ = 0.0f;
 	cameraShakeTimer_ = 0.6f;
 
-	// アラーム音の再生
-	SoundManager::GetInstance()->PlaySE("Alarm01.wav", 0.85f);
 
 	// ボスをレール上の前方に出現スタンバイ
 	if (armoredTrainBoss_)
@@ -5220,4 +5683,197 @@ void GamePlayScene::SaveBossSettings()
 	}
 
 	file << root.dump(4);
+}
+
+void GamePlayScene::UpdatePauseMenu()
+{
+	auto sceneManager = GetSceneManager();
+	if (sceneManager && sceneManager->IsTransitioning()) return;
+
+	auto input = EngineServices::GetInstance()->GetInput();
+	if (!input) return;
+
+	// カーソル移動（上）
+	bool upTrigger = input->TriggerKey(DIK_W) || input->TriggerKey(DIK_UP) || input->TriggerPadButton(XINPUT_GAMEPAD_DPAD_UP);
+	// カーソル移動（下）
+	bool downTrigger = input->TriggerKey(DIK_S) || input->TriggerKey(DIK_DOWN) || input->TriggerPadButton(XINPUT_GAMEPAD_DPAD_DOWN);
+
+	if (upTrigger)
+	{
+		int opt = static_cast<int>(pauseSelectedOption_);
+		opt = (opt - 1 + 3) % 3;
+		pauseSelectedOption_ = static_cast<PauseMenuOption>(opt);
+		SoundManager::GetInstance()->PlaySE("select.mp3", 0.6f);
+	}
+	else if (downTrigger)
+	{
+		int opt = static_cast<int>(pauseSelectedOption_);
+		opt = (opt + 1) % 3;
+		pauseSelectedOption_ = static_cast<PauseMenuOption>(opt);
+		SoundManager::GetInstance()->PlaySE("select.mp3", 0.6f);
+	}
+
+	// 決定（SPACE / ENTER / Aボタン）
+	if (input->TriggerKey(DIK_SPACE) || input->TriggerKey(DIK_RETURN) || input->TriggerPadButton(XINPUT_GAMEPAD_A))
+	{
+		SoundManager::GetInstance()->PlaySE("button.mp3", 0.7f);
+		switch (pauseSelectedOption_)
+		{
+		case PauseMenuOption::Resume:
+			isPaused_ = false;
+			break;
+		case PauseMenuOption::Retry:
+			isPaused_ = false;
+			if (sceneManager) sceneManager->ChangeScene("GAMEPLAY", 0.5f);
+			break;
+		case PauseMenuOption::Title:
+			isPaused_ = false;
+			if (sceneManager) sceneManager->ChangeScene("TITLE", 0.6f);
+			break;
+		}
+	}
+	// キャンセル／再開（Bボタン）
+	else if (input->TriggerPadButton(XINPUT_GAMEPAD_B))
+	{
+		SoundManager::GetInstance()->PlaySE("button.mp3", 0.5f);
+		isPaused_ = false;
+	}
+}
+
+void GamePlayScene::DrawPauseUI()
+{
+#ifdef USE_IMGUI
+	if (!isPaused_) return;
+
+	if (ImGui::GetCurrentContext() == nullptr) return;
+	ImGuiViewport* viewport = ImGui::GetMainViewport();
+	if (!viewport) return;
+	ImDrawList* drawList = ImGui::GetForegroundDrawList(viewport);
+	if (!drawList) return;
+
+	ImVec2 viewPos(0.0f, 0.0f);
+	ImVec2 viewSize = viewport->Size;
+#ifdef ENABLE_EDITOR
+	if (EngineServices::GetInstance()->GetEditorMode())
+	{
+		viewPos = EditorSystem::GetInstance()->GetViewportPos();
+		viewSize = EditorSystem::GetInstance()->GetViewportSize();
+		if (viewSize.x <= 10.0f || viewSize.y <= 10.0f) return;
+	}
+#endif
+
+	float screenW = viewSize.x;
+	float screenH = viewSize.y;
+	float scale = std::min(screenW / 1280.0f, screenH / 720.0f);
+	if (scale < 0.35f) scale = 0.35f;
+
+	drawList->PushClipRect(viewPos, ImVec2(viewPos.x + screenW, viewPos.y + screenH), true);
+
+	// 1. 画面全体のサイバーダーク半透明オーバーレイ
+	drawList->AddRectFilled(viewPos, ImVec2(viewPos.x + screenW, viewPos.y + screenH), IM_COL32(3, 10, 16, 215));
+
+	// 2. 中央ポーズダイアログパネル
+	float panelW = 440.0f * scale;
+	float panelH = 340.0f * scale;
+	float centerX = viewPos.x + screenW * 0.5f;
+	float centerY = viewPos.y + screenH * 0.5f;
+	ImVec2 panelMin(centerX - panelW * 0.5f, centerY - panelH * 0.5f);
+	ImVec2 panelMax(centerX + panelW * 0.5f, centerY + panelH * 0.5f);
+
+	// パネル背景（ディープティールグラデーション）
+	drawList->AddRectFilled(panelMin, panelMax, IM_COL32(6, 20, 26, 240), 6.0f * scale);
+	// パネル外枠（鮮やかなサイバーシアン）
+	drawList->AddRect(panelMin, panelMax, IM_COL32(0, 230, 210, 220), 6.0f * scale, 0, 2.2f * scale);
+
+	// 四隅のサイバーL字ブラケット
+	float cornerLen = 14.0f * scale;
+	float cThick = 3.0f * scale;
+	ImU32 cornerCol = IM_COL32(255, 235, 45, 255); // ゴールドコーナー
+	// 左上
+	drawList->AddLine(panelMin, ImVec2(panelMin.x + cornerLen, panelMin.y), cornerCol, cThick);
+	drawList->AddLine(panelMin, ImVec2(panelMin.x, panelMin.y + cornerLen), cornerCol, cThick);
+	// 右上
+	drawList->AddLine(ImVec2(panelMax.x, panelMin.y), ImVec2(panelMax.x - cornerLen, panelMin.y), cornerCol, cThick);
+	drawList->AddLine(ImVec2(panelMax.x, panelMin.y), ImVec2(panelMax.x, panelMin.y + cornerLen), cornerCol, cThick);
+	// 左下
+	drawList->AddLine(ImVec2(panelMin.x, panelMax.y), ImVec2(panelMin.x + cornerLen, panelMax.y), cornerCol, cThick);
+	drawList->AddLine(ImVec2(panelMin.x, panelMax.y), ImVec2(panelMin.x, panelMax.y - cornerLen), cornerCol, cThick);
+	// 右下
+	drawList->AddLine(panelMax, ImVec2(panelMax.x - cornerLen, panelMax.y), cornerCol, cThick);
+	drawList->AddLine(panelMax, ImVec2(panelMax.x, panelMax.y - cornerLen), cornerCol, cThick);
+
+	auto imguiManager = EngineServices::GetInstance()->GetImGuiManager();
+	ImFont* font = imguiManager ? imguiManager->GetFont(ImGuiManager::FontType::Default) : ImGui::GetFont();
+	if (!font) font = ImGui::GetFont();
+
+	// テキスト描画ヘルパーラムダ
+	auto DrawCenteredText = [&](const char* text, float y, float size, ImU32 col, bool shadow) {
+		ImVec2 tSize = font->CalcTextSizeA(size, FLT_MAX, -1.0f, text);
+		ImVec2 tPos(centerX - tSize.x * 0.5f, y);
+		if (shadow)
+		{
+			float o = 1.6f * scale;
+			drawList->AddText(font, size, ImVec2(tPos.x - o, tPos.y), IM_COL32(0, 0, 0, 240), text);
+			drawList->AddText(font, size, ImVec2(tPos.x + o, tPos.y), IM_COL32(0, 0, 0, 240), text);
+			drawList->AddText(font, size, ImVec2(tPos.x, tPos.y - o), IM_COL32(0, 0, 0, 240), text);
+			drawList->AddText(font, size, ImVec2(tPos.x, tPos.y + o), IM_COL32(0, 0, 0, 240), text);
+		}
+		drawList->AddText(font, size, tPos, col, text);
+	};
+
+	// 3. タイトルテキスト「PAUSE」
+	float titleY = panelMin.y + 24.0f * scale;
+	DrawCenteredText("PAUSE", titleY, 36.0f * scale, IM_COL32(255, 255, 255, 255), true);
+
+	// サブタイトル「MISSION SUSPENDED」
+	float subY = titleY + 38.0f * scale;
+	DrawCenteredText("- MISSION SUSPENDED -", subY, 14.0f * scale, IM_COL32(0, 235, 195, 200), true);
+
+	// 区切り線
+	float lineY = subY + 22.0f * scale;
+	drawList->AddLine(ImVec2(panelMin.x + 30.0f * scale, lineY), ImVec2(panelMax.x - 30.0f * scale, lineY), IM_COL32(0, 180, 160, 120), 1.2f * scale);
+
+	// 4. メニュー選択肢
+	const char* options[3] = { "RESUME", "RETRY", "TITLE" };
+	float menuStartY = lineY + 26.0f * scale;
+	float itemSpacing = 42.0f * scale;
+
+	for (int i = 0; i < 3; ++i)
+	{
+		bool isSelected = (static_cast<int>(pauseSelectedOption_) == i);
+		float itemY = menuStartY + i * itemSpacing;
+
+		if (isSelected)
+		{
+			// 選択中ハイライトバー
+			float barW = panelW * 0.72f;
+			float barH = 30.0f * scale;
+			drawList->AddRectFilled(
+				ImVec2(centerX - barW * 0.5f, itemY - 2.0f * scale),
+				ImVec2(centerX + barW * 0.5f, itemY + barH - 2.0f * scale),
+				IM_COL32(255, 215, 0, 45), 4.0f * scale
+			);
+			drawList->AddRect(
+				ImVec2(centerX - barW * 0.5f, itemY - 2.0f * scale),
+				ImVec2(centerX + barW * 0.5f, itemY + barH - 2.0f * scale),
+				IM_COL32(255, 225, 45, 180), 4.0f * scale, 0, 1.4f * scale
+			);
+
+			// 選択中テキスト（ゴールド発光 ＋ インジケーター）
+			std::string label = std::string(">  ") + options[i] + "  <";
+			DrawCenteredText(label.c_str(), itemY, 22.0f * scale, IM_COL32(255, 235, 45, 255), true);
+		}
+		else
+		{
+			// 非選択テキスト（クールシルバー）
+			DrawCenteredText(options[i], itemY, 20.0f * scale, IM_COL32(180, 205, 215, 180), true);
+		}
+	}
+
+	// 5. 下部操作ガイド
+	float guideY = panelMax.y - 32.0f * scale;
+	DrawCenteredText("[W / S] SELECT   [SPACE / A] DECIDE   [ESC / START / B] RESUME", guideY, 11.5f * scale, IM_COL32(140, 175, 185, 170), false);
+
+	drawList->PopClipRect();
+#endif
 }
