@@ -23,12 +23,12 @@ void PostProcess::Initialize(DirectXCommon* dxcommon)
 	CreateRootSignature();
 	CreateGraphicsPipeline();
 
-	// ポストプロセス用のSRVは後ろの方の番号を固定で使う（既存テクスチャとの競合を避けるため）
-	srvIndex_ = 510;
-	resultSrvIndex_ = 511;
+	// ポストプロセス用のSRVをSrvManagerから安全に割り当て
+	SrvManager* srvManager = SrvManager::GetInstance();
+	srvIndex_ = srvManager->Allocate();
+	resultSrvIndex_ = srvManager->Allocate();
 
 	// RenderTextureのSRV作成
-	SrvManager* srvManager = SrvManager::GetInstance();
 	srvManager->CreateSRVforTexture2D(srvIndex_, dxCommon_->GetRenderTextureResource().Get(), DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, 1);
 	// 書き込み先（結果）テクスチャのSRV作成
 	srvManager->CreateSRVforTexture2D(resultSrvIndex_, dxCommon_->GetPostProcessTextureResource().Get(), DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, 1);

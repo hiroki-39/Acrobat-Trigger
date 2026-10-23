@@ -4,6 +4,7 @@
 #include <dxgidebug.h>
 #include <vector>
 #include <cstring>
+#include <utility>
 
 using Microsoft::WRL::ComPtr;
 
@@ -66,8 +67,74 @@ static D3D12_BLEND_DESC MakeBlendDescForMode(BlendMode mode)
 	return desc;
 }
 
+ParticleRenderer::~ParticleRenderer()
+{
+	Finalize();
+}
+
+void ParticleRenderer::Finalize()
+{
+	if (srvManager_ && instancingSrvIndex_ != UINT32_MAX)
+	{
+		srvManager_->Free(instancingSrvIndex_);
+		instancingSrvIndex_ = UINT32_MAX;
+	}
+	instancingResource_.Reset();
+	instancingData_ = nullptr;
+	vertexResource_.Reset();
+	vertexBufferView_ = {};
+	vertexCount_ = 0;
+	vertexStride_ = 0;
+	materialResource_.Reset();
+	materialData_ = nullptr;
+	materialCBVAddress_ = 0;
+	rootSignature_.Reset();
+	psoForBlendMode_.clear();
+	dxCommon_ = nullptr;
+	srvManager_ = nullptr;
+	maxInstances_ = 0;
+}
+
+ParticleRenderer::ParticleRenderer(ParticleRenderer&& other) noexcept
+{
+	*this = std::move(other);
+}
+
+ParticleRenderer& ParticleRenderer::operator=(ParticleRenderer&& other) noexcept
+{
+	if (this != &other)
+	{
+		Finalize();
+		dxCommon_ = other.dxCommon_;
+		srvManager_ = other.srvManager_;
+		rootSignature_ = std::move(other.rootSignature_);
+		psoForBlendMode_ = std::move(other.psoForBlendMode_);
+		instancingSrvIndex_ = other.instancingSrvIndex_;
+		instancingResource_ = std::move(other.instancingResource_);
+		instancingData_ = other.instancingData_;
+		vertexResource_ = std::move(other.vertexResource_);
+		vertexBufferView_ = other.vertexBufferView_;
+		vertexCount_ = other.vertexCount_;
+		vertexStride_ = other.vertexStride_;
+		materialResource_ = std::move(other.materialResource_);
+		materialData_ = other.materialData_;
+		materialCBVAddress_ = other.materialCBVAddress_;
+		maxInstances_ = other.maxInstances_;
+
+		other.dxCommon_ = nullptr;
+		other.srvManager_ = nullptr;
+		other.instancingSrvIndex_ = UINT32_MAX;
+		other.instancingData_ = nullptr;
+		other.materialData_ = nullptr;
+		other.materialCBVAddress_ = 0;
+		other.maxInstances_ = 0;
+	}
+	return *this;
+}
+
 void ParticleRenderer::Initialize(DirectXCommon* dxCommon, SrvManager* srvManager, uint32_t maxInstances)
 {
+	Finalize();
 	assert(dxCommon != nullptr);
 	assert(srvManager != nullptr);
 	dxCommon_ = dxCommon;

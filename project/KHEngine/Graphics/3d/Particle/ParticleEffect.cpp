@@ -16,8 +16,7 @@ void ParticleEffect::Initialize(DirectXCommon* dxCommon, SrvManager* srvManager)
     // フォルダ作成
     std::filesystem::create_directories("resources/json/particles");
     
-    // デフォルトの読み込みを試みる
-    LoadFromJson("default_effect.json");
+    // 初期ロードは各シーンで必要なjsonを明示的に呼び出すためここでは行わない
 }
 
 void ParticleEffect::AddNode(const std::string& name, int shapeType)

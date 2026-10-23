@@ -11,6 +11,18 @@ class ParticleRenderer
 {
 public:
 	ParticleRenderer() = default;
+	~ParticleRenderer();
+
+	// コピー禁止（二重解放防止）
+	ParticleRenderer(const ParticleRenderer&) = delete;
+	ParticleRenderer& operator=(const ParticleRenderer&) = delete;
+
+	// ムーブ対応
+	ParticleRenderer(ParticleRenderer&& other) noexcept;
+	ParticleRenderer& operator=(ParticleRenderer&& other) noexcept;
+
+	// 明示的解放
+	void Finalize();
 
 	// 初期化：DX と SRV 管理、インスタンス数を指定
 	void Initialize(DirectXCommon* dxCommon, SrvManager* srvManager, uint32_t maxInstances);
@@ -66,4 +78,3 @@ private:
 
 	uint32_t maxInstances_ = 0;
 };
-

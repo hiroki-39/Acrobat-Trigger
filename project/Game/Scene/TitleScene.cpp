@@ -16,6 +16,7 @@
 #include "KHEngine/Graphics/PostProcess/PostProcess.h"
 #include "KHEngine/Sound/Core/SoundManager.h"
 #include "externals/imgui/imgui.h"
+#include "KHEngine/UI/UITextManager.h"
 #include "externals/nlohmann/json.hpp"
 #include "KHEngine/Scene/LevelLoader.h"
 #include "KHEngine/Core/Resource/ResourceLocator.h"
@@ -366,6 +367,10 @@ void TitleScene::Initialize()
     isDiving_ = false;
     diveTimer_ = 0.0f;
     demoTimer_ = 0.0f;
+    promptBlinkTimer_ = 0.0f;
+    if (auto uiText = UITextManager::GetInstance()) {
+        uiText->SetVisible("StartPrompt", true, "TITLE");
+    }
     flightProgressZ_ = 0.0f;
     dissolveProgress_ = 0.0f;
     polyShards3D_.clear();
@@ -536,6 +541,12 @@ void TitleScene::TriggerStartTransition(bool isPreview)
 {
     if (isDiving_) return;
 
+    // 決定ボタン押下により、決定ボタンUIを即座に非表示（消去）
+    if (auto uiText = UITextManager::GetInstance())
+    {
+        uiText->SetVisible("StartPrompt", false, "TITLE");
+    }
+
     auto services = Services();
     if (services)
     {
@@ -595,6 +606,31 @@ void TitleScene::Update()
     bool isPlaying = true;
 #endif
     const float dt = isPlaying ? (1.0f / 60.0f) : 0.0f;
+
+    // -------------------------------------------------------------
+    // 決定ボタンUI（StartPrompt）のアーケード風滑らか点滅演出 ＆ 決定時非表示制御
+    // -------------------------------------------------------------
+    if (auto uiText = UITextManager::GetInstance())
+    {
+        if (!isDiving_)
+        {
+            promptBlinkTimer_ += dt;
+            // アーケードゲーム風の滑らかな明滅（サイン波によるパルス: 0.12f 〜 1.0f）
+            float wave = sinf(promptBlinkTimer_ * 4.0f); // 約1.57秒周期でゆったり心地よい明滅
+            float alpha = wave * 0.44f + 0.56f;          // 0.12f 〜 1.00f
+            float brightness = wave * 0.20f + 0.80f;     // 明るさのゆらぎ
+
+            uiText->SetVisible("StartPrompt", true, "TITLE");
+            // 基本色: サイバーシアン { 0.35f, 0.88f, 1.0f } に滑らかなアルファと発光色を反映
+            Vector4 promptCol = { 0.35f * brightness, 0.88f * brightness, 1.0f * brightness, alpha };
+            uiText->SetColor("StartPrompt", promptCol, "TITLE");
+        }
+        else
+        {
+            // 決定ボタン押下中（出撃・ダイブ演出中）は文字を完全に非表示
+            uiText->SetVisible("StartPrompt", false, "TITLE");
+        }
+    }
 
     // -------------------------------------------------------------
     // デバッグカメラ切り替え（F2キー） / ミュート切り替え（Mキー）
@@ -669,7 +705,6 @@ void TitleScene::Update()
     {
         demoTimer_ = 0.0f;
     }
-
     if (isDecisionPressed && !isDiving_)
     {
         TriggerStartTransition(false); // 通常のゲームプレイ突入
