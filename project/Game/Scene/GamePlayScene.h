@@ -83,8 +83,9 @@ private:
     bool isPlaying_ = true;
 #endif
 
-    // デモプレイ演出用タイマー（一定時間後にタイトルへ戻る）
+    // デモプレイ演出用タイマー（スタート演出完了後にタイトルへ戻る）
     float demoTimer_ = 0.0f;
+    float demoPostIntroDuration_ = 2.0f; // スタート演出終了後、通常飛行を見せる時間（秒）
 
     
     Vector3 currentCameraRot_ = {0.0f, 0.0f, 0.0f};
@@ -209,11 +210,37 @@ private:
     GamePhase gamePhase_ = GamePhase::START_CUTSCENE;
     float cutsceneTimer_ = 0.0f;
     float missionStartTextTimer_ = 0.0f;
-    const float kCutsceneDuration = 3.0f;
+    const float kCutsceneDuration = 4.7f;
+
+    // スタート演出（仮想空間地形形成 ＆ 自機復元マテリアライズ）用データ構造
+    struct ReconstructShard {
+        std::unique_ptr<Object3d> object = nullptr;
+        Vector3 startPos = { 0.0f, 0.0f, 0.0f };
+        Vector3 targetPos = { 0.0f, 0.0f, 0.0f };
+        Vector3 rotation = { 0.0f, 0.0f, 0.0f };
+        Vector3 rotSpeed = { 0.0f, 0.0f, 0.0f };
+        Vector3 scale = { 0.20f, 0.20f, 0.20f };
+        Vector4 color = { 0.3f, 1.0f, 0.9f, 1.0f };
+    };
+    std::vector<ReconstructShard> reconstructShards_;
+    float terrainMaterializeProgress_ = 1.0f;
+    float playerReconstructAlpha_ = 1.0f;
 
     void StartOpeningCutscene();
     void UpdateOpeningCutscene(float dt);
     void DrawCutsceneUI();
+
+    // ポーズメニュー（Pause Menu）
+    enum class PauseMenuOption {
+        Resume = 0,
+        Retry = 1,
+        Title = 2
+    };
+    bool isPaused_ = false;
+    PauseMenuOption pauseSelectedOption_ = PauseMenuOption::Resume;
+    void UpdatePauseMenu();
+    void DrawPauseUI();
+    bool IsPaused() const { return isPaused_; }
 
     // ゲームオーバー演出（GameOver Sequence）
     enum class GameOverStep {

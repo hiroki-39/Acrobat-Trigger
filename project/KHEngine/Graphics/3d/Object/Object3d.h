@@ -144,6 +144,10 @@ public://メンバ関数
 	size_t GetMeshTriangleCount() const { EnsureTriangles(); return triangles_.size(); }
 	void SetCollisionEnabled(bool enable) { isCollisionEnabled_ = enable; }
 	bool IsCollisionEnabled() const { return isCollisionEnabled_; }
+	void SetName(const std::string& name) { name_ = name; }
+	const std::string& GetName() const { return name_; }
+	void SetBackgroundMountain(bool enable) { isBackgroundMountain_ = enable; }
+	bool IsBackgroundMountain() const { return isBackgroundMountain_; }
 
 	// バウンディング球の取得（カリング用）
 	bool GetBoundingSphere(Vector3& outCenter, float& outRadius) const;
@@ -229,5 +233,7 @@ private://メンバ変数
 	mutable bool hasMeshCollider_ = false;
 	mutable bool isTrianglesInitialized_ = false;
 	bool isCollisionEnabled_ = true;
+	std::string name_;
+	bool isBackgroundMountain_ = false;
 	void EnsureTriangles() const;
 };

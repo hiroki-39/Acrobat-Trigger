@@ -104,6 +104,7 @@ private:
     float prop2PreviewProgress_ = 0.65f;           // 一時停止中の演出進行度シークバー (0.0 ~ 1.0)
 
     void TriggerStartTransition(bool isPreview);
+    float promptBlinkTimer_ = 0.0f;
 
     // デモプレイ演出用タイマー・巡航時間設定
     float demoTimer_ = 0.0f;

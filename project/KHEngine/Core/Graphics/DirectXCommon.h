@@ -157,6 +157,11 @@ public://メンバ関数
 	/// </summary>
 	void ExecuteTextureUploadBatch();
 
+	/// <summary>
+	/// スワップチェーンのリサイズ処理 (ウィンドウサイズ変更・フルスクリーン対応)
+	/// </summary>
+	void ResizeSwapChain(uint32_t width, uint32_t height);
+
 	void RegisterSrvManager(class SrvManager* srv);
 
 	// --- Getter ---
@@ -167,6 +172,10 @@ public://メンバ関数
 	WinApp* GetWinApp() const { return winApp; }
 	size_t GetSwapChainResourceNum() const { return swapChainResources.size(); }
 	Microsoft::WRL::ComPtr<ID3D12Resource> GetRenderTextureResource() const { return renderTextureResource_; }
+
+	// スワップチェーンのバックバッファ解像度
+	uint32_t GetBackBufferWidth() const { return backBufferWidth_; }
+	uint32_t GetBackBufferHeight() const { return backBufferHeight_; }
 
 	// PostProcess用のGetter
 	Microsoft::WRL::ComPtr<ID3D12Resource> GetPostProcessTextureResource() const { return postProcessTextureResource_; }
@@ -208,8 +217,11 @@ private://メンバ変数
 	// スワップチェーン
 	Microsoft::WRL::ComPtr<IDXGISwapChain4> swapChain;
 
-
 	DXGI_SWAP_CHAIN_DESC1 swapChainDesc{};
+
+	// スワップチェーンの解像度
+	uint32_t backBufferWidth_ = WinApp::kClientWidth;
+	uint32_t backBufferHeight_ = WinApp::kClientHeight;
 
 	// RTV用のDescriptorSize
 	uint32_t desriptorSizeRTV;

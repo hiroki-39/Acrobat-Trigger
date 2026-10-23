@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include <Windows.h>
 #include <cstdint>
 
@@ -41,9 +41,17 @@ public:
 
 	HINSTANCE GetHInstance() const { return wc.hInstance; }
 
+	// 現在のクライアント領域サイズを取得
+	uint32_t GetClientWidth() const;
+	uint32_t GetClientHeight() const;
+
+	// フルスクリーン切り替え
+	void ToggleFullscreen();
+	bool IsFullscreen() const { return isFullscreen_; }
+
 public://定数
 
-	//クライアント領域のサイズ
+	//クライアント領域のサイズ (基準解像度)
 	static const int32_t kClientWidth = 1280;
 	static const int32_t kClientHeight = 720;
 
@@ -54,5 +62,9 @@ private:
 
 	//ウィンドウクラスの設定
 	WNDCLASS wc{};
+
+	// フルスクリーン管理
+	bool isFullscreen_ = false;
+	WINDOWPLACEMENT windowPlacement_ = { sizeof(windowPlacement_) };
 };
 

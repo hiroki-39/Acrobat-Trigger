@@ -1,4 +1,4 @@
-#include "KHFramework.h"
+﻿#include "KHFramework.h"
 #include <combaseapi.h>
 #include "KHEngine/Core/Graphics/D3DResourceLeakChecker.h"
 #include "KHEngine/Core/Utility/Log/Logger.h"
@@ -108,6 +108,18 @@ void KHFramework::FrameworkUpdate(float deltaTime)
 		return;
 	}
 
+	// ウィンドウサイズ変更を検知してスワップチェーンを自動リサイズ
+	if (winApp_ && dxCommon_)
+	{
+		uint32_t clientW = winApp_->GetClientWidth();
+		uint32_t clientH = winApp_->GetClientHeight();
+		if (clientW > 0 && clientH > 0 &&
+			(clientW != dxCommon_->GetBackBufferWidth() || clientH != dxCommon_->GetBackBufferHeight()))
+		{
+			dxCommon_->ResizeSwapChain(clientW, clientH);
+		}
+	}
+
 #ifdef ENABLE_EDITOR
 	// エフェクトスタジオ・エネミースタジオの更新
 	EffectStudio::GetInstance()->Update(deltaTime);
@@ -118,6 +130,16 @@ void KHFramework::FrameworkUpdate(float deltaTime)
 	if (input_)
 	{
 		input_->Update();
+
+		// F11キー または Alt+Enter でフルスクリーン切り替え
+		bool isAlt = (input_->PushKey(DIK_LALT) || input_->PushKey(DIK_RALT));
+		if (input_->TriggerKey(DIK_F11) || (isAlt && input_->TriggerKey(DIK_RETURN)))
+		{
+			if (winApp_)
+			{
+				winApp_->ToggleFullscreen();
+			}
+		}
 
 #ifdef ENABLE_EDITOR
 		// F1キーでエディタモード（ImGui表示）をトグル
@@ -146,6 +168,10 @@ void KHFramework::FrameworkUpdate(float deltaTime)
 	{
 		imguiManager_->Begin();
 
+		// スワップチェーンの解像度を取得
+		uint32_t bbWidth = dxCommon_ ? dxCommon_->GetBackBufferWidth() : 1280;
+		uint32_t bbHeight = dxCommon_ ? dxCommon_->GetBackBufferHeight() : 720;
+
 #ifdef ENABLE_EDITOR
 		if (EngineServices::GetInstance()->GetEditorMode())
 		{
@@ -154,40 +180,99 @@ void KHFramework::FrameworkUpdate(float deltaTime)
 		else
 #endif
 		{
-			// フルスクリーンプレイ時: ForegroundDrawListでUIテキストを描画
-			UITextManager::GetInstance()->Draw(ImGui::GetForegroundDrawList(), ImVec2(0.0f, 0.0f), ImVec2(1280.0f, 720.0f));
+			// フルスクリーンプレイ時: ForegroundDrawListでUIテキストを描画（画面全体にフィット）
+			UITextManager::GetInstance()->Draw(ImGui::GetForegroundDrawList(), ImVec2(0.0f, 0.0f), ImVec2(static_cast<float>(bbWidth), static_cast<float>(bbHeight)));
 		}
-
-		// デモプレイモード / 通常プレイモードのガイド表示（展示用バッジ）
+		// Guide badge for Demo mode and Manual play mode (larger font, high visibility)
 		auto drawList = ImGui::GetForegroundDrawList();
 		auto services = EngineServices::GetInstance();
 		if (drawList && services)
 		{
-			if (services->IsDemoMode())
+			bool isEditor = false;
+#ifdef ENABLE_EDITOR
+			isEditor = services->GetEditorMode();
+#endif
+			// Use 24px high-visibility font (English_FiraMono)
+			ImFont* font = imguiManager_ ? imguiManager_->GetFont(ImGuiManager::FontType::English_FiraMono) : nullptr;
+			const float fontSize = 24.0f;
+
+			bool isDemo = services->IsDemoMode();
+			const char* badgeText = isDemo ? "DEMO PLAY MODE | Press [1] to Play" : "PLAY MODE (MANUAL) | Press [1] for Demo";
+
+			// Calculate badge size with 24px font
+			ImVec2 textSize;
+			if (font)
 			{
-				// デモプレイ中：サイバーブルーのスタイリッシュなバッジ
-				drawList->AddRectFilled(ImVec2(16.0f, 16.0f), ImVec2(330.0f, 46.0f), IM_COL32(8, 16, 26, 210), 6.0f);
-				drawList->AddRect(ImVec2(16.0f, 16.0f), ImVec2(330.0f, 46.0f), IM_COL32(0, 220, 255, 220), 6.0f, 0, 1.5f);
-				drawList->AddText(ImVec2(24.0f, 22.0f), IM_COL32(0, 240, 255, 255), "DEMO PLAY MODE | Press [1] to Play");
+				textSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, badgeText);
 			}
 			else
 			{
-				// 通常プレイ時（解除中）：タイトル画面またはエディタ中のみ控えめに案内を表示
-				auto sm = services->GetSceneManager();
-				bool isTitle = (sm && sm->GetCurrentSceneName() == "TITLE");
-				bool isEditor = services->GetEditorMode();
-				if (isTitle || isEditor)
+				textSize = ImGui::CalcTextSize(badgeText);
+			}
+
+			float badgeX = 20.0f;
+			float badgeY = isEditor ? 36.0f : 20.0f;
+			float padX = 18.0f;
+			float padY = 8.0f;
+			float dotRadius = 5.0f;
+			float dotSpacing = 16.0f;
+
+			float badgeWidth = textSize.x + padX * 2.0f + dotSpacing;
+			float badgeHeight = textSize.y + padY * 2.0f;
+
+			static float pulseTimer = 0.0f;
+			float dt = services->GetDeltaTime();
+			pulseTimer += dt * 3.5f;
+			float pulse = (sinf(pulseTimer) * 0.5f + 0.5f);
+
+			if (isDemo)
+			{
+				// Demo play mode badge (cyber blue neon, large size)
+				drawList->AddRectFilled(ImVec2(badgeX - 2.0f, badgeY - 2.0f), ImVec2(badgeX + badgeWidth + 2.0f, badgeY + badgeHeight + 2.0f), IM_COL32(0, 180, 255, static_cast<int>(30 + pulse * 45)), 8.0f);
+				drawList->AddRectFilled(ImVec2(badgeX, badgeY), ImVec2(badgeX + badgeWidth, badgeY + badgeHeight), IM_COL32(6, 16, 28, 235), 7.0f);
+				drawList->AddRect(ImVec2(badgeX, badgeY), ImVec2(badgeX + badgeWidth, badgeY + badgeHeight), IM_COL32(0, 220, 255, static_cast<int>(200 + pulse * 55)), 7.0f, 0, 2.0f);
+
+				// Blinking indicator dot
+				float dotCenterX = badgeX + padX + dotRadius;
+				float dotCenterY = badgeY + badgeHeight * 0.5f;
+				drawList->AddCircleFilled(ImVec2(dotCenterX, dotCenterY), dotRadius, IM_COL32(0, 240, 255, static_cast<int>(180 + pulse * 75)));
+				drawList->AddCircle(ImVec2(dotCenterX, dotCenterY), dotRadius + 1.5f, IM_COL32(0, 200, 255, static_cast<int>(100 + pulse * 100)), 0, 1.2f);
+
+				// Text (24px font)
+				ImVec2 textPos(dotCenterX + dotRadius + 8.0f, badgeY + padY);
+				if (font)
 				{
-					drawList->AddRectFilled(ImVec2(16.0f, 16.0f), ImVec2(265.0f, 46.0f), IM_COL32(8, 20, 14, 180), 6.0f);
-					drawList->AddRect(ImVec2(16.0f, 16.0f), ImVec2(265.0f, 46.0f), IM_COL32(80, 220, 120, 180), 6.0f, 0, 1.0f);
-					drawList->AddText(ImVec2(24.0f, 22.0f), IM_COL32(100, 240, 140, 220), "PLAY MODE | Press [1] for Demo");
+					drawList->AddText(font, fontSize, textPos, IM_COL32(0, 240, 255, 255), badgeText);
+				}
+				else
+				{
+					drawList->AddText(textPos, IM_COL32(0, 240, 255, 255), badgeText);
+				}
+			}
+			else
+			{
+				// Manual play mode badge (emerald green, larger)
+				drawList->AddRectFilled(ImVec2(badgeX, badgeY), ImVec2(badgeX + badgeWidth, badgeY + badgeHeight), IM_COL32(6, 22, 14, 210), 7.0f);
+				drawList->AddRect(ImVec2(badgeX, badgeY), ImVec2(badgeX + badgeWidth, badgeY + badgeHeight), IM_COL32(50, 220, 130, 200), 7.0f, 0, 1.5f);
+
+				float dotCenterX = badgeX + padX + dotRadius;
+				float dotCenterY = badgeY + badgeHeight * 0.5f;
+				drawList->AddCircleFilled(ImVec2(dotCenterX, dotCenterY), dotRadius, IM_COL32(60, 240, 140, 240));
+
+				ImVec2 textPos(dotCenterX + dotRadius + 8.0f, badgeY + padY);
+				if (font)
+				{
+					drawList->AddText(font, fontSize, textPos, IM_COL32(80, 255, 160, 240), badgeText);
+				}
+				else
+				{
+					drawList->AddText(textPos, IM_COL32(80, 255, 160, 240), badgeText);
 				}
 			}
 		}
 	}
 #endif
 }
-
 void KHFramework::FrameworkDrawBegin()
 {
 	if (dxCommon_)

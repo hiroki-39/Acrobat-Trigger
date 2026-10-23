@@ -11,7 +11,7 @@ class DirectXCommon;
 enum class TransitionType
 {
 	SquareGrid = 0, // 四角形サイバーグリッド（すっきりフラットタイル）
-	Hexagon = 1     // ヘキサゴン・トランジション（PDF仕様: 六角形波紋伝播＆ネオン発光）
+	Hexagon = 1     // ヘキサゴン・トランジション（六角形波紋伝播＆ネオン発光）
 };
 
 class TransitionRenderer

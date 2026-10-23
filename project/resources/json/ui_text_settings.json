@@ -155,7 +155,7 @@
                 ],
                 "fontSize": 50.0,
                 "fontType": 2,
-                "hasOutline": true,
+                "hasOutline": false,
                 "hasShadow": false,
                 "id": "Score",
                 "isVisible": true,
@@ -178,7 +178,7 @@
                     2.0,
                     2.0
                 ],
-                "text": ""
+                "text": "SCORE: 000400"
             },
             {
                 "align": 0,
@@ -213,7 +213,7 @@
                     2.0,
                     2.0
                 ],
-                "text": ""
+                "text": "LOCK ON: 0 / 4"
             },
             {
                 "align": 0,
@@ -248,7 +248,7 @@
                     2.0,
                     2.0
                 ],
-                "text": ""
+                "text": "HP: 9000 / 10000"
             },
             {
                 "align": 1,
@@ -328,9 +328,9 @@
                     0.30000001192092896,
                     1.0
                 ],
-                "fontSize": 42.0,
+                "fontSize": 52.0,
                 "fontType": 2,
-                "hasOutline": true,
+                "hasOutline": false,
                 "hasShadow": true,
                 "id": "CutsceneReady",
                 "isVisible": false,
@@ -365,7 +365,7 @@
                 ],
                 "fontSize": 56.0,
                 "fontType": 2,
-                "hasOutline": true,
+                "hasOutline": false,
                 "hasShadow": true,
                 "id": "CutsceneMissionStart",
                 "isVisible": false,

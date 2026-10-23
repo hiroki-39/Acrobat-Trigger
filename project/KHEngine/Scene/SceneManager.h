@@ -89,7 +89,7 @@ private:
 	std::string currentSceneName_ = "TITLE";
 
 	// トランジション管理
-	TransitionType transitionType_ = TransitionType::Hexagon; // デフォルト: PDF仕様ヘキサゴン
+	TransitionType transitionType_ = TransitionType::Hexagon; // デフォルト: ヘキサゴン
 	TransitionState transitionState_ = TransitionState::None;
 	std::string nextSceneName_;
 	float fadeDuration_ = 0.9f; // Hexagonのデフォルト仕様 (片道0.9秒、往復トータル1.8秒)

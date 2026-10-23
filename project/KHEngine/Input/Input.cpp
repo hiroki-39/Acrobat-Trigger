@@ -102,7 +102,9 @@ void Input::Update()
 	}
 
 	// 1のキーでデモプレイモードの解除・トグル切り替え
-	if (key[DIK_1] && !keyPre[DIK_1])
+	bool padStartOrA = (padState.Gamepad.wButtons & (XINPUT_GAMEPAD_START | XINPUT_GAMEPAD_A)) &&
+	                   !(padStatePre.Gamepad.wButtons & (XINPUT_GAMEPAD_START | XINPUT_GAMEPAD_A));
+	if ((key[DIK_1] && !keyPre[DIK_1]) || (padConnected && padStartOrA))
 	{
 		auto services = EngineServices::GetInstance();
 		if (services)

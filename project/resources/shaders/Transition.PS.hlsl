@@ -118,7 +118,7 @@ PixelShaderOutput RenderSquareGrid(float2 uv) {
 }
 
 // =========================================================================
-// 方式2: ヘキサゴン・トランジション（Hexagon - PDF仕様）
+// 方式2: ヘキサゴン・トランジション（Hexagon）
 // =========================================================================
 PixelShaderOutput RenderHexagon(float2 uv) {
     PixelShaderOutput output;
@@ -210,10 +210,10 @@ PixelShaderOutput RenderHexagon(float2 uv) {
         flicker = isFlashing ? 1.8 : 1.0;
     }
 
-    // ネオン発光色（仕様書: #FF1E44 等）
+    // ネオン発光色（#FF1E44 等）
     float3 glowCol = edgeColor.rgb * (flicker * waveFront);
 
-    // 回路ライン同期走行（仕様書: プラズマシアン色の回路ラインが同期走行）
+    // 回路ライン同期走行（プラズマシアン色の回路ラインが同期走行）
     float circuitWave = sin(distFromOrigin * 24.0 - progress * 35.0 + cellRand * 6.28);
     if (circuitWave > 0.58 && peakFactor > 0.15) {
         float3 cyanCircuit = float3(0.60, 1.0, 0.98);

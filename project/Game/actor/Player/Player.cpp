@@ -424,9 +424,12 @@ void Player::Draw() {
         // }
     }
 
-    // 接地マーカー（プロジェクションシャドウ）描画（自機生存時）
+    // 接地マーカー（プロジェクションシャドウ）描画（自機生存時かつ自機が表示されている時）
     if (!isDead_ && groundMarkerObject_) {
-        groundMarkerObject_->Draw();
+        float playerAlpha = object_ ? object_->GetColor().w : 1.0f;
+        if (playerAlpha > 0.05f) {
+            groundMarkerObject_->Draw();
+        }
     }
     
     bool shouldDrawPlayer = true;
@@ -647,7 +650,7 @@ Vector3 Player::GetFrontReticleWorldPosition() const {
         forward.y /= len;
         forward.z /= len;
     }
-    // 仕様書: 手前照準の3D座標 = 自機の座標 + (自機の正面方向ベクトル × 手前距離 D1)
+    // 手前照準の3D座標 = 自機の座標 + (自機の正面方向ベクトル × 手前距離 D1)
     // 自機機首前方14mに配置（自機移動・ピッチ・ロール・首振りに完全同期）
     float frontDist = 14.0f;
     return Vector3{
@@ -1033,8 +1036,8 @@ void Player::Move(float gameSpeed) {
 
     // -------------------------------------------------------------
     // 手前照準（赤丸 / frontReticle_）: 3D自機追従ビルボード
-    // 仕様書: PosNear = PosShip + (DirForward * DistNear)
-    //         LookAt(PosCamera); // ビルボード
+    // PosNear = PosShip + (DirForward * DistNear)
+    // LookAt(PosCamera); // ビルボード
     // 親は自機 object_ のため自機の移動・首振りに完全同期（遅延ゼロ）。
     // 自機のロール角を打ち消すことでプレイヤー画面に対して常に正対真円を維持！
     // -------------------------------------------------------------

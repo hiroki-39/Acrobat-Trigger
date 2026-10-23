@@ -14,6 +14,7 @@
 #include "externals/nlohmann/json.hpp"
 #include <cassert>
 #include <fstream>
+#include <algorithm>
 
 void PostProcess::Initialize(DirectXCommon* dxcommon)
 {
@@ -22,12 +23,12 @@ void PostProcess::Initialize(DirectXCommon* dxcommon)
 	CreateRootSignature();
 	CreateGraphicsPipeline();
 
-	// ポストプロセス用のSRVは後ろの方の番号を固定で使う（既存テクスチャとの競合を避けるため）
-	srvIndex_ = 510;
-	resultSrvIndex_ = 511;
+	// ポストプロセス用のSRVをSrvManagerから安全に割り当て
+	SrvManager* srvManager = SrvManager::GetInstance();
+	srvIndex_ = srvManager->Allocate();
+	resultSrvIndex_ = srvManager->Allocate();
 
 	// RenderTextureのSRV作成
-	SrvManager* srvManager = SrvManager::GetInstance();
 	srvManager->CreateSRVforTexture2D(srvIndex_, dxCommon_->GetRenderTextureResource().Get(), DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, 1);
 	// 書き込み先（結果）テクスチャのSRV作成
 	srvManager->CreateSRVforTexture2D(resultSrvIndex_, dxCommon_->GetPostProcessTextureResource().Get(), DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, 1);
@@ -201,9 +202,38 @@ void PostProcess::Draw(bool drawToSwapchain)
 	if (drawToSwapchain) {
 		targetResource = dxCommon_->GetCurrentBackBufferResource();
 		rtvHandle = dxCommon_->GetCurrentBackBufferRTVHandle();
+
+		// スワップチェーン描画時: 画面全体（黒枠なし）にフルスクリーン拡大描画
+		uint32_t bbWidth = dxCommon_->GetBackBufferWidth();
+		uint32_t bbHeight = dxCommon_->GetBackBufferHeight();
+
+		D3D12_VIEWPORT gameVp{};
+		gameVp.Width = static_cast<float>(bbWidth);
+		gameVp.Height = static_cast<float>(bbHeight);
+		gameVp.TopLeftX = 0.0f;
+		gameVp.TopLeftY = 0.0f;
+		gameVp.MinDepth = 0.0f;
+		gameVp.MaxDepth = 1.0f;
+		commandList->RSSetViewports(1, &gameVp);
+
+		D3D12_RECT gameScissor{ 0, 0, static_cast<LONG>(bbWidth), static_cast<LONG>(bbHeight) };
+		commandList->RSSetScissorRects(1, &gameScissor);
 	} else {
 		targetResource = dxCommon_->GetPostProcessTextureResource();
 		rtvHandle = dxCommon_->GetPostProcessRTVHandle();
+
+		// オフスクリーン描画時: 1280x720 の全画面ビューポートを設定
+		D3D12_VIEWPORT offscreenVp{};
+		offscreenVp.Width = 1280.0f;
+		offscreenVp.Height = 720.0f;
+		offscreenVp.TopLeftX = 0.0f;
+		offscreenVp.TopLeftY = 0.0f;
+		offscreenVp.MinDepth = 0.0f;
+		offscreenVp.MaxDepth = 1.0f;
+		commandList->RSSetViewports(1, &offscreenVp);
+
+		D3D12_RECT offscreenScissor{ 0, 0, 1280, 720 };
+		commandList->RSSetScissorRects(1, &offscreenScissor);
 
 		// 初回以外は PIXEL_SHADER_RESOURCE -> RENDER_TARGET へ遷移
 		static bool isFirstDraw = true;
@@ -313,8 +343,23 @@ void PostProcess::PostDraw(bool drawToSwapchain)
 	commandList->ResourceBarrier(barrierCount, barriers);
 	if (!drawToSwapchain) {
 		D3D12_CPU_DESCRIPTOR_HANDLE backBufferRtvHandle = dxCommon_->GetCurrentBackBufferRTVHandle();
-		D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle = dxCommon_->GetDSVHandle();
-		commandList->OMSetRenderTargets(1, &backBufferRtvHandle, false, &dsvHandle);
+		// スワップチェーン描画にDSVは不要。1280x720のDSVをバインドすると1280x720外がクリップされるためnullptrにする
+		commandList->OMSetRenderTargets(1, &backBufferRtvHandle, false, nullptr);
+
+		// スワップチェーン全体のViewport・Scissorを設定
+		uint32_t bbWidth = dxCommon_->GetBackBufferWidth();
+		uint32_t bbHeight = dxCommon_->GetBackBufferHeight();
+		D3D12_VIEWPORT scVp{};
+		scVp.Width = static_cast<float>(bbWidth);
+		scVp.Height = static_cast<float>(bbHeight);
+		scVp.TopLeftX = 0.0f;
+		scVp.TopLeftY = 0.0f;
+		scVp.MinDepth = 0.0f;
+		scVp.MaxDepth = 1.0f;
+		commandList->RSSetViewports(1, &scVp);
+
+		D3D12_RECT scScissor{ 0, 0, static_cast<LONG>(bbWidth), static_cast<LONG>(bbHeight) };
+		commandList->RSSetScissorRects(1, &scScissor);
 	}
 }
 

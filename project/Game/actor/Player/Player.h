@@ -154,7 +154,12 @@ public:
     float GetLockOnMaxDistance() const { return lockOnMaxDistance_; }
     void SetLockOnMaxDistance(float dist) { lockOnMaxDistance_ = dist; }
 
-    bool IsBoosting() const { return isBoosting_ || isCutsceneActive_; }
+    void SetColor(const Vector4& color) { if (object_) object_->SetColor(color); }
+    void SetSelectLightings(int32_t mode) { if (object_) object_->SetSelectLightings(mode); }
+
+    bool IsBoosting() const { return isBoosting_ || isCutsceneBoosting_; }
+    void SetCutsceneBoosting(bool boosting) { isCutsceneBoosting_ = boosting; }
+    bool IsCutsceneBoosting() const { return isCutsceneBoosting_; }
     float GetBoostEnergy() const { return boostEnergy_; }
     float GetMaxBoostEnergy() const { return maxBoostEnergy_; }
     float GetBoostRatio() const { return maxBoostEnergy_ > 0.0f ? (boostEnergy_ / maxBoostEnergy_) : 0.0f; }
@@ -393,6 +398,7 @@ private:
 
     // カットシーン演出用
     bool isCutsceneActive_ = false;
+    bool isCutsceneBoosting_ = false;
     Vector3 cutscenePos_ = { 0.0f, 0.0f, 0.0f };
     Vector3 cutsceneRot_ = { 0.0f, 0.0f, 0.0f };
 };
