@@ -1,0 +1,15 @@
+{
+  "name": "cyber_voxel_explosion",
+  "patternType": 1,
+  "count": 512,
+  "radius": 1.5,
+  "speed": 7.0,
+  "spread": 3.0,
+  "gravity": 0.0,
+  "lifeTime": 1.0,
+  "startScale": 0.3,
+  "endScale": 0.05,
+  "startColor": [0.0, 1.0, 0.9, 1.0],
+  "endColor": [1.0, 0.1, 0.8, 0.0],
+  "blendMode": 1
+}

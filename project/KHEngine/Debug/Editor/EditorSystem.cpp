@@ -1,4 +1,4 @@
-#include "EditorSystem.h"
+﻿#include "EditorSystem.h"
 #include "EffectStudio.h"
 #include "EnemyStudio.h"
 #include "externals/imgui/imgui.h"
@@ -190,6 +190,62 @@ void EditorSystem::DrawMenuBar() {
 #endif
 }
 
+namespace {
+    void DrawPlayModeBadgeInViewport(ImDrawList* drawList, ImVec2 pos)
+    {
+        auto services = EngineServices::GetInstance();
+        if (!drawList || !services) return;
+
+        bool isDemo = services->IsDemoMode();
+        const char* badgeText = isDemo ? "DEMO PLAY MODE | Press [1] to Play" : "PLAY MODE (MANUAL) | Press [1] for Demo";
+
+        ImVec2 textSize = ImGui::CalcTextSize(badgeText);
+        float padX = 10.0f;
+        float padY = 4.0f;
+        float dotRadius = 3.5f;
+        float dotSpacing = 10.0f;
+
+        float badgeWidth = textSize.x + padX * 2.0f + dotSpacing;
+        float badgeHeight = textSize.y + padY * 2.0f;
+        float badgeX = pos.x;
+        float badgeY = pos.y;
+
+        static float pulseTimer = 0.0f;
+        float dt = services->GetDeltaTime();
+        pulseTimer += dt * 3.5f;
+        float pulse = (sinf(pulseTimer) * 0.5f + 0.5f);
+
+        if (isDemo)
+        {
+            // Demo play mode badge (cyber blue neon)
+            drawList->AddRectFilled(ImVec2(badgeX - 1.0f, badgeY - 1.0f), ImVec2(badgeX + badgeWidth + 1.0f, badgeY + badgeHeight + 1.0f), IM_COL32(0, 180, 255, static_cast<int>(30 + pulse * 45)), 6.0f);
+            drawList->AddRectFilled(ImVec2(badgeX, badgeY), ImVec2(badgeX + badgeWidth, badgeY + badgeHeight), IM_COL32(6, 16, 28, 235), 6.0f);
+            drawList->AddRect(ImVec2(badgeX, badgeY), ImVec2(badgeX + badgeWidth, badgeY + badgeHeight), IM_COL32(0, 220, 255, static_cast<int>(200 + pulse * 55)), 6.0f, 0, 1.5f);
+
+            float dotCenterX = badgeX + padX + dotRadius;
+            float dotCenterY = badgeY + badgeHeight * 0.5f;
+            drawList->AddCircleFilled(ImVec2(dotCenterX, dotCenterY), dotRadius, IM_COL32(0, 240, 255, static_cast<int>(180 + pulse * 75)));
+            drawList->AddCircle(ImVec2(dotCenterX, dotCenterY), dotRadius + 1.2f, IM_COL32(0, 200, 255, static_cast<int>(100 + pulse * 100)), 0, 1.0f);
+
+            ImVec2 textPos(dotCenterX + dotRadius + 6.0f, badgeY + padY);
+            drawList->AddText(textPos, IM_COL32(0, 240, 255, 255), badgeText);
+        }
+        else
+        {
+            // Manual play mode badge (emerald green)
+            drawList->AddRectFilled(ImVec2(badgeX, badgeY), ImVec2(badgeX + badgeWidth, badgeY + badgeHeight), IM_COL32(6, 22, 14, 210), 6.0f);
+            drawList->AddRect(ImVec2(badgeX, badgeY), ImVec2(badgeX + badgeWidth, badgeY + badgeHeight), IM_COL32(50, 220, 130, 200), 6.0f, 0, 1.2f);
+
+            float dotCenterX = badgeX + padX + dotRadius;
+            float dotCenterY = badgeY + badgeHeight * 0.5f;
+            drawList->AddCircleFilled(ImVec2(dotCenterX, dotCenterY), dotRadius, IM_COL32(60, 240, 140, 240));
+
+            ImVec2 textPos(dotCenterX + dotRadius + 6.0f, badgeY + padY);
+            drawList->AddText(textPos, IM_COL32(80, 255, 160, 240), badgeText);
+        }
+    }
+}
+
 void EditorSystem::DrawViewport(uint32_t srvIndex) {
 #ifdef USE_IMGUI
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
@@ -209,7 +265,10 @@ void EditorSystem::DrawViewport(uint32_t srvIndex) {
         ImGui::Image((ImTextureID)srvHandle.ptr, contentSize);
 
         // ゲーム画面上にUIテキストを描画 (1280x720 基準の座標・スケーリング)
-        UITextManager::GetInstance()->Draw(ImGui::GetWindowDrawList(), imagePos, contentSize);
+                UITextManager::GetInstance()->Draw(ImGui::GetWindowDrawList(), imagePos, contentSize);
+
+        // ゲーム画面ビューポート内にプレイモードバッジを描画
+        DrawPlayModeBadgeInViewport(ImGui::GetWindowDrawList(), ImVec2(imagePos.x + 14.0f, imagePos.y + 14.0f));
     }
     ImGui::End();
     ImGui::PopStyleVar();

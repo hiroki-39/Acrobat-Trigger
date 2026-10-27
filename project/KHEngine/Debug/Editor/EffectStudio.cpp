@@ -1,10 +1,14 @@
-#include "EffectStudio.h"
+﻿#include "EffectStudio.h"
 #include "externals/imgui/imgui.h"
+#include "externals/nlohmann/json.hpp"
+#include "KHEngine/Graphics/Resource/Descriptor/SrvManager.h"
+#include "KHEngine/Graphics/3d/Particle/ParticleManager.h"
 #include "KHEngine/Graphics/Resource/Texture/TextureManager.h"
 #include "KHEngine/Graphics/Billboard/Billboard.h"
 #include <filesystem>
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <numbers>
 
 EffectStudio* EffectStudio::GetInstance()
@@ -24,7 +28,12 @@ void EffectStudio::Initialize(DirectXCommon* dxCommon, SrvManager* srvManager)
     camera_.SetFovY(45.0f * (std::numbers::pi_v<float> / 180.0f));
     camera_.SetAspectRatio(static_cast<float>(kWidth_) / static_cast<float>(kHeight_));
     camera_.SetNearClip(0.1f);
-    camera_.SetFarClip(1000.0f);
+    camera_.SetFarClip(2000.0f);
+
+    targetCameraTarget_ = cameraTarget_;
+    targetCameraDistance_ = cameraDistance_;
+    targetCameraYaw_ = cameraYaw_;
+    targetCameraPitch_ = cameraPitch_;
 
     // パーティクル基本プリミティブアセットの登録確認
     auto particleMgr = ParticleManager::GetInstance();
@@ -32,27 +41,75 @@ void EffectStudio::Initialize(DirectXCommon* dxCommon, SrvManager* srvManager)
     particleMgr->RegisterRing("ring", "resources/sprites/effect/gradationLine.png", 32, 0.5f, 1.0f);
     particleMgr->RegisterCylinder("Cylinder", "resources/sprites/effect/gradationLine.png");
 
-    // プレビュー用エフェクト初期化
+    // プレビュー用エフェクト初期化 (CPU)
     previewEffect_.Initialize(dxCommon_, srvManager_);
+
+    // GPU パーティクル初期化
+    gpuParticleSystem_.Initialize(dxCommon_, srvManager_);
 
     // JSON ファイルリストを取得
     RefreshFileList();
+    RefreshGPUFileList();
 
-    // 既存のエフェクトがあれば最初にロード
+    // 初期プリセットの読み込み
+    if (!gpuJsonFiles_.empty())
+    {
+        auto it = std::find(gpuJsonFiles_.begin(), gpuJsonFiles_.end(), "cyber_voxel_explosion.json");
+        if (it != gpuJsonFiles_.end())
+        {
+            selectedGpuFileIndex_ = static_cast<int>(std::distance(gpuJsonFiles_.begin(), it));
+            LoadGPUJson(*it);
+        }
+        else
+        {
+            selectedGpuFileIndex_ = 0;
+            LoadGPUJson(gpuJsonFiles_[0]);
+        }
+    }
+
     if (!jsonFiles_.empty())
     {
-        // default_effect.json があればそれを優先
         auto it = std::find(jsonFiles_.begin(), jsonFiles_.end(), "default_effect.json");
         if (it != jsonFiles_.end())
         {
             selectedFileIndex_ = static_cast<int>(std::distance(jsonFiles_.begin(), it));
+            currentLoadedFile_ = *it;
+            previewEffect_.LoadFromJson(currentLoadedFile_);
         }
         else
         {
             selectedFileIndex_ = 0;
+            currentLoadedFile_ = jsonFiles_[0];
+            previewEffect_.LoadFromJson(currentLoadedFile_);
         }
-        currentLoadedFile_ = jsonFiles_[selectedFileIndex_];
-        previewEffect_.LoadFromJson(currentLoadedFile_);
+    }
+}
+
+void EffectStudio::FocusOrigin()
+{
+    targetCameraTarget_ = { 0.0f, 0.0f, 0.0f };
+}
+
+void EffectStudio::SetCameraPresetView(int preset)
+{
+    switch (preset)
+    {
+    case 0: // 斜め見下ろし (Isometric)
+        targetCameraYaw_ = 0.785f;  // 45度
+        targetCameraPitch_ = 0.45f; // 約26度
+        break;
+    case 1: // 正面 (Front)
+        targetCameraYaw_ = 0.0f;
+        targetCameraPitch_ = 0.0f;
+        break;
+    case 2: // 真上 (Top)
+        targetCameraYaw_ = 0.0f;
+        targetCameraPitch_ = 1.54f; // 約88度
+        break;
+    case 3: // 側面 (Side / Right)
+        targetCameraYaw_ = 1.57f;   // 90度
+        targetCameraPitch_ = 0.0f;
+        break;
     }
 }
 
@@ -60,51 +117,85 @@ void EffectStudio::CreateRenderTargets()
 {
     auto device = dxCommon_->GetDevice();
 
-    // 1. カラー用 RenderTexture 作成 (RGBA8_UNORM_SRGB)
-    renderTextureResource_ = dxCommon_->CreateRenderTextureResource(
-        kWidth_, kHeight_,
-        DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
-        backgroundColor_
-    );
+    // 1. カラーバッファ (RenderTarget) の生成
+    D3D12_RESOURCE_DESC resDesc{};
+    resDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    resDesc.Width = kWidth_;
+    resDesc.Height = kHeight_;
+    resDesc.DepthOrArraySize = 1;
+    resDesc.MipLevels = 1;
+    resDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    resDesc.SampleDesc.Count = 1;
+    resDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 
-    // 2. 深度ステンシル用テクスチャ作成 (D24_S8)
-    depthStencilResource_ = dxCommon_->CreatDepthStencilTextureResource(kWidth_, kHeight_);
+    D3D12_HEAP_PROPERTIES heapProps{};
+    heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
 
-    // 3. 専用 RTV デスクリプタヒープ作成 (1個)
+    D3D12_CLEAR_VALUE clearValue{};
+    clearValue.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    clearValue.Color[0] = backgroundColor_.x;
+    clearValue.Color[1] = backgroundColor_.y;
+    clearValue.Color[2] = backgroundColor_.z;
+    clearValue.Color[3] = backgroundColor_.w;
+
+    HRESULT hr = device->CreateCommittedResource(
+        &heapProps,
+        D3D12_HEAP_FLAG_NONE,
+        &resDesc,
+        D3D12_RESOURCE_STATE_RENDER_TARGET,
+        &clearValue,
+        IID_PPV_ARGS(&renderTextureResource_));
+    assert(SUCCEEDED(hr));
+    currentResourceState_ = D3D12_RESOURCE_STATE_RENDER_TARGET;
+
+    // 2. 深度ステンシルバッファの生成
+    D3D12_RESOURCE_DESC depthDesc = resDesc;
+    depthDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    depthDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+
+    D3D12_CLEAR_VALUE depthClear{};
+    depthClear.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    depthClear.DepthStencil.Depth = 1.0f;
+    depthClear.DepthStencil.Stencil = 0;
+
+    hr = device->CreateCommittedResource(
+        &heapProps,
+        D3D12_HEAP_FLAG_NONE,
+        &depthDesc,
+        D3D12_RESOURCE_STATE_DEPTH_WRITE,
+        &depthClear,
+        IID_PPV_ARGS(&depthStencilResource_));
+    assert(SUCCEEDED(hr));
+
+    // 3. RTV / DSV デスクリプタヒープの生成
     D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc{};
     rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
     rtvHeapDesc.NumDescriptors = 1;
-    rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-    device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&rtvDescriptorHeap_));
-    rtvHandle_ = rtvDescriptorHeap_->GetCPUDescriptorHandleForHeapStart();
+    hr = device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&rtvDescriptorHeap_));
+    assert(SUCCEEDED(hr));
 
-    D3D12_RENDER_TARGET_VIEW_DESC rtvDesc{};
-    rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-    rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
-    device->CreateRenderTargetView(renderTextureResource_.Get(), &rtvDesc, rtvHandle_);
-
-    // 4. 専用 DSV デスクリプタヒープ作成 (1個)
     D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc{};
     dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
     dsvHeapDesc.NumDescriptors = 1;
-    dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-    device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&dsvDescriptorHeap_));
+    hr = device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&dsvDescriptorHeap_));
+    assert(SUCCEEDED(hr));
+
+    rtvHandle_ = rtvDescriptorHeap_->GetCPUDescriptorHandleForHeapStart();
     dsvHandle_ = dsvDescriptorHeap_->GetCPUDescriptorHandleForHeapStart();
 
-    D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc{};
-    dsvDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-    dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-    device->CreateDepthStencilView(depthStencilResource_.Get(), &dsvDesc, dsvHandle_);
+    // 4. ビューの生成
+    device->CreateRenderTargetView(renderTextureResource_.Get(), nullptr, rtvHandle_);
+    device->CreateDepthStencilView(depthStencilResource_.Get(), nullptr, dsvHandle_);
 
-    // 5. ImGui で表示するための SRV 作成
+    // 5. ImGui で描画するための SRV を SrvManager に確保して登録
     srvIndex_ = srvManager_->Allocate();
     srvManager_->CreateSRVforTexture2D(srvIndex_, renderTextureResource_.Get(), DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, 1);
 
-    // ビューポートとシザー
-    viewport_.Width = static_cast<float>(kWidth_);
-    viewport_.Height = static_cast<float>(kHeight_);
+    // 6. ビューポート & シザー設定
     viewport_.TopLeftX = 0.0f;
     viewport_.TopLeftY = 0.0f;
+    viewport_.Width = static_cast<float>(kWidth_);
+    viewport_.Height = static_cast<float>(kHeight_);
     viewport_.MinDepth = 0.0f;
     viewport_.MaxDepth = 1.0f;
 
@@ -130,19 +221,105 @@ void EffectStudio::RefreshFileList()
         }
         std::sort(jsonFiles_.begin(), jsonFiles_.end());
     }
-    catch (...)
+    catch (const std::exception& e)
     {
+        statusMessage_ = "ファイル走査エラー: " + std::string(e.what());
     }
+}
 
-    // 現在ロード中のファイルがリスト内の何番目か更新
-    selectedFileIndex_ = -1;
-    for (size_t i = 0; i < jsonFiles_.size(); ++i)
+void EffectStudio::RefreshGPUFileList()
+{
+    gpuJsonFiles_.clear();
+    std::filesystem::create_directories("resources/effects/gpu");
+
+    try
     {
-        if (jsonFiles_[i] == currentLoadedFile_)
+        for (const auto& entry : std::filesystem::directory_iterator("resources/effects/gpu"))
         {
-            selectedFileIndex_ = static_cast<int>(i);
-            break;
+            if (entry.is_regular_file() && entry.path().extension() == ".json")
+            {
+                gpuJsonFiles_.push_back(entry.path().filename().string());
+            }
         }
+        std::sort(gpuJsonFiles_.begin(), gpuJsonFiles_.end());
+    }
+    catch (const std::exception& e)
+    {
+        statusMessage_ = "GPUファイル走査エラー: " + std::string(e.what());
+    }
+}
+
+void EffectStudio::SaveGPUJson(const std::string& filename)
+{
+    try
+    {
+        std::filesystem::create_directories("resources/effects/gpu");
+        std::string fullPath = "resources/effects/gpu/" + filename;
+        if (!fullPath.ends_with(".json")) fullPath += ".json";
+
+        nlohmann::json j;
+        j["name"] = filename;
+        j["patternType"] = gpuEmitterData_.patternType;
+        j["count"] = gpuEmitterData_.count;
+        j["radius"] = gpuEmitterData_.radius;
+        j["speed"] = gpuEmitterData_.speed;
+        j["spread"] = gpuEmitterData_.spread;
+        j["gravity"] = gpuEmitterData_.gravity;
+        j["lifeTime"] = gpuEmitterData_.lifeTime;
+        j["startScale"] = gpuEmitterData_.startScale;
+        j["endScale"] = gpuEmitterData_.endScale;
+        j["startColor"] = { gpuEmitterData_.startColor.x, gpuEmitterData_.startColor.y, gpuEmitterData_.startColor.z, gpuEmitterData_.startColor.w };
+        j["endColor"] = { gpuEmitterData_.endColor.x, gpuEmitterData_.endColor.y, gpuEmitterData_.endColor.z, gpuEmitterData_.endColor.w };
+        j["blendMode"] = static_cast<int>(gpuBlendMode_);
+
+        std::ofstream ofs(fullPath);
+        ofs << j.dump(4);
+        statusMessage_ = "GPUエフェクト保存完了: " + filename;
+        RefreshGPUFileList();
+    }
+    catch (const std::exception& e)
+    {
+        statusMessage_ = "保存エラー: " + std::string(e.what());
+    }
+}
+
+void EffectStudio::LoadGPUJson(const std::string& filename)
+{
+    try
+    {
+        std::string fullPath = "resources/effects/gpu/" + filename;
+        std::ifstream ifs(fullPath);
+        if (!ifs.is_open()) return;
+
+        nlohmann::json j;
+        ifs >> j;
+
+        gpuEmitterData_.patternType = j.value("patternType", 0);
+        gpuEmitterData_.count = j.value("count", 256);
+        gpuEmitterData_.radius = j.value("radius", 0.5f);
+        gpuEmitterData_.speed = j.value("speed", 5.0f);
+        gpuEmitterData_.spread = j.value("spread", 1.0f);
+        gpuEmitterData_.gravity = j.value("gravity", 0.0f);
+        gpuEmitterData_.lifeTime = j.value("lifeTime", 1.0f);
+        gpuEmitterData_.startScale = j.value("startScale", 0.2f);
+        gpuEmitterData_.endScale = j.value("endScale", 0.0f);
+
+        if (j.contains("startColor") && j["startColor"].is_array() && j["startColor"].size() >= 4)
+        {
+            gpuEmitterData_.startColor = { j["startColor"][0], j["startColor"][1], j["startColor"][2], j["startColor"][3] };
+        }
+        if (j.contains("endColor") && j["endColor"].is_array() && j["endColor"].size() >= 4)
+        {
+            gpuEmitterData_.endColor = { j["endColor"][0], j["endColor"][1], j["endColor"][2], j["endColor"][3] };
+        }
+        gpuBlendMode_ = static_cast<GPUParticleBlendMode>(j.value("blendMode", 1));
+
+        currentLoadedGpuFile_ = filename;
+        statusMessage_ = "GPUエフェクト読込完了: " + filename;
+    }
+    catch (const std::exception& e)
+    {
+        statusMessage_ = "読込エラー: " + std::string(e.what());
     }
 }
 
@@ -150,16 +327,47 @@ void EffectStudio::Update(float dt)
 {
     float scaledDt = dt * playbackSpeed_;
 
-    // 自動ループ再生
-    if (autoLoop_)
+    if (isGPUMode_)
     {
-        loopTimer_ += scaledDt;
-        if (loopTimer_ >= loopInterval_)
+        // GPU パーティクルの更新
+        gpuParticleSystem_.Update(scaledDt);
+
+        // 自動射出ループ
+        if (gpuAutoEmit_)
         {
-            loopTimer_ = 0.0f;
-            previewEffect_.Play();
+            gpuEmitTimer_ += scaledDt;
+            if (gpuEmitTimer_ >= gpuEmitInterval_)
+            {
+                gpuEmitTimer_ = 0.0f;
+                gpuParticleSystem_.Emit(gpuEmitterData_);
+            }
         }
     }
+    else
+    {
+        // CPU パーティクルの自動ループ再生
+        if (autoLoop_)
+        {
+            loopTimer_ += scaledDt;
+            if (loopTimer_ >= loopInterval_)
+            {
+                loopTimer_ = 0.0f;
+                previewEffect_.Play();
+            }
+        }
+        Matrix4x4 bbMat = Billboard::CreateFromCamera(&camera_, true);
+        previewEffect_.SetPosition({ 0.0f, 0.0f, 0.0f });
+        previewEffect_.Update(scaledDt, camera_.GetViewMatrix(), camera_.GetProjectionMatrix(), bbMat);
+    }
+
+    // カメラの滑らかなイージング補間 (指数平滑化)
+    float blend = 1.0f - std::exp(-22.0f * dt);
+    cameraYaw_ += (targetCameraYaw_ - cameraYaw_) * blend;
+    cameraPitch_ += (targetCameraPitch_ - cameraPitch_) * blend;
+    cameraDistance_ += (targetCameraDistance_ - cameraDistance_) * blend;
+    cameraTarget_.x += (targetCameraTarget_.x - cameraTarget_.x) * blend;
+    cameraTarget_.y += (targetCameraTarget_.y - cameraTarget_.y) * blend;
+    cameraTarget_.z += (targetCameraTarget_.z - cameraTarget_.z) * blend;
 
     // カメラ位置の更新 (注視点 + 球面座標)
     Vector3 camPos;
@@ -168,16 +376,8 @@ void EffectStudio::Update(float dt)
     camPos.z = cameraTarget_.z - cameraDistance_ * std::cos(cameraPitch_) * std::cos(cameraYaw_);
 
     camera_.SetTranslate(camPos);
-    camera_.SetRotation({ cameraPitch_, cameraYaw_, 0.0f });
+    camera_.SetRotation({ cameraPitch_, -cameraYaw_, 0.0f }); // 常に原点(注視点)を真正面に捉える
     camera_.Update();
-
-    // プレビューエフェクト更新 (原点に配置)
-    previewEffect_.SetPosition({ 0.0f, 0.0f, 0.0f });
-    Matrix4x4 viewMat = camera_.GetViewMatrix();
-    Matrix4x4 projMat = camera_.GetProjectionMatrix();
-    Matrix4x4 billboardMat = Billboard::CreateFromCamera(&camera_, true);
-
-    previewEffect_.Update(scaledDt, viewMat, projMat, billboardMat);
 }
 
 void EffectStudio::Render()
@@ -215,7 +415,17 @@ void EffectStudio::Render()
     srvManager_->PreDraw();
 
     // 6. エフェクト描画
-    previewEffect_.Draw();
+    if (isGPUMode_)
+    {
+        Matrix4x4 vpMat = camera_.GetViewProjectionMatrix();
+        Matrix4x4 bbMat = Billboard::CreateFromCamera(&camera_, true);
+        uint32_t texIndex = TextureManager::GetInstance()->GetDefaultTextureIndex();
+        gpuParticleSystem_.Draw(vpMat, bbMat, texIndex, gpuBlendMode_);
+    }
+    else
+    {
+        previewEffect_.Draw();
+    }
 
     // 7. バリア遷移: 描画後 (ImGui表示用に PIXEL_SHADER_RESOURCE へ遷移)
     if (currentResourceState_ != D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE)
@@ -231,41 +441,6 @@ void EffectStudio::Render()
     }
 }
 
-void EffectStudio::HandleCameraInput(float contentWidth, float contentHeight)
-{
-    ImGuiIO& io = ImGui::GetIO();
-
-    // 右ドラッグでオービット回転
-    if (ImGui::IsMouseDragging(ImGuiMouseButton_Right))
-    {
-        ImVec2 delta = io.MouseDelta;
-        cameraYaw_ += delta.x * 0.008f;
-        cameraPitch_ += delta.y * 0.008f;
-        // ピッチ角制限 (-85度 〜 +85度)
-        cameraPitch_ = std::clamp(cameraPitch_, -1.48f, 1.48f);
-    }
-
-    // 中ボタンドラッグでパン移動
-    if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle))
-    {
-        ImVec2 delta = io.MouseDelta;
-        float panSpeed = cameraDistance_ * 0.002f;
-        Vector3 right = { std::cos(cameraYaw_), 0.0f, std::sin(cameraYaw_) };
-        Vector3 up = { 0.0f, 1.0f, 0.0f };
-
-        cameraTarget_.x -= right.x * delta.x * panSpeed;
-        cameraTarget_.z -= right.z * delta.x * panSpeed;
-        cameraTarget_.y += delta.y * panSpeed;
-    }
-
-    // ホイールでズーム
-    if (io.MouseWheel != 0.0f)
-    {
-        cameraDistance_ -= io.MouseWheel * (cameraDistance_ * 0.15f);
-        cameraDistance_ = std::clamp(cameraDistance_, 0.5f, 50.0f);
-    }
-}
-
 void EffectStudio::DrawViewportWindow()
 {
 #ifdef USE_IMGUI
@@ -274,55 +449,243 @@ void EffectStudio::DrawViewportWindow()
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     if (ImGui::Begin("エフェクト画面", &showViewport_))
     {
-        ImVec2 availSize = ImGui::GetContentRegionAvail();
-        if (availSize.x > 10.0f && availSize.y > 10.0f)
+        ImVec2 contentSize = ImGui::GetContentRegionAvail();
+        if (contentSize.x > 0.0f && contentSize.y > 0.0f)
         {
-            // SrvManager から GPU ハンドルを取得
-            D3D12_GPU_DESCRIPTOR_HANDLE srvHandle = srvManager_->GetSRVGPUDescriptorHandle(srvIndex_);
+            float aspect = static_cast<float>(kWidth_) / static_cast<float>(kHeight_);
+            float fitWidth = contentSize.x;
+            float fitHeight = contentSize.x / aspect;
 
-            // アスペクト比を維持しながらフィッティング
-            float renderAspect = static_cast<float>(kWidth_) / static_cast<float>(kHeight_);
-            float viewAspect = availSize.x / availSize.y;
-            ImVec2 imgSize = availSize;
-            ImVec2 uv0 = ImVec2(0.0f, 0.0f);
-            ImVec2 uv1 = ImVec2(1.0f, 1.0f);
-
-            // 画像表示
-            ImGui::Image((ImTextureID)srvHandle.ptr, imgSize, uv0, uv1);
-
-            // 床グリッド線を描画（Image の領域にぴったりオーバーレイ）
-            ImVec2 imgPos = ImGui::GetItemRectMin();
-            DrawGridOverlay(imgPos, imgSize);
-
-            // ビューポートホバー時のカメラ操作
-            if (ImGui::IsItemHovered())
+            if (fitHeight > contentSize.y)
             {
-                HandleCameraInput(availSize.x, availSize.y);
+                fitHeight = contentSize.y;
+                fitWidth = contentSize.y * aspect;
             }
 
-            // ビューポート左上のクイックツールバー（半透明）
-            ImGui::SetCursorScreenPos(ImVec2(imgPos.x + 10, imgPos.y + 10));
-            ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.08f, 0.08f, 0.10f, 0.65f));
-            ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 4.0f);
-            if (ImGui::BeginChild("##QuickBar", ImVec2(230, 32), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
+            ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+            float offsetX = (contentSize.x - fitWidth) * 0.5f;
+            float offsetY = (contentSize.y - fitHeight) * 0.5f;
+            cursorPos.x += offsetX;
+            cursorPos.y += offsetY;
+
+            ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX() + offsetX, ImGui::GetCursorPosY() + offsetY));
+
+            // オフスクリーンテクスチャを描画
+            D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = srvManager_->GetSRVGPUDescriptorHandle(srvIndex_);
+            ImGui::Image((ImTextureID)gpuHandle.ptr, ImVec2(fitWidth, fitHeight));
+
+            // ビューポート上でのマウスドラッグ操作によるカメラ回転・ズーム・パン
+            HandleCameraInput(fitWidth, fitHeight);
+
+            // グリッドと原点ギズモのオーバーレイ描画
+            if (showGrid_)
             {
-                ImGui::Checkbox("床グリッド", &showGrid_);
-                ImGui::SameLine();
-                if (ImGui::SmallButton("視点リセット"))
-                {
-                    cameraTarget_ = { 0.0f, 0.0f, 0.0f };
-                    cameraDistance_ = 6.0f;
-                    cameraYaw_ = 0.0f;
-                    cameraPitch_ = 0.35f;
-                }
+                DrawGridOverlay(cursorPos, ImVec2(fitWidth, fitHeight));
             }
-            ImGui::EndChild();
-            ImGui::PopStyleVar();
-            ImGui::PopStyleColor();
+
+            // --- ビューポート上部のクイック操作バー (視点切り替え & 操作ガイド) ---
+            ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+            // ガイドパネル背景
+            ImVec2 barPos = ImVec2(cursorPos.x + 10.0f, cursorPos.y + 10.0f);
+            drawList->AddRectFilled(barPos, ImVec2(barPos.x + 530.0f, barPos.y + 30.0f),
+                                    IM_COL32(16, 22, 34, 210), 6.0f);
+            drawList->AddRect(barPos, ImVec2(barPos.x + 530.0f, barPos.y + 30.0f),
+                              IM_COL32(50, 90, 150, 160), 6.0f);
+
+            // ガイドテキスト (Blender仕様)
+            drawList->AddText(ImVec2(barPos.x + 10.0f, barPos.y + 7.0f), IM_COL32(200, 225, 255, 230),
+                              "[中ドラッグ] 視点回転  |  [Shift+中] 平行移動  |  [ホイール/Ctrl+中] ズーム  |  [テンキー/F] 視点");
+
+            // 視点切り替えボタン群 (Blender風)
+            ImGui::SetCursorScreenPos(ImVec2(cursorPos.x + 10.0f, cursorPos.y + 45.0f));
+            if (ImGui::Button("原点フォーカス (Num . / F)")) FocusOrigin();
+            ImGui::SameLine();
+            if (ImGui::Button("正面 (Num 1)")) SetCameraPresetView(1);
+            ImGui::SameLine();
+            if (ImGui::Button("側面 (Num 3)")) SetCameraPresetView(3);
+            ImGui::SameLine();
+            if (ImGui::Button("真上 (Num 7)")) SetCameraPresetView(2);
+            ImGui::SameLine();
+            if (ImGui::Button("斜め (Iso)")) SetCameraPresetView(0);
         }
     }
     ImGui::End();
     ImGui::PopStyleVar();
+#endif
+}
+
+void EffectStudio::HandleCameraInput(float, float)
+{
+#ifdef USE_IMGUI
+    ImGuiIO& io = ImGui::GetIO();
+    bool isHovered = ImGui::IsItemHovered();
+
+    // -------------------------------------------------------------
+    // Blender スタイル カメラ操作:
+    // [中ドラッグ (MMB)]         : 視点回転 (オービット)
+    // [Shift + 中ドラッグ]       : 平行移動 (パン)
+    // [Ctrl + 中ドラッグ] / [ホイール] : スムーズズーム
+    // [Alt + 左ドラッグ]         : 3ボタンマウス再現 (回転)
+    // [Alt + Shift + 左ドラッグ] : 3ボタンマウス再現 (パン)
+    // [Alt + Ctrl + 左ドラッグ]  : 3ボタンマウス再現 (ズーム)
+    // [テンキー 1 / 3 / 7]       : 正面 / 側面 / 真上
+    // [テンキー . / F]           : 原点フォーカス
+    // -------------------------------------------------------------
+
+    // 中クリック または Alt+左クリック (Emulate 3 Button Mouse)
+    bool isMMBDown = ImGui::IsMouseDown(ImGuiMouseButton_Middle) || (io.KeyAlt && ImGui::IsMouseDown(ImGuiMouseButton_Left));
+    bool isMMBClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Middle) || (io.KeyAlt && ImGui::IsMouseClicked(ImGuiMouseButton_Left));
+
+    // 1. ズーム操作
+    // (a) マウスホイール
+    if (isHovered && io.MouseWheel != 0.0f)
+    {
+        float factor = std::pow(0.85f, io.MouseWheel);
+        targetCameraDistance_ = std::clamp(targetCameraDistance_ * factor, 0.4f, 300.0f);
+    }
+    // (b) Ctrl + 中ドラッグ (Blender スムーズズーム)
+    if (isMMBDown && io.KeyCtrl)
+    {
+        float zoomDelta = io.MouseDelta.y * 0.015f;
+        targetCameraDistance_ *= (1.0f + zoomDelta);
+        targetCameraDistance_ = std::clamp(targetCameraDistance_, 0.4f, 300.0f);
+        return;
+    }
+
+    // 2. 平行移動 (パン) 操作: Shift + 中ドラッグ
+    bool panStart = isHovered && isMMBClicked && io.KeyShift;
+    if (panStart) isDraggingPan_ = true;
+    if (!isMMBDown) isDraggingPan_ = false;
+
+    if (isDraggingPan_ && io.KeyShift)
+    {
+        Matrix4x4 camWorld = camera_.GetWorldMatrix();
+        Vector3 camRight = { camWorld.m[0][0], camWorld.m[0][1], camWorld.m[0][2] };
+        Vector3 camUp = { camWorld.m[1][0], camWorld.m[1][1], camWorld.m[1][2] };
+
+        float panSpeed = targetCameraDistance_ * 0.0018f;
+        targetCameraTarget_.x -= (camRight.x * io.MouseDelta.x - camUp.x * io.MouseDelta.y) * panSpeed;
+        targetCameraTarget_.y -= (camRight.y * io.MouseDelta.x + camUp.y * io.MouseDelta.y) * panSpeed;
+        targetCameraTarget_.z -= (camRight.z * io.MouseDelta.x - camUp.z * io.MouseDelta.y) * panSpeed;
+        return;
+    }
+
+    // 3. 視点回転 (オービット) 操作: 中ドラッグ (修飾キーなし)
+    bool orbitStart = isHovered && isMMBClicked && !io.KeyShift && !io.KeyCtrl;
+    if (orbitStart) isDraggingOrbit_ = true;
+    if (!isMMBDown) isDraggingOrbit_ = false;
+
+    if (isDraggingOrbit_ && !io.KeyShift && !io.KeyCtrl)
+    {
+        float rotSpeed = 0.007f;
+        targetCameraYaw_ -= io.MouseDelta.x * rotSpeed;
+        targetCameraPitch_ += io.MouseDelta.y * rotSpeed;
+
+        // ピッチ角制限 (-88度 〜 88度)
+        const float limit = 88.0f * (std::numbers::pi_v<float> / 180.0f);
+        targetCameraPitch_ = std::clamp(targetCameraPitch_, -limit, limit);
+    }
+
+    // 4. Blender テンキーショートカット & 原点フォーカス
+    if (isHovered || ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows))
+    {
+        // テンキー 1: 正面 (Front)
+        if (ImGui::IsKeyPressed(ImGuiKey_Keypad1) || (!io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_1)))
+        {
+            SetCameraPresetView(1);
+        }
+        // テンキー 3: 側面 (Right)
+        if (ImGui::IsKeyPressed(ImGuiKey_Keypad3) || (!io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_3)))
+        {
+            SetCameraPresetView(3);
+        }
+        // テンキー 7: 真上 (Top)
+        if (ImGui::IsKeyPressed(ImGuiKey_Keypad7) || (!io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_7)))
+        {
+            SetCameraPresetView(2);
+        }
+        // テンキー . (Period) または Fキー / Homeキー: 原点フォーカス (Focus Selected / View All)
+        if (ImGui::IsKeyPressed(ImGuiKey_KeypadDecimal) || ImGui::IsKeyPressed(ImGuiKey_F) || ImGui::IsKeyPressed(ImGuiKey_Home))
+        {
+            FocusOrigin();
+        }
+    }
+#endif
+}
+
+void EffectStudio::DrawGridOverlay(const ImVec2& imagePos, const ImVec2& imageSize)
+{
+#ifdef USE_IMGUI
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    Matrix4x4 vpMat = camera_.GetViewProjectionMatrix();
+
+    // X-Z 平面グリッド描画
+    int lines = static_cast<int>(gridSize_ / gridSpacing_);
+    float halfSize = gridSize_ * 0.5f;
+
+    uint32_t subGridColor = IM_COL32(50, 70, 95, 60);     // 補助線 (薄いサイバーグリッド)
+    uint32_t mainGridColor = IM_COL32(85, 120, 175, 125); // 主線 (10mごと)
+    uint32_t axisColorX = IM_COL32(245, 65, 65, 230);     // 赤: X軸
+    uint32_t axisColorZ = IM_COL32(65, 130, 255, 230);    // 青: Z軸
+    uint32_t axisColorY = IM_COL32(65, 245, 95, 230);     // 緑: Y軸
+
+    for (int i = -lines / 2; i <= lines / 2; ++i)
+    {
+        float pos = i * gridSpacing_;
+        bool isMajor = (static_cast<int>(std::round(std::abs(pos))) % 10 == 0);
+
+        // Z軸平行ライン
+        Vector3 startZ = { pos, 0.0f, -halfSize };
+        Vector3 endZ = { pos, 0.0f, halfSize };
+        uint32_t colZ = (i == 0) ? axisColorZ : (isMajor ? mainGridColor : subGridColor);
+        float thickZ = (i == 0) ? 2.5f : (isMajor ? 1.5f : 1.0f);
+        Draw3DLine(drawList, startZ, endZ, vpMat, imagePos, imageSize, colZ, thickZ);
+
+        // X軸平行ライン
+        Vector3 startX = { -halfSize, 0.0f, pos };
+        Vector3 endX = { halfSize, 0.0f, pos };
+        uint32_t colX = (i == 0) ? axisColorX : (isMajor ? mainGridColor : subGridColor);
+        float thickX = (i == 0) ? 2.5f : (isMajor ? 1.5f : 1.0f);
+        Draw3DLine(drawList, startX, endX, vpMat, imagePos, imageSize, colX, thickX);
+    }
+
+    // Y軸原点ギズモ (高さ3.5m)
+    if (showAxisGizmo_)
+    {
+        Draw3DLine(drawList, { 0.0f, 0.0f, 0.0f }, { 0.0f, 3.5f, 0.0f }, vpMat, imagePos, imageSize, axisColorY, 3.0f);
+    }
+#endif
+}
+
+void EffectStudio::Draw3DLine(ImDrawList* drawList, const Vector3& start, const Vector3& end,
+                              const Matrix4x4& vpMat, const ImVec2& minPos, const ImVec2& size,
+                              uint32_t color, float thickness)
+{
+#ifdef USE_IMGUI
+    auto project = [&](const Vector3& p, ImVec2& out) -> bool {
+        Vector4 clip = {
+            p.x * vpMat.m[0][0] + p.y * vpMat.m[1][0] + p.z * vpMat.m[2][0] + vpMat.m[3][0],
+            p.x * vpMat.m[0][1] + p.y * vpMat.m[1][1] + p.z * vpMat.m[2][1] + vpMat.m[3][1],
+            p.x * vpMat.m[0][2] + p.y * vpMat.m[1][2] + p.z * vpMat.m[2][2] + vpMat.m[3][2],
+            p.x * vpMat.m[0][3] + p.y * vpMat.m[1][3] + p.z * vpMat.m[2][3] + vpMat.m[3][3],
+        };
+
+        if (clip.w <= 0.001f) return false;
+
+        float ndcX = clip.x / clip.w;
+        float ndcY = clip.y / clip.w;
+
+        out.x = minPos.x + (ndcX * 0.5f + 0.5f) * size.x;
+        out.y = minPos.y + (-ndcY * 0.5f + 0.5f) * size.y;
+        return true;
+    };
+
+    ImVec2 p0, p1;
+    if (project(start, p0) && project(end, p1))
+    {
+        drawList->AddLine(p0, p1, color, thickness);
+    }
 #endif
 }
 
@@ -333,414 +696,172 @@ void EffectStudio::DrawControlWindow()
 
     if (ImGui::Begin("エフェクトエディター", &showEditor_))
     {
-        // -------------------------------------------------------------
-        // 1. プリセットファイル管理 (JSON Selector & Manager)
-        // -------------------------------------------------------------
-        ImGui::TextColored(ImVec4(0.3f, 0.85f, 1.0f, 1.0f), "■ エフェクトプリセット (JSON)");
-        ImGui::Separator();
-
-        // ドロップダウンで一覧から選択
-        std::vector<const char*> filePtrs;
-        for (const auto& file : jsonFiles_)
+        if (ImGui::BeginTabBar("EffectStudioTabs"))
         {
-            filePtrs.push_back(file.c_str());
-        }
-
-        if (ImGui::Combo("ファイル選択", &selectedFileIndex_, filePtrs.data(), static_cast<int>(filePtrs.size())))
-        {
-            if (selectedFileIndex_ >= 0 && selectedFileIndex_ < static_cast<int>(jsonFiles_.size()))
+            if (ImGui::BeginTabItem("GPUパーティクル (Cyber)"))
             {
-                currentLoadedFile_ = jsonFiles_[selectedFileIndex_];
-                previewEffect_.LoadFromJson(currentLoadedFile_);
-                strncpy_s(saveAsFileName_, currentLoadedFile_.c_str(), sizeof(saveAsFileName_) - 1);
-                statusMessage_ = "ロード完了: " + currentLoadedFile_;
+                isGPUMode_ = true;
+                DrawGPUControlTab();
+                ImGui::EndTabItem();
             }
-        }
 
-        ImGui::SameLine();
-        if (ImGui::Button("更新##ReloadList"))
-        {
-            RefreshFileList();
-            statusMessage_ = "ファイル一覧を更新しました。";
-        }
-
-        // ロード & 保存ボタン群
-        if (ImGui::Button("読込 (Load)", ImVec2(100, 26)))
-        {
-            if (selectedFileIndex_ >= 0 && selectedFileIndex_ < static_cast<int>(jsonFiles_.size()))
+            if (ImGui::BeginTabItem("CPUパーティクル (従来)"))
             {
-                currentLoadedFile_ = jsonFiles_[selectedFileIndex_];
-                previewEffect_.LoadFromJson(currentLoadedFile_);
-                statusMessage_ = "ロード完了: " + currentLoadedFile_;
-            }
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("上書き保存 (Save)", ImVec2(130, 26)))
-        {
-            if (!currentLoadedFile_.empty())
-            {
-                previewEffect_.SaveToJson(currentLoadedFile_);
-                RefreshFileList();
-                statusMessage_ = "保存完了: " + currentLoadedFile_;
-            }
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("新規作成 (New)", ImVec2(110, 26)))
-        {
-            // ノードを初期化して空のエフェクト作成
-            previewEffect_.ClearNodes();
-            previewEffect_.AddNode("Main Layer", 0); // デフォルトの爆発Quad
-            currentLoadedFile_ = "untitled_effect.json";
-            strncpy_s(saveAsFileName_, "untitled_effect.json", sizeof(saveAsFileName_) - 1);
-            statusMessage_ = "新規エフェクトを作成しました。";
-        }
+                isGPUMode_ = false;
 
-        // 別名保存
-        ImGui::SetNextItemWidth(180.0f);
-        ImGui::InputText("##SaveAsName", saveAsFileName_, sizeof(saveAsFileName_));
-        ImGui::SameLine();
-        if (ImGui::Button("別名で保存 (Save As)"))
-        {
-            std::string saveName = saveAsFileName_;
-            if (!saveName.ends_with(".json")) saveName += ".json";
-            previewEffect_.SaveToJson(saveName);
-            currentLoadedFile_ = saveName;
-            RefreshFileList();
-            statusMessage_ = "保存完了: " + saveName;
-        }
-
-        if (!statusMessage_.empty())
-        {
-            ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "%s", statusMessage_.c_str());
-        }
-
-        // -------------------------------------------------------------
-        // 2. プレビュー再生コントロール
-        // -------------------------------------------------------------
-        ImGui::Spacing();
-        ImGui::TextColored(ImVec4(0.3f, 0.85f, 1.0f, 1.0f), "■ 再生・カメラコントロール");
-        ImGui::Separator();
-
-        if (ImGui::Button("発射 (Play Burst)##Btn", ImVec2(140, 30)))
-        {
-            previewEffect_.Play();
-        }
-        ImGui::SameLine();
-        ImGui::Checkbox("自動ループ再生", &autoLoop_);
-
-        if (autoLoop_)
-        {
-            ImGui::SetNextItemWidth(120.0f);
-            ImGui::SliderFloat("ループ間隔(s)", &loopInterval_, 0.2f, 5.0f, "%.1fs");
-        }
-
-        ImGui::SetNextItemWidth(120.0f);
-        ImGui::SliderFloat("再生速度", &playbackSpeed_, 0.1f, 3.0f, "%.2fx");
-        ImGui::SameLine();
-        if (ImGui::SmallButton("1.0x")) playbackSpeed_ = 1.0f;
-        ImGui::SameLine();
-        if (ImGui::SmallButton("0.5x")) playbackSpeed_ = 0.5f;
-
-        // 背景色
-        float bgArr[4] = { backgroundColor_.x, backgroundColor_.y, backgroundColor_.z, backgroundColor_.w };
-        if (ImGui::ColorEdit4("背景色", bgArr))
-        {
-            backgroundColor_ = Vector4(bgArr[0], bgArr[1], bgArr[2], bgArr[3]);
-        }
-
-        // 床グリッド設定
-        ImGui::Spacing();
-        ImGui::Checkbox("床グリッド線を表示", &showGrid_);
-        if (showGrid_)
-        {
-            ImGui::SameLine();
-            ImGui::Checkbox("原点XYZ軸", &showAxisGizmo_);
-
-            ImGui::SetNextItemWidth(110.0f);
-            ImGui::SliderFloat("グリッド範囲", &gridSize_, 3.0f, 30.0f, "%.0fm");
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(90.0f);
-            ImGui::SliderFloat("間隔", &gridSpacing_, 0.2f, 5.0f, "%.1fm");
-        }
-
-        if (ImGui::Button("カメラ位置リセット"))
-        {
-            cameraTarget_ = { 0.0f, 0.0f, 0.0f };
-            cameraDistance_ = 6.0f;
-            cameraYaw_ = 0.0f;
-            cameraPitch_ = 0.35f;
-        }
-        ImGui::SameLine();
-        ImGui::TextDisabled("※操作: [右ドラッグ]回転 / [中ドラッグ]パン / [ホイール]ズーム");
-
-        // -------------------------------------------------------------
-        // 3. エフェクト詳細ノード編集
-        // -------------------------------------------------------------
-        ImGui::Spacing();
-        ImGui::TextColored(ImVec4(0.3f, 0.85f, 1.0f, 1.0f), "■ レイヤー・ノード編集 (Node Inspector)");
-        ImGui::Separator();
-
-        // 既存の DrawImGui 内容（ノード追加、ノード詳細調整）を表示
-        // （DrawImGui の Begin/End なし版としてインライン描画、または直接ノードを操作）
-        ImGui::Text("新しいレイヤーを追加:");
-        static int newShapeType = 0;
-        const char* shapes[] = { "Quad (平面・板)", "Ring (輪・リング)", "Cylinder (円筒)" };
-        ImGui::SetNextItemWidth(160.0f);
-        ImGui::Combo("形状##NewShape", &newShapeType, shapes, 3);
-        ImGui::SameLine();
-        if (ImGui::Button("レイヤー追加"))
-        {
-            previewEffect_.AddNode("New Layer", newShapeType);
-        }
-
-        ImGui::Separator();
-
-        // 各ノードのパラメータ編集
-        auto& nodes = previewEffect_.GetNodes();
-        for (size_t i = 0; i < nodes.size(); ++i)
-        {
-            auto& node = nodes[i];
-            ImGui::PushID(static_cast<int>(i));
-
-            std::string headerLabel = "[" + std::to_string(i + 1) + "] " + node->name;
-            if (ImGui::CollapsingHeader(headerLabel.c_str(), ImGuiTreeNodeFlags_DefaultOpen))
-            {
-                ImGui::InputText("レイヤー名", node->name, sizeof(node->name));
-
-                if (ImGui::Combo("形状タイプ", &node->shapeType, shapes, 3))
-                {
-                    previewEffect_.SetupRendererForNode(node.get());
-                }
-
-                auto param = node->emitter.GetParameter();
-                bool changed = false;
-
-                if (ImGui::TreeNode("発生パラメータ (Emitter Settings)"))
-                {
-                    int count = static_cast<int>(param.count);
-                    if (ImGui::DragInt("発生数 (Count)", &count, 1, 0, 100)) { param.count = count; changed = true; }
-                    if (ImGui::DragFloat("頻度 (Frequency)", &param.frequency, 0.01f, 0.0f, 2.0f)) { changed = true; }
-
-                    float life[2] = { param.minLifeTime, param.maxLifeTime };
-                    if (ImGui::DragFloat2("寿命 Min/Max", life, 0.05f, 0.0f, 10.0f))
-                    {
-                        param.minLifeTime = life[0]; param.maxLifeTime = life[1]; changed = true;
-                    }
-                    ImGui::TreePop();
-                }
-
-                if (ImGui::TreeNode("速度・スケール (Transform)"))
-                {
-                    if (ImGui::DragFloat3("初速 Min", &param.minVelocity.x, 0.05f)) changed = true;
-                    if (ImGui::DragFloat3("初速 Max", &param.maxVelocity.x, 0.05f)) changed = true;
-                    if (ImGui::DragFloat3("スケール Min", &param.minScale.x, 0.05f)) changed = true;
-                    if (ImGui::DragFloat3("スケール Max", &param.maxScale.x, 0.05f)) changed = true;
-                    if (ImGui::DragFloat3("回転 Min", &param.minRotation.x, 0.05f)) changed = true;
-                    if (ImGui::DragFloat3("回転 Max", &param.maxRotation.x, 0.05f)) changed = true;
-                    ImGui::TreePop();
-                }
-
-                if (ImGui::TreeNode("カラー・フェード (Color)"))
-                {
-                    if (ImGui::ColorEdit4("開始色 Min", &param.minColor.x)) changed = true;
-                    if (ImGui::ColorEdit4("開始色 Max", &param.maxColor.x)) changed = true;
-
-                    if (ImGui::Checkbox("寿命で色変化 (Color Over Lifetime)", &param.isColorOverLifetime)) changed = true;
-                    if (param.isColorOverLifetime)
-                    {
-                        if (ImGui::ColorEdit4("終了色", &param.endColor.x)) changed = true;
-                    }
-
-                    if (ImGui::Checkbox("寿命で拡縮 (Scale Over Lifetime)", &param.isScaleOverLifetime)) changed = true;
-                    if (param.isScaleOverLifetime)
-                    {
-                        if (ImGui::DragFloat3("終了時スケール", &param.endScale.x, 0.05f)) changed = true;
-                    }
-                    ImGui::TreePop();
-                }
-
-                if (ImGui::TreeNode("物理挙動 (Physics)"))
-                {
-                    if (ImGui::Checkbox("重力適用 (Use Gravity)", &param.useGravity)) changed = true;
-                    if (param.useGravity)
-                    {
-                        if (ImGui::DragFloat("重力加速度", &param.gravity, 0.1f)) changed = true;
-                    }
-                    if (ImGui::DragFloat("空気抵抗 (Air Drag)", &param.drag, 0.01f, 0.0f, 1.0f)) changed = true;
-                    ImGui::TreePop();
-                }
-
-                if (changed)
-                {
-                    node->emitter.SetParameter(param);
-                }
-
+                // 従来のCPUエフェクトUI
+                ImGui::TextColored(ImVec4(0.3f, 0.85f, 1.0f, 1.0f), "■ CPUエフェクト プリセット (JSON)");
                 ImGui::Separator();
-                ImGui::Text("マテリアル & ブレンドモード");
 
-                char texName[64];
-                strncpy_s(texName, node->emitter.GetTextureName().c_str(), sizeof(texName) - 1);
-                if (ImGui::InputText("テクスチャ名", texName, sizeof(texName)))
+                std::vector<const char*> filePtrs;
+                for (const auto& file : jsonFiles_) filePtrs.push_back(file.c_str());
+
+                if (ImGui::Combo("ファイル選択", &selectedFileIndex_, filePtrs.data(), static_cast<int>(filePtrs.size())))
                 {
-                    node->emitter.SetTextureName(texName);
+                    if (selectedFileIndex_ >= 0 && selectedFileIndex_ < static_cast<int>(jsonFiles_.size()))
+                    {
+                        currentLoadedFile_ = jsonFiles_[selectedFileIndex_];
+                        previewEffect_.LoadFromJson(currentLoadedFile_);
+                        previewEffect_.Play();
+                    }
                 }
+                ImGui::SameLine();
+                if (ImGui::Button("更新")) RefreshFileList();
 
-                int mode = static_cast<int>(node->emitter.GetBlendMode());
-                const char* blendNames[] = { "None", "Alpha (半透明)", "Additive (加算)", "Multiply (乗算)", "PreMultiplied" };
-                if (ImGui::Combo("ブレンドモード", &mode, blendNames, 5))
-                {
-                    node->emitter.SetBlendMode(static_cast<BlendMode>(mode));
-                }
+                ImGui::Spacing();
+                if (ImGui::Button("Play", ImVec2(80, 24))) previewEffect_.Play();
+                ImGui::SameLine();
+                ImGui::Checkbox("Auto Loop", &autoLoop_);
+                if (autoLoop_) ImGui::SliderFloat("Loop Interval", &loopInterval_, 0.2f, 5.0f, "%.2f s");
 
-                ImGui::DragFloat("UVスクロール速度", &node->uvScrollSpeed, 0.05f, -5.0f, 5.0f);
-
-                if (ImGui::Button("このレイヤーを削除"))
-                {
-                    nodes.erase(nodes.begin() + i);
-                    ImGui::PopID();
-                    break;
-                }
+                ImGui::EndTabItem();
             }
-            ImGui::PopID();
+
+            ImGui::EndTabBar();
         }
     }
     ImGui::End();
 #endif
 }
 
-namespace
+void EffectStudio::DrawGPUControlTab()
 {
-    // 3Dベクトル * Matrix4x4 (Row-Vector 形式の計算)
-    inline Vector4 TransformPointToClip(const Vector3& p, const Matrix4x4& m)
-    {
-        Vector4 res;
-        res.x = p.x * m.m[0][0] + p.y * m.m[1][0] + p.z * m.m[2][0] + m.m[3][0];
-        res.y = p.x * m.m[0][1] + p.y * m.m[1][1] + p.z * m.m[2][1] + m.m[3][1];
-        res.z = p.x * m.m[0][2] + p.y * m.m[1][2] + p.z * m.m[2][2] + m.m[3][2];
-        res.w = p.x * m.m[0][3] + p.y * m.m[1][3] + p.z * m.m[2][3] + m.m[3][3];
-        return res;
-    }
+#ifdef USE_IMGUI
+    // 1. JSON プリセット管理
+    ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.9f, 1.0f), "■ GPUパーティクル プリセット (JSON)");
+    ImGui::Separator();
 
-    // Near 平面による線分クリップ (カメラ背後・視錐台外の補正)
-    inline bool ClipLineToNear(Vector4& p0, Vector4& p1, float nearW = 0.05f)
-    {
-        bool p0In = (p0.w >= nearW);
-        bool p1In = (p1.w >= nearW);
-        if (!p0In && !p1In) return false;
+    std::vector<const char*> gpuFilePtrs;
+    for (const auto& f : gpuJsonFiles_) gpuFilePtrs.push_back(f.c_str());
 
-        if (!p0In)
+    if (ImGui::Combo("プリセット選択", &selectedGpuFileIndex_, gpuFilePtrs.data(), static_cast<int>(gpuFilePtrs.size())))
+    {
+        if (selectedGpuFileIndex_ >= 0 && selectedGpuFileIndex_ < static_cast<int>(gpuJsonFiles_.size()))
         {
-            float t = (nearW - p0.w) / (p1.w - p0.w);
-            p0.x = p0.x + t * (p1.x - p0.x);
-            p0.y = p0.y + t * (p1.y - p0.y);
-            p0.z = p0.z + t * (p1.z - p0.z);
-            p0.w = nearW;
-        }
-        else if (!p1In)
-        {
-            float t = (nearW - p1.w) / (p0.w - p1.w);
-            p1.x = p1.x + t * (p0.x - p1.x);
-            p1.y = p1.y + t * (p0.y - p1.y);
-            p1.z = p1.z + t * (p0.z - p1.z);
-            p1.w = nearW;
-        }
-        return true;
-    }
-
-    // クリップ座標 -> スクリーン座標変換
-    inline ImVec2 ClipToScreen(const Vector4& clip, const ImVec2& minPos, const ImVec2& size)
-    {
-        float invW = 1.0f / (clip.w > 0.0001f ? clip.w : 0.0001f);
-        float ndcX = clip.x * invW;
-        float ndcY = clip.y * invW;
-        return ImVec2(
-            minPos.x + (ndcX * 0.5f + 0.5f) * size.x,
-            minPos.y + (-ndcY * 0.5f + 0.5f) * size.y
-        );
-    }
-}
-
-void EffectStudio::Draw3DLine(ImDrawList* drawList, const Vector3& start, const Vector3& end,
-    const Matrix4x4& vpMat, const ImVec2& minPos, const ImVec2& size,
-    uint32_t color, float thickness)
-{
-    Vector4 p0 = TransformPointToClip(start, vpMat);
-    Vector4 p1 = TransformPointToClip(end, vpMat);
-
-    if (!ClipLineToNear(p0, p1, 0.05f)) return;
-
-    ImVec2 s0 = ClipToScreen(p0, minPos, size);
-    ImVec2 s1 = ClipToScreen(p1, minPos, size);
-
-    drawList->AddLine(s0, s1, color, thickness);
-}
-
-void EffectStudio::DrawGridOverlay(const ImVec2& imagePos, const ImVec2& imageSize)
-{
-    if (!showGrid_) return;
-
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
-    drawList->PushClipRect(imagePos, ImVec2(imagePos.x + imageSize.x, imagePos.y + imageSize.y), true);
-
-    Matrix4x4 vpMat = camera_.GetViewMatrix() * camera_.GetProjectionMatrix();
-
-    const float range = (std::max)(1.0f, gridSize_);
-    const float step = (std::max)(0.1f, gridSpacing_);
-
-    // 視認性の高いカラー定義
-    ImU32 normalColor = IM_COL32(180, 185, 205, 55);   // 通常のグリッド線（半透明薄グレー）
-    ImU32 majorColor  = IM_COL32(205, 215, 240, 105);  // 5本ごとの強調線
-    ImU32 xAxisColor  = IM_COL32(245, 75, 75, 190);     // X軸（赤）
-    ImU32 zAxisColor  = IM_COL32(75, 135, 255, 190);    // Z軸（青）
-    ImU32 yAxisColor  = IM_COL32(75, 235, 95, 210);     // Y軸（緑）
-
-    // 1. Z方向の平行線（X軸に沿って並ぶ線）
-    for (float x = -range; x <= range + 0.001f; x += step)
-    {
-        bool isZero = std::abs(x) < 0.001f;
-        int index = static_cast<int>(std::round(x / step));
-        bool isMajor = !isZero && (index % 5 == 0);
-
-        ImU32 col = isZero ? zAxisColor : (isMajor ? majorColor : normalColor);
-        float th = isZero ? 2.0f : (isMajor ? 1.5f : 1.0f);
-
-        Draw3DLine(drawList, { x, 0.0f, -range }, { x, 0.0f, range }, vpMat, imagePos, imageSize, col, th);
-    }
-
-    // 2. X方向の平行線（Z軸に沿って並ぶ線）
-    for (float z = -range; z <= range + 0.001f; z += step)
-    {
-        bool isZero = std::abs(z) < 0.001f;
-        int index = static_cast<int>(std::round(z / step));
-        bool isMajor = !isZero && (index % 5 == 0);
-
-        ImU32 col = isZero ? xAxisColor : (isMajor ? majorColor : normalColor);
-        float th = isZero ? 2.0f : (isMajor ? 1.5f : 1.0f);
-
-        Draw3DLine(drawList, { -range, 0.0f, z }, { range, 0.0f, z }, vpMat, imagePos, imageSize, col, th);
-    }
-
-    // 3. 原点XYZ軸ギズモ（中央から伸びる矢印風ライン）
-    if (showAxisGizmo_)
-    {
-        const float axisLen = (std::min)(range * 0.35f, 3.0f);
-
-        // X軸 (+X: 赤)
-        Draw3DLine(drawList, { 0.0f, 0.0f, 0.0f }, { axisLen, 0.0f, 0.0f }, vpMat, imagePos, imageSize, xAxisColor, 2.5f);
-        // Y軸 (+Y: 緑・上方向)
-        Draw3DLine(drawList, { 0.0f, 0.0f, 0.0f }, { 0.0f, axisLen, 0.0f }, vpMat, imagePos, imageSize, yAxisColor, 2.5f);
-        // Z軸 (+Z: 青)
-        Draw3DLine(drawList, { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, axisLen }, vpMat, imagePos, imageSize, zAxisColor, 2.5f);
-
-        // 原点マーカー（白い丸点）
-        Vector4 centerClip = TransformPointToClip({ 0.0f, 0.0f, 0.0f }, vpMat);
-        if (centerClip.w > 0.05f)
-        {
-            ImVec2 centerScr = ClipToScreen(centerClip, imagePos, imageSize);
-            drawList->AddCircleFilled(centerScr, 4.0f, IM_COL32(255, 255, 255, 220));
-            drawList->AddCircle(centerScr, 6.0f, IM_COL32(255, 215, 0, 180), 12, 1.5f);
+            LoadGPUJson(gpuJsonFiles_[selectedGpuFileIndex_]);
+            gpuParticleSystem_.Reset();
+            gpuParticleSystem_.Emit(gpuEmitterData_);
         }
     }
+    ImGui::SameLine();
+    if (ImGui::Button("更新##GPU")) RefreshGPUFileList();
 
-    drawList->PopClipRect();
+    ImGui::InputText("保存ファイル名", saveGpuFileName_, sizeof(saveGpuFileName_));
+    ImGui::SameLine();
+    if (ImGui::Button("JSON保存"))
+    {
+        SaveGPUJson(saveGpuFileName_);
+    }
+
+    if (!statusMessage_.empty())
+    {
+        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "%s", statusMessage_.c_str());
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+
+    // 2. プレビュー再生 & カメラ制御
+    ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.9f, 1.0f), "■ プレビュー制御 & カメラ");
+    if (ImGui::Button("射出 (Emit Now)", ImVec2(120, 26)))
+    {
+        gpuParticleSystem_.Emit(gpuEmitterData_);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("リセット (Clear)", ImVec2(100, 26)))
+    {
+        gpuParticleSystem_.Reset();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("原点フォーカス (F)", ImVec2(120, 26)))
+    {
+        FocusOrigin();
+    }
+
+    ImGui::Checkbox("自動連続射出 (Loop)", &gpuAutoEmit_);
+    if (gpuAutoEmit_)
+    {
+        ImGui::SliderFloat("射出間隔 (Interval)", &gpuEmitInterval_, 0.05f, 2.0f, "%.2f 秒");
+    }
+
+    ImGui::SliderFloat("グリッド範囲", &gridSize_, 20.0f, 200.0f, "%.0f m");
+
+    ImGui::Spacing();
+    ImGui::Separator();
+
+    // 3. パターン & Emitter 幾何学パラメータ
+    ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.9f, 1.0f), "■ エミッター設定");
+
+    const char* patternNames[] = {
+        "0: 球状散乱 (Explosion / Burst)",
+        "1: ボクセル崩壊 (Cyber Voxel Break)",
+        "2: 直線ストリーム (Data Stream / Warp)",
+        "3: デジタルスパーク (Glitch Spark)"
+    };
+    int currentPattern = static_cast<int>(gpuEmitterData_.patternType);
+    if (ImGui::Combo("射出パターン", &currentPattern, patternNames, IM_ARRAYSIZE(patternNames)))
+    {
+        gpuEmitterData_.patternType = static_cast<uint32_t>(currentPattern);
+    }
+
+    int countInt = static_cast<int>(gpuEmitterData_.count);
+    if (ImGui::SliderInt("1回の射出粒子数", &countInt, 1, 1024))
+    {
+        gpuEmitterData_.count = static_cast<uint32_t>(countInt);
+    }
+
+    ImGui::SliderFloat("発生半径 (Radius)", &gpuEmitterData_.radius, 0.0f, 10.0f, "%.2f");
+    ImGui::SliderFloat("射出速度 (Speed)", &gpuEmitterData_.speed, 0.0f, 50.0f, "%.1f");
+    ImGui::SliderFloat("拡散度 (Spread)", &gpuEmitterData_.spread, 0.0f, 10.0f, "%.2f");
+    ImGui::SliderFloat("重力加速度 (Gravity)", &gpuEmitterData_.gravity, -20.0f, 20.0f, "%.1f");
+    ImGui::SliderFloat("寿命 (LifeTime)", &gpuEmitterData_.lifeTime, 0.1f, 5.0f, "%.2f 秒");
+
+    ImGui::Spacing();
+    ImGui::Separator();
+
+    // 4. 外観・カラー・ブレンドモード
+    ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.9f, 1.0f), "■ ビジュアル設定 (サイバー発光)");
+
+    ImGui::SliderFloat("開始スケール", &gpuEmitterData_.startScale, 0.01f, 2.0f, "%.2f");
+    ImGui::SliderFloat("終了スケール", &gpuEmitterData_.endScale, 0.0f, 2.0f, "%.2f");
+
+    float startCol[4] = { gpuEmitterData_.startColor.x, gpuEmitterData_.startColor.y, gpuEmitterData_.startColor.z, gpuEmitterData_.startColor.w };
+    if (ImGui::ColorEdit4("開始カラー (Start Color)", startCol))
+    {
+        gpuEmitterData_.startColor = { startCol[0], startCol[1], startCol[2], startCol[3] };
+    }
+
+    float endCol[4] = { gpuEmitterData_.endColor.x, gpuEmitterData_.endColor.y, gpuEmitterData_.endColor.z, gpuEmitterData_.endColor.w };
+    if (ImGui::ColorEdit4("終了カラー (End Color)", endCol))
+    {
+        gpuEmitterData_.endColor = { endCol[0], endCol[1], endCol[2], endCol[3] };
+    }
+
+    const char* blendNames[] = { "Alpha (通常半透明)", "Add (加算合成 / ネオン発光推奨)" };
+    int currentBlend = static_cast<int>(gpuBlendMode_);
+    if (ImGui::Combo("ブレンドモード", &currentBlend, blendNames, IM_ARRAYSIZE(blendNames)))
+    {
+        gpuBlendMode_ = static_cast<GPUParticleBlendMode>(currentBlend);
+    }
+#endif
 }

@@ -1,4 +1,4 @@
-﻿#include "Object3d.hlsli"
+#include "Object3d.hlsli"
 #define float32_t4 float4
 #define float32_t4x4 float4x4
 #define int32_t int
@@ -473,24 +473,29 @@ PixelShaderOutput main(VertexShaderOutput input)
                 output.color.rgb = shipGlow * gMaterial.color.rgb;
                 output.color.a = 1.0f;
 
-                // ===== ポリゴンディゾルブ消滅（gMaterial.color.a が 1.0 未満のときに発動） =====
+                // ===== 繧ｭ繝･繝ｼ繝匁・闖ｯ繝ｻ蝙ら峩繧ｹ繧ｭ繝｣繝ｳ繝ｩ繧､繝ｳ繝・ぅ繧ｾ繝ｫ繝匁ｶ域ｻ・=====
+                // ===== Voxel Dissolve & Vertical Scanline =====
                 if (gMaterial.color.a < 0.999f)
                 {
-                    float dissolveProgress = 1.0f - gMaterial.color.a; // 0.0 -> 1.0
-                    
-                    // 3D空間座標に基づくデジタルポリゴングリッドパターン（三角・六角ブロック状の崩壊ノイズ）
-                    float32_t3 blockCoord = floor(wp.xyz * 4.5f);
-                    float polyPattern = frac(sin(dot(blockCoord, float32_t3(12.9898f, 78.233f, 45.164f))) * 43758.5453f);
-                    float dissolveThreshold = dissolveProgress * 1.35f - 0.15f;
+                    float dissolveProgress = 1.0f - gMaterial.color.a;
 
-                    if (polyPattern < dissolveThreshold)
+                    float32_t3 wireColor = float32_t3(0.40f, 0.95f, 1.0f) * (wireLine * 3.5f + 0.35f);
+                    float32_t3 whiteGrid = float32_t3(1.0f, 1.0f, 1.0f) * (wireLine * 2.5f);
+                    output.color.rgb = lerp(output.color.rgb, wireColor + whiteGrid, saturate(dissolveProgress * 3.0f));
+
+                    // 3D voxel noise pattern
+                    float32_t3 blockCoord = floor(wp.xyz * 8.0f);
+                    float voxelNoise = frac(sin(dot(blockCoord, float32_t3(12.9898f, 78.233f, 45.164f))) * 43758.5453f) * 0.25f;
+                    float dissolveVal = dissolveProgress + voxelNoise;
+
+                    if (dissolveVal > 0.95f || (dissolveProgress > 0.05f && voxelNoise + (dissolveProgress * 1.2f) > 1.0f))
                     {
                         discard;
                     }
 
-                    // ポリゴン崩壊境界の超高輝度ネオン発光エッジ
-                    float edge = saturate(1.0f - abs(polyPattern - dissolveThreshold) * 10.0f);
-                    output.color.rgb += float32_t3(0.70f, 1.0f, 0.98f) * (edge * 5.0f);
+                    // Bright neon edge
+                    float edge = saturate(1.0f - abs(dissolveVal - 0.90f) * 8.0f);
+                    output.color.rgb += float32_t3(0.50f, 0.95f, 1.0f) * (edge * 4.0f) + float32_t3(1.0f, 1.0f, 1.0f) * (edge * 3.0f);
                 }
             }
             break;

@@ -1,4 +1,4 @@
-#define NOMINMAX
+﻿#define NOMINMAX
 #include "TitleScene.h"
 #include "KHEngine/Core/Services/EngineServices.h"
 #include "KHEngine/Graphics/Resource/Texture/TextureManager.h"
@@ -356,8 +356,19 @@ void TitleScene::Initialize()
         randomEngine_.seed(1337);
     }
 
-    // 3Dポリゴン破片用モデルのロード
-    ModelManager::GetInstance()->LoadModel("polygon_shard.obj");
+    // GPUボクセルパーティクルシステムの初期化
+    gpuParticleSystem_ = std::make_unique<GPUParticleSystem>();
+    gpuParticleSystem_->Initialize(dxCommon, srvManager);
+
+    // 640個のボクセルインスタンス用バッファ（UPLOAD Heap: 640 × 64B = 40KB）
+    voxelBufferResource_ = dxCommon->CreateBufferResource(sizeof(GPUParticleData) * kMaxVoxelCubes);
+    voxelBufferResource_->Map(0, nullptr, reinterpret_cast<void**>(&mappedVoxelBuffer_));
+    std::memset(mappedVoxelBuffer_, 0, sizeof(GPUParticleData) * kMaxVoxelCubes);
+
+    voxelSrvIndex_ = srvManager->Allocate();
+    srvManager->CreateSRVforStructuredBuffer(voxelSrvIndex_, voxelBufferResource_.Get(), static_cast<UINT>(kMaxVoxelCubes), sizeof(GPUParticleData));
+
+    voxelCubes_.resize(kMaxVoxelCubes);
 
     // 演出タイマーの初期化（起動直後から手前飛び込み登場演出開始）
     isIntro_ = true;
@@ -373,7 +384,6 @@ void TitleScene::Initialize()
     }
     flightProgressZ_ = 0.0f;
     dissolveProgress_ = 0.0f;
-    polyShards3D_.clear();
 
     // タイトルBGMの再生（ループ再生、音量0.25）
     SoundManager::GetInstance()->PlayBGM("tileBGM.mp3", 0.25f, true);
@@ -477,63 +487,235 @@ void TitleScene::UpdateDebugCamera(float dt)
     debugCamera_->Update();
 }
 
-void TitleScene::SpawnShipPolygonShards(const Vector3& shipPos)
+void TitleScene::SpawnShipVoxelCubes(const Vector3& shipPos)
 {
-    auto services = Services();
-    if (!services) return;
-    auto object3dCommon = services->GetObject3dCommon();
-    if (!object3dCommon) return;
-
-    polyShards3D_.clear();
-
-    std::mt19937 rng(54321);
-    std::uniform_real_distribution<float> distOffset(-1.8f, 1.8f);
-    std::uniform_real_distribution<float> distVel(-10.0f, 10.0f);
-    std::uniform_real_distribution<float> distVelY(-6.0f, 9.0f);
-    std::uniform_real_distribution<float> distVelZ(-4.0f, 16.0f);
-    std::uniform_real_distribution<float> distRot(-3.14f, 3.14f);
-    std::uniform_real_distribution<float> distRotSpd(-8.0f, 8.0f);
-    std::uniform_real_distribution<float> distScale(0.40f, 1.10f);
-
-    // 自機周囲から飛び散る48個の3Dポリゴン破片
-    for (int i = 0; i < 48; ++i)
+    if (voxelCubes_.size() < kMaxVoxelCubes)
     {
-        PolygonShard3D shard;
-        shard.position = {
-            shipPos.x + distOffset(rng) * 1.5f,
-            shipPos.y + distOffset(rng) * 0.7f,
-            shipPos.z + distOffset(rng) * 2.0f
-        };
-        shard.velocity = {
-            distVel(rng),
-            distVelY(rng) + 1.5f,
-            distVelZ(rng) + forwardSpeed_
-        };
-        shard.rotation = { distRot(rng), distRot(rng), distRot(rng) };
-        shard.rotSpeed = { distRotSpd(rng), distRotSpd(rng), distRotSpd(rng) };
-        float sc = distScale(rng);
-        shard.scale = { sc, sc, sc };
-        shard.life = 1.0f;
+        voxelCubes_.resize(kMaxVoxelCubes);
+    }
 
-        // エメラルドグリーン＆ネオンシアンの発光ポリゴンカラー
-        if (i % 3 == 0)
-            shard.color = { 0.10f, 1.0f, 0.85f, 1.0f };
-        else if (i % 3 == 1)
-            shard.color = { 0.25f, 0.95f, 1.0f, 1.0f };
+    std::mt19937 rng(42424);
+    std::uniform_real_distribution<float> distNoise(-0.25f, 0.25f);
+    std::uniform_real_distribution<float> distRot(-3.14f, 3.14f);
+    std::uniform_real_distribution<float> distRotSpd(-6.0f, 6.0f);
+    std::uniform_real_distribution<float> distRise(5.0f, 11.5f);
+    std::uniform_real_distribution<float> distMaxLife(0.60f, 1.10f);
+    std::uniform_real_distribution<float> distAroundX(-4.2f, 4.2f);
+    std::uniform_real_distribution<float> distAroundY(-1.2f, 1.8f);
+    std::uniform_real_distribution<float> distAroundZ(-3.2f, 3.2f);
+
+    const Vector4 palette[5] = {
+        { 0.20f, 0.95f, 1.00f, 1.0f }, // 鮮烈なサイバーシアン（自機メイン発光色）
+        { 0.40f, 1.00f, 0.95f, 1.0f }, // エメラルドシアン（自機リムライト色）
+        { 0.55f, 0.90f, 1.00f, 1.0f }, // クリスタルアイスブルー
+        { 0.95f, 1.00f, 1.00f, 1.0f }, // 白熱コアホワイト（自機ディゾルブフラッシュ色）
+        { 0.15f, 0.85f, 1.00f, 1.0f }  // ディープサイバーブルー
+    };
+
+    size_t cubeIndex = 0;
+
+    // [グループ1: 機体輪郭サンプリングボクセル (240個)]
+    for (int i = 0; i < 240 && cubeIndex < voxelCubes_.size(); ++i)
+    {
+        auto& cube = voxelCubes_[cubeIndex++];
+        float t = static_cast<float>(i) / 240.0f;
+        Vector3 offset = { 0.0f, 0.0f, 0.0f };
+
+        if (i < 80)
+        {
+            float z = -2.8f + (static_cast<float>(i) / 80.0f) * 5.6f;
+            float y = 0.20f + std::sinf((z + 2.8f) / 5.6f * 3.14159f) * 0.45f;
+            float x = distNoise(rng) * 0.55f;
+            offset = { x, y, z };
+        }
+        else if (i < 160)
+        {
+            float side = (i % 2 == 0) ? 1.0f : -1.0f;
+            float span = (static_cast<float>(i - 80) / 80.0f);
+            float x = side * (0.6f + span * 3.2f);
+            float z = -0.5f - (span * 2.2f);
+            float y = -0.15f + (span * 0.35f);
+            offset = { x + distNoise(rng) * 0.2f, y, z + distNoise(rng) * 0.2f };
+        }
         else
-            shard.color = { 0.05f, 0.85f, 0.65f, 1.0f };
+        {
+            float u = static_cast<float>(i - 160) / 80.0f;
+            float x = ((i % 2 == 0) ? 0.6f : -0.6f) + distNoise(rng) * 0.3f;
+            float y = 0.3f + u * 1.1f;
+            float z = -1.8f - u * 1.4f;
+            offset = { x, y, z };
+        }
 
-        shard.object = std::make_unique<Object3d>();
-        shard.object->Initialize(object3dCommon);
-        shard.object->SetModel("polygon_shard.obj");
-        shard.object->SetSelectLightings(6); // ネオン高輝度プラズマ発光シェーダー
-        shard.object->SetColor(shard.color);
-        shard.object->SetScale(shard.scale);
-        shard.object->SetRotation(shard.rotation);
-        shard.object->SetTranslate(shard.position);
-        shard.object->Update();
+        cube.position = { shipPos.x + offset.x, shipPos.y + offset.y, shipPos.z + offset.z };
+        cube.velocity = {
+            offset.x * 0.4f + distNoise(rng) * 0.5f,
+            distRise(rng),
+            forwardSpeed_ + distNoise(rng) * 1.0f
+        };
+        cube.rotation = { distRot(rng), distRot(rng), distRot(rng) };
+        cube.rotSpeed = { distRotSpd(rng), distRotSpd(rng), distRotSpd(rng) };
+        cube.baseScale = 0.08f + std::abs(distNoise(rng)) * 0.10f;
+        cube.scale = { 0.0f, 0.0f, 0.0f };
+        cube.color = palette[i % 5];
+        cube.delay = t * 0.35f;
+        cube.life = 0.0f;
+        cube.maxLife = distMaxLife(rng);
+        cube.noiseSeed = static_cast<float>(i) * 1.618f;
+        cube.isForwardDiffuse = false;
+    }
 
-        polyShards3D_.push_back(std::move(shard));
+    // [グループ2: 機体周辺エンベロープ・包み込みボクセル (280個)]
+    for (int i = 0; i < 280 && cubeIndex < voxelCubes_.size(); ++i)
+    {
+        auto& cube = voxelCubes_[cubeIndex++];
+        float rx = distAroundX(rng);
+        float ry = distAroundY(rng);
+        float rz = distAroundZ(rng);
+
+        cube.position = {
+            shipPos.x + rx,
+            shipPos.y + ry,
+            shipPos.z + rz
+        };
+        cube.velocity = {
+            rx * 0.35f + distNoise(rng) * 0.6f,
+            distRise(rng) * 1.15f,
+            forwardSpeed_ + distNoise(rng) * 1.2f
+        };
+        cube.rotation = { distRot(rng), distRot(rng), distRot(rng) };
+        cube.rotSpeed = { distRotSpd(rng) * 1.2f, distRotSpd(rng) * 1.2f, distRotSpd(rng) * 1.2f };
+        cube.baseScale = (i % 4 == 0) ? 0.05f + std::abs(distNoise(rng)) * 0.06f : 0.11f + std::abs(distNoise(rng)) * 0.14f;
+        cube.scale = { 0.0f, 0.0f, 0.0f };
+        cube.color = palette[(i + 1) % 5];
+        cube.delay = (static_cast<float>(i) / 280.0f) * 0.40f;
+        cube.life = 0.0f;
+        cube.maxLife = distMaxLife(rng);
+        cube.noiseSeed = static_cast<float>(i + 300) * 2.314f;
+        cube.isForwardDiffuse = (i % 2 == 0);
+    }
+
+    // [グループ3: 機体外周オーラ・渦状スパイラルボクセル (120個)]
+    for (int i = 0; i < 120 && cubeIndex < voxelCubes_.size(); ++i)
+    {
+        auto& cube = voxelCubes_[cubeIndex++];
+        float angle = (static_cast<float>(i) / 120.0f) * 6.283185f * 2.0f;
+        float radius = 1.8f + (static_cast<float>(i % 30) / 30.0f) * 3.0f;
+        float hOffset = -0.8f + (static_cast<float>(i % 20) / 20.0f) * 2.4f;
+
+        cube.position = {
+            shipPos.x + std::cosf(angle) * radius,
+            shipPos.y + hOffset,
+            shipPos.z + std::sinf(angle) * radius * 0.7f
+        };
+        cube.velocity = {
+            -std::sinf(angle) * 2.2f + distNoise(rng) * 0.4f,
+            distRise(rng) * 1.05f,
+            forwardSpeed_ + std::cosf(angle) * 1.2f
+        };
+        cube.rotation = { distRot(rng), distRot(rng), distRot(rng) };
+        cube.rotSpeed = { distRotSpd(rng), distRotSpd(rng), distRotSpd(rng) };
+        cube.baseScale = (i % 2 == 0) ? 0.08f + std::abs(distNoise(rng)) * 0.08f : 0.16f + std::abs(distNoise(rng)) * 0.12f;
+        cube.scale = { 0.0f, 0.0f, 0.0f };
+        cube.color = palette[(i + 3) % 5];
+        cube.delay = (static_cast<float>(i) / 120.0f) * 0.38f;
+        cube.life = 0.0f;
+        cube.maxLife = distMaxLife(rng) * 1.15f;
+        cube.noiseSeed = static_cast<float>(i + 600) * 3.1415f;
+        cube.isForwardDiffuse = false;
+    }
+
+    // 初期状態バッファ書き込み
+    if (mappedVoxelBuffer_)
+    {
+        for (size_t i = 0; i < kMaxVoxelCubes; ++i)
+        {
+            mappedVoxelBuffer_[i].translate = voxelCubes_[i].position;
+            mappedVoxelBuffer_[i].scale = { 0.0f, 0.0f, 0.0f };
+            mappedVoxelBuffer_[i].color = voxelCubes_[i].color;
+            mappedVoxelBuffer_[i].currentTime = 0.0f;
+            mappedVoxelBuffer_[i].lifeTime = voxelCubes_[i].maxLife;
+        }
+    }
+}
+
+void TitleScene::UpdateShipVoxelCubes(float dt, const Vector3& curPos)
+{
+    if (!mappedVoxelBuffer_) return;
+
+    std::mt19937 respawnRng(static_cast<unsigned int>(diveTimer_ * 10000.0f) + 1234);
+    std::uniform_real_distribution<float> dDistX(-3.6f, 3.6f);
+    std::uniform_real_distribution<float> dDistZ(-2.8f, 2.8f);
+    std::uniform_real_distribution<float> dNoise(-0.25f, 0.25f);
+    std::uniform_real_distribution<float> dRise(5.0f, 10.5f);
+
+    for (size_t idx = 0; idx < voxelCubes_.size(); ++idx)
+    {
+        auto& cube = voxelCubes_[idx];
+
+        if (diveTimer_ < cube.delay)
+        {
+            mappedVoxelBuffer_[idx].scale = { 0.0f, 0.0f, 0.0f };
+            mappedVoxelBuffer_[idx].color = { 0.0f, 0.0f, 0.0f, 0.0f };
+            continue;
+        }
+
+        cube.life += dt;
+
+        if (cube.life >= cube.maxLife && diveTimer_ < 0.68f)
+        {
+            cube.life = 0.0f;
+            float rx = dDistX(respawnRng);
+            float ry = -0.6f + std::abs(dNoise(respawnRng)) * 1.6f;
+            float rz = dDistZ(respawnRng);
+
+            cube.position = {
+                curPos.x + rx * 0.75f,
+                curPos.y + ry,
+                curPos.z + rz * 0.70f
+            };
+            cube.velocity = {
+                dNoise(respawnRng) * 1.8f + rx * 0.2f,
+                dRise(respawnRng) * 0.95f,
+                forwardSpeed_ + dNoise(respawnRng) * 1.5f
+            };
+            cube.maxLife = 0.50f + std::abs(dNoise(respawnRng)) * 0.85f;
+        }
+
+        float lifeRatio = std::clamp(cube.life / cube.maxLife, 0.0f, 1.0f);
+
+        cube.position.y += cube.velocity.y * dt;
+
+        float noiseWindX = std::sinf(cube.life * 4.5f + cube.noiseSeed) * 0.95f * dt;
+        cube.position.x += (cube.velocity.x * 0.30f * dt) + noiseWindX;
+
+        cube.position.z += cube.velocity.z * dt;
+        if (cube.isForwardDiffuse && diveTimer_ > 0.30f)
+        {
+            float diffuseSpeed = (diveTimer_ - 0.30f) * 14.0f;
+            cube.position.z -= diffuseSpeed * dt;
+            cube.position.x += std::sinf(cube.noiseSeed) * 3.0f * dt;
+        }
+
+        float scaleAnim = 1.0f;
+        if (cube.life < 0.10f)
+        {
+            scaleAnim = cube.life / 0.10f;
+        }
+        else
+        {
+            scaleAnim = std::clamp((1.0f - lifeRatio) * 1.25f, 0.0f, 1.0f);
+        }
+        float curScale = cube.baseScale * scaleAnim;
+        cube.scale = { curScale, curScale, curScale };
+
+        Vector4 col = cube.color;
+        col.w = cube.color.w * std::clamp((1.0f - lifeRatio * lifeRatio), 0.0f, 1.0f);
+
+        mappedVoxelBuffer_[idx].translate = cube.position;
+        mappedVoxelBuffer_[idx].scale = cube.scale;
+        mappedVoxelBuffer_[idx].color = col;
+        mappedVoxelBuffer_[idx].currentTime = cube.life;
+        mappedVoxelBuffer_[idx].lifeTime = cube.maxLife;
     }
 }
 
@@ -562,20 +744,13 @@ void TitleScene::TriggerStartTransition(bool isPreview)
     diveStartCamRot_ = cameraRot_;
     diveStartProgressZ_ = flightProgressZ_;
 
-    // 仮想空間自機ポリゴン消滅演出の状態リセット
+    // 仮想空間自機ボクセル昇華演出の状態リセット
     dissolveProgress_ = 0.0f;
-    glitchStarted_ = false;
-    polyShards3D_.clear();
 
     if (startTransitionType_ == StartTransitionType::VirtualShatter)
     {
-        // タイムライン（合計 1.15秒）:
-        //  0.00s〜0.45s: 決定ボタン押下 ➔ 自機がポリゴンに分解し、破片が周囲へ美しく分散（グリッチなし）
-        //  0.45s〜1.15s: ポリゴンが分散したところから、激しいグリッチ振動＆カメラシェイクが発動！
-        //  1.15s: 通常のシーンフェードトランジションでゲームシーンへ移行
         diveDuration_ = isPreview ? 1.35f : 1.15f;
-
-        SpawnShipPolygonShards(diveStartPos_);
+        SpawnShipVoxelCubes(diveStartPos_);
     }
     else if (startTransitionType_ == StartTransitionType::SonicAfterburner)
     {
@@ -747,7 +922,6 @@ void TitleScene::Update()
                 isPreviewTransition_ = false;
                 diveTimer_ = 0.0f;
                 dissolveProgress_ = 0.0f;
-                polyShards3D_.clear();
                 playerColor_ = { 1.0f, 1.0f, 1.0f, 1.0f };
                 if (playerObj_) playerObj_->SetColor(playerColor_);
             }
@@ -768,97 +942,50 @@ void TitleScene::Update()
         if (startTransitionType_ == StartTransitionType::VirtualShatter)
         {
             // =========================================================
-            // 【仮想空間自機ポリゴン消滅シーケンス（合計 1.15秒）】
-            //  0.00s〜0.45s: 自機がポリゴンに分解し、破片が四散して分散（この間はグリッチ＆シェイクOFFで視認性を確保）
-            //  0.45s〜1.15s: ポリゴンが分散した瞬間、空間グリッチ振動＆激しいカメラシェイク発動！
-            //  1.15s: 通常のフェードトランジションでゲームシーンへ移行
+            // 【仮想空間自機ボクセル昇華シーケンス】
+            //  ・決定ボタン押下時の急加速（スピードアップ）を排除し、巡航速度のまま滑らかに等速前進
+            //  ・0.00s〜0.48s で自機がボクセルディゾルブ消滅
+            //  ・前回の美しいボクセル演出（機体輪郭からの湧き出し・上昇・ゆらぎ・リスポーン）を
+            //    GPUインスタンシング（DrawCall 1回）で超高速描画
             // =========================================================
+
             flightProgressZ_ += forwardSpeed_ * dt;
             float deltaZ = flightProgressZ_ - diveStartProgressZ_;
 
             curPos.x = diveStartPos_.x;
             curPos.y = diveStartPos_.y;
             curPos.z = diveStartPos_.z + deltaZ;
+            curRot = diveStartRot_;
 
-            // 0.00s〜0.45s で自機がポリゴンディゾルブ消滅（0.45s時点で完全に透明・分解）
-            dissolveProgress_ = std::clamp(diveTimer_ / 0.45f, 0.0f, 1.0f);
+            // 0.00s〜0.48s で自機がボクセルディゾルブ消滅
+            dissolveProgress_ = std::clamp(diveTimer_ / 0.48f, 0.0f, 1.0f);
 
-            // 自機のマテリアルアルファ値をディゾルブ進行度に応じて減衰（シェーダー case 8 でポリゴンブロックが分解）
+            // 自機のマテリアルアルファ値を減衰
             playerColor_.w = 1.0f - dissolveProgress_;
             if (playerObj_)
             {
                 playerObj_->SetColor(playerColor_);
             }
 
-            // ポリゴン分散後のグリッチ判定（0.45s以降に発動）
-            bool isGlitchActive = (diveTimer_ >= 0.45f);
-
-            if (isGlitchActive && !glitchStarted_)
-            {
-                glitchStarted_ = true;
-            }
-
-            // ポストプロセス（デジタルグリッチ振動演出: 0.45s以降のみ有効化）
+            // 演出の画面ノイズ（ポストプロセスのグリッチ・ノイズ）を無効化
             if (auto pp = services->GetPostProcess())
             {
-                pp->SetEffectActive("Random(Glitch)", isGlitchActive);
-                if (isGlitchActive)
-                {
-                    if (auto* d = pp->GetData())
-                    {
-                        float glitchPhase = (diveTimer_ - 0.45f) / 0.70f;
-                        d->glitchStrength = 0.22f + glitchPhase * 0.15f;
-                        d->noiseStrength = 0.12f + glitchPhase * 0.08f;
-                    }
-                }
+                pp->SetEffectActive("Random(Glitch)", false);
             }
 
-            // 決定時も前方に急加速・速度上昇せず、通常の巡航位置を安定維持
             dodgeThrustBoost_ = 0.0f;
-            curRot = diveStartRot_;
 
-            // カメラ制御: 0.45s以降にグリッチ振動（激しいカメラシェイク）を発動
+            // カメラ制御: 巡航速度のまま等速前進追従
             if (!isDebugCamera_ || !debugCamera_)
             {
-                if (isGlitchActive)
-                {
-                    float glitchPhase = (diveTimer_ - 0.45f) / 0.70f;
-                    float shakeAmp = 0.22f + glitchPhase * 0.18f;
-                    cameraPos_.x = diveStartCamPos_.x + std::sinf(diveTimer_ * 95.0f) * shakeAmp;
-                    cameraPos_.y = diveStartCamPos_.y + std::cosf(diveTimer_ * 115.0f) * shakeAmp * 0.8f;
-                }
-                else
-                {
-                    // 分散中（0.0s〜0.45s）はカメラを安定させ、ポリゴンの飛散を美しく見せる
-                    cameraPos_.x = diveStartCamPos_.x;
-                    cameraPos_.y = diveStartCamPos_.y;
-                }
+                cameraPos_.x = diveStartCamPos_.x;
+                cameraPos_.y = diveStartCamPos_.y;
                 cameraPos_.z = diveStartCamPos_.z + deltaZ;
                 cameraRot_ = diveStartCamRot_;
             }
 
-            // 3Dポリゴン破片の更新（機体から四散して消滅）
-            for (auto& shard : polyShards3D_)
-            {
-                if (!shard.object) continue;
-                shard.position.x += shard.velocity.x * dt;
-                shard.position.y += shard.velocity.y * dt;
-                shard.position.z += shard.velocity.z * dt;
-                shard.rotation.x += shard.rotSpeed.x * dt;
-                shard.rotation.y += shard.rotSpeed.y * dt;
-                shard.rotation.z += shard.rotSpeed.z * dt;
-
-                // 0.0sから分散開始し、1.10sにかけてフェードアウト
-                float shardFade = std::clamp(1.0f - (diveTimer_ / 1.10f), 0.0f, 1.0f);
-                Vector4 col = shard.color;
-                col.w = shardFade;
-                shard.object->SetColor(col);
-                shard.object->SetCamera(activeCamera);
-                shard.object->SetTranslate(shard.position);
-                shard.object->SetRotation(shard.rotation);
-                shard.object->SetScale(shard.scale * (1.0f + dissolveProgress_ * 0.3f));
-                shard.object->Update();
-            }
+            // 美しいボクセル演出シミュレーション（GPUバッファ書き込み）
+            UpdateShipVoxelCubes(dt, curPos);
         }
         else if (startTransitionType_ == StartTransitionType::SonicAfterburner)
         {
@@ -1815,7 +1942,7 @@ void TitleScene::Update()
                 ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.2f, 1.0f), "■ スタート演出切り替え (Start Transition)");
                 int currentType = static_cast<int>(startTransitionType_);
                 const char* typeNames[] = {
-                    "新演出(A案): オート4連射 ➔ 画面亀裂 ➔ 仮想空間粉砕ブレイク",
+                    "新演出(A案): オート4連射 -> 画面亀裂 -> 仮想空間粉砕ブレイク",
                     "案1: 超音速アフターバーナー上昇 (大空へ急上昇突破)",
                     "案2: 左旋回クライムブレイク (建造物を飛び越え左上空へ離脱)"
                 };
@@ -1824,7 +1951,7 @@ void TitleScene::Update()
                     startTransitionType_ = static_cast<StartTransitionType>(currentType);
                 }
 
-                if (ImGui::Button("▶ この演出をプレビュー再生 (シーン遷移なし)##PreviewBtn", ImVec2(-1, 34)))
+                if (ImGui::Button("> この演出をプレビュー再生 (シーン遷移なし)##PreviewBtn", ImVec2(-1, 34)))
                 {
                     TriggerStartTransition(true); // プレビューモード
                 }
@@ -2170,12 +2297,12 @@ void TitleScene::Draw()
         playerObj_->Draw();
     }
 
-    for (const auto& shard : polyShards3D_)
+    Camera* activeCamera = (isDebugCamera_ && debugCamera_) ? debugCamera_.get() : camera_.get();
+    if (gpuParticleSystem_ && activeCamera && voxelBufferResource_.Get())
     {
-        if (shard.object)
-        {
-            shard.object->Draw();
-        }
+        auto texManager = TextureManager::GetInstance();
+        uint32_t defaultTexIndex = texManager ? texManager->GetDefaultTextureIndex() : 0;
+        gpuParticleSystem_->DrawCustomCubes(activeCamera->GetViewProjectionMatrix(), voxelSrvIndex_, static_cast<uint32_t>(kMaxVoxelCubes), defaultTexIndex, GPUParticleBlendMode::Alpha);
     }
 
     // 4. スラスターブースト＆スピードライン描画
@@ -2205,7 +2332,6 @@ void TitleScene::Finalize()
     // タイトルBGM停止
     SoundManager::GetInstance()->StopBGM();
 
-    polyShards3D_.clear();
     titleMapNodes_.clear();
     playerObj_.reset();
     skybox_.reset();

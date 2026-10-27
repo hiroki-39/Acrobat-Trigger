@@ -13,6 +13,7 @@
                 "fontType": 2,
                 "hasOutline": true,
                 "hasShadow": true,
+                "hasUnderline": false,
                 "id": "ClearTitle",
                 "isVisible": true,
                 "outlineColor": [
@@ -34,7 +35,16 @@
                     3.0,
                     3.0
                 ],
-                "text": "MISSION COMPLETE"
+                "text": "MISSION COMPLETE",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
             },
             {
                 "align": 1,
@@ -48,6 +58,7 @@
                 "fontType": 3,
                 "hasOutline": true,
                 "hasShadow": false,
+                "hasUnderline": false,
                 "id": "ClearReturn",
                 "isVisible": true,
                 "outlineColor": [
@@ -69,7 +80,16 @@
                     2.0,
                     2.0
                 ],
-                "text": "PRESS SPACE TO RETURN TO TITLE"
+                "text": "PRESS SPACE TO RETURN TO TITLE",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
             }
         ],
         "GAMEOVER": [
@@ -85,6 +105,7 @@
                 "fontType": 2,
                 "hasOutline": true,
                 "hasShadow": true,
+                "hasUnderline": true,
                 "id": "GameOverTitle",
                 "isVisible": true,
                 "outlineColor": [
@@ -106,7 +127,16 @@
                     3.0,
                     3.0
                 ],
-                "text": "GAME OVER"
+                "text": "GAME OVER",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
             },
             {
                 "align": 1,
@@ -120,6 +150,7 @@
                 "fontType": 3,
                 "hasOutline": true,
                 "hasShadow": false,
+                "hasUnderline": false,
                 "id": "GameOverRetry",
                 "isVisible": true,
                 "outlineColor": [
@@ -141,7 +172,16 @@
                     2.0,
                     2.0
                 ],
-                "text": "PRESS SPACE TO RETRY"
+                "text": "PRESS SPACE TO RETRY",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
             }
         ],
         "GAMEPLAY": [
@@ -157,6 +197,7 @@
                 "fontType": 2,
                 "hasOutline": false,
                 "hasShadow": false,
+                "hasUnderline": false,
                 "id": "Score",
                 "isVisible": true,
                 "outlineColor": [
@@ -178,7 +219,16 @@
                     2.0,
                     2.0
                 ],
-                "text": "SCORE: 000400"
+                "text": "",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
             },
             {
                 "align": 0,
@@ -192,6 +242,7 @@
                 "fontType": 3,
                 "hasOutline": true,
                 "hasShadow": false,
+                "hasUnderline": false,
                 "id": "LockOn",
                 "isVisible": true,
                 "outlineColor": [
@@ -213,7 +264,16 @@
                     2.0,
                     2.0
                 ],
-                "text": "LOCK ON: 0 / 4"
+                "text": "",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
             },
             {
                 "align": 0,
@@ -227,6 +287,7 @@
                 "fontType": 1,
                 "hasOutline": true,
                 "hasShadow": false,
+                "hasUnderline": false,
                 "id": "PlayerHP",
                 "isVisible": false,
                 "outlineColor": [
@@ -248,7 +309,16 @@
                     2.0,
                     2.0
                 ],
-                "text": "HP: 9000 / 10000"
+                "text": "",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
             },
             {
                 "align": 1,
@@ -262,6 +332,7 @@
                 "fontType": 2,
                 "hasOutline": true,
                 "hasShadow": true,
+                "hasUnderline": false,
                 "id": "MissionAlert",
                 "isVisible": false,
                 "outlineColor": [
@@ -283,7 +354,16 @@
                     3.0,
                     3.0
                 ],
-                "text": "敵部隊ヲ殲滅セヨ"
+                "text": "敵部隊ヲ殲滅セヨ",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
             },
             {
                 "align": 0,
@@ -297,6 +377,7 @@
                 "fontType": 1,
                 "hasOutline": true,
                 "hasShadow": false,
+                "hasUnderline": false,
                 "id": "operetion",
                 "isVisible": true,
                 "outlineColor": [
@@ -318,7 +399,16 @@
                     2.0,
                     2.0
                 ],
-                "text": "WASD/移動　Spase/射撃　R/武器切り替え　Q,E/回避　Shift/ブースト"
+                "text": "WASD/移動　Spase/射撃　R/武器切り替え　Q,E/回避　Shift/ブースト",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
             },
             {
                 "align": 1,
@@ -332,6 +422,7 @@
                 "fontType": 2,
                 "hasOutline": false,
                 "hasShadow": true,
+                "hasUnderline": false,
                 "id": "CutsceneReady",
                 "isVisible": false,
                 "outlineColor": [
@@ -353,7 +444,16 @@
                     2.0,
                     2.0
                 ],
-                "text": "READY..."
+                "text": "READY...",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
             },
             {
                 "align": 1,
@@ -367,6 +467,7 @@
                 "fontType": 2,
                 "hasOutline": false,
                 "hasShadow": true,
+                "hasUnderline": false,
                 "id": "CutsceneMissionStart",
                 "isVisible": false,
                 "outlineColor": [
@@ -388,7 +489,16 @@
                     3.0,
                     3.0
                 ],
-                "text": "MISSION START!"
+                "text": "MISSION START!",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
             },
             {
                 "align": 1,
@@ -398,10 +508,11 @@
                     0.18000000715255737,
                     1.0
                 ],
-                "fontSize": 70.0,
+                "fontSize": 71.5999984741211,
                 "fontType": 2,
                 "hasOutline": true,
                 "hasShadow": true,
+                "hasUnderline": true,
                 "id": "GameOverTitle",
                 "isVisible": false,
                 "outlineColor": [
@@ -410,9 +521,9 @@
                     0.0,
                     1.0
                 ],
-                "outlineThickness": 3.0,
-                "posX": 640.0,
-                "posY": 275.0,
+                "outlineThickness": 2.9000000953674316,
+                "posX": 632.0,
+                "posY": 290.0,
                 "shadowColor": [
                     0.0,
                     0.0,
@@ -423,7 +534,16 @@
                     3.0,
                     3.0
                 ],
-                "text": "GAME OVER"
+                "text": "GAME OVER",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 65.0,
+                "underlineThickness": 3.0,
+                "underlineWidth": 337.6000061035156
             },
             {
                 "align": 1,
@@ -437,6 +557,7 @@
                 "fontType": 2,
                 "hasOutline": true,
                 "hasShadow": true,
+                "hasUnderline": false,
                 "id": "GameOverRetry",
                 "isVisible": false,
                 "outlineColor": [
@@ -458,7 +579,16 @@
                     2.0,
                     2.0
                 ],
-                "text": "RETRY MISSION"
+                "text": "RETRY MISSION",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
             },
             {
                 "align": 1,
@@ -472,6 +602,7 @@
                 "fontType": 2,
                 "hasOutline": true,
                 "hasShadow": false,
+                "hasUnderline": false,
                 "id": "GameOverTitleNav",
                 "isVisible": false,
                 "outlineColor": [
@@ -493,7 +624,16 @@
                     2.0,
                     2.0
                 ],
-                "text": "RETURN TO TITLE"
+                "text": "RETURN TO TITLE",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
             },
             {
                 "align": 1,
@@ -507,6 +647,7 @@
                 "fontType": 1,
                 "hasOutline": true,
                 "hasShadow": false,
+                "hasUnderline": false,
                 "id": "ClearTitle",
                 "isVisible": false,
                 "outlineColor": [
@@ -528,7 +669,16 @@
                     3.0,
                     3.0
                 ],
-                "text": "任務完了"
+                "text": "任務完了",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
             },
             {
                 "align": 1,
@@ -542,6 +692,7 @@
                 "fontType": 3,
                 "hasOutline": true,
                 "hasShadow": false,
+                "hasUnderline": false,
                 "id": "ClearScore",
                 "isVisible": false,
                 "outlineColor": [
@@ -563,7 +714,16 @@
                     2.0,
                     2.0
                 ],
-                "text": "SCORE: 000000"
+                "text": "SCORE: 000000",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
             },
             {
                 "align": 1,
@@ -577,6 +737,7 @@
                 "fontType": 2,
                 "hasOutline": true,
                 "hasShadow": false,
+                "hasUnderline": false,
                 "id": "ClearReturn",
                 "isVisible": false,
                 "outlineColor": [
@@ -598,7 +759,16 @@
                     2.0,
                     2.0
                 ],
-                "text": "PRESS SPACE TO RETURN TO TITLE"
+                "text": "PRESS SPACE TO RETURN TO TITLE",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
             }
         ],
         "TITLE": [
@@ -614,6 +784,7 @@
                 "fontType": 1,
                 "hasOutline": true,
                 "hasShadow": true,
+                "hasUnderline": false,
                 "id": "TitleMain",
                 "isVisible": true,
                 "outlineColor": [
@@ -635,22 +806,32 @@
                     3.0,
                     3.0
                 ],
-                "text": "アクロバット・トリガー"
+                "text": "アクロバット・トリガー",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
             },
             {
                 "align": 1,
                 "color": [
-                    0.30000001192092896,
-                    0.8500000238418579,
-                    1.0,
-                    1.0
+                    0.2270238846540451,
+                    0.5708029270172119,
+                    0.6486396789550781,
+                    0.22700724005699158
                 ],
                 "fontSize": 40.0,
                 "fontType": 3,
                 "hasOutline": true,
                 "hasShadow": false,
+                "hasUnderline": false,
                 "id": "StartPrompt",
-                "isVisible": true,
+                "isVisible": false,
                 "outlineColor": [
                     0.0,
                     0.0,
@@ -670,7 +851,16 @@
                     2.0,
                     2.0
                 ],
-                "text": "PRESS SPACE TO START"
+                "text": "PRESS SPACE TO START",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
             }
         ]
     }

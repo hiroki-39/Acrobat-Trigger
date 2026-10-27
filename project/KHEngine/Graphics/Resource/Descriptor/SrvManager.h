@@ -19,7 +19,7 @@ public:// メンバ関数
 	void Finalize();
 
 	/// <summary>
-	///　確保用
+	/// 確保用
 	/// </summary>
 	uint32_t Allocate();
 
@@ -54,14 +54,24 @@ public:// メンバ関数
 	void CreateSRVforStructuredBuffer(uint32_t srvIndex, ID3D12Resource* pResource, UINT NumElements, UINT StructureByteStride);
 
 	/// <summary>
+	/// UAV作成(StructuredBuffer用)
+	/// </summary>
+	void CreateUAVforStructuredBuffer(uint32_t srvIndex, ID3D12Resource* pResource, UINT numElements, UINT structureByteStride);
+
+	/// <summary>
 	/// 
 	/// </summary>
 	void PreDraw();
 
 	/// <summary>
-	/// コマンドリストにSRVをセット
+	/// コマンドリストにSRVをセット (Graphics用)
 	/// </summary>
 	void SetGraphicsRootDescriptorTable(UINT rootParameterIndex, uint32_t srvIndex);
+
+	/// <summary>
+	/// コマンドリストにSRV/UAVをセット (Compute用)
+	/// </summary>
+	void SetComputeRootDescriptorTable(UINT rootParameterIndex, uint32_t srvIndex);
 
 	/// <summary>
 	/// 確保可能かチェック
@@ -75,7 +85,7 @@ public:// メンバ関数
 
 public:
 
-	// 最大SRV数　(最大テクスチャ枚数)
+	// 最大SRV数 (最大テクスチャ枚数)
 	static const uint32_t kMaxSRVCount;
 
 private:
@@ -97,4 +107,3 @@ private:
 	// 解放されたインデックスを再利用するためのスタック
 	std::vector<uint32_t> freeList;
 };
-

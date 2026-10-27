@@ -1,14 +1,16 @@
-#pragma once
+﻿#pragma once
 #include "KHEngine/Core/Graphics/DirectXCommon.h"
 #include "KHEngine/Graphics/Resource/Descriptor/SrvManager.h"
 #include "KHEngine/Graphics/3d/Camera/Camera.h"
 #include "KHEngine/Graphics/3d/Particle/ParticleEffect.h"
+#include "KHEngine/Graphics/3d/GPUParticle/GPUParticleSystem.h"
 #include <memory>
 #include <string>
 #include <vector>
 
 /**
  * @brief ゲーム画面から独立したエフェクト制作専用のプレビュースタジオ
+ * CPUパーティクルおよびGPUパーティクルのリアルタイム編集・JSON保存をサポートします。
  */
 class EffectStudio
 {
@@ -25,6 +27,7 @@ public:
 
     // プレビュー対象のエフェクトを取得
     ParticleEffect* GetPreviewEffect() { return &previewEffect_; }
+    GPUParticleSystem* GetGPUParticleSystem() { return &gpuParticleSystem_; }
 
     // ウィンドウ表示フラグ
     bool& GetShowViewport() { return showViewport_; }
@@ -32,6 +35,15 @@ public:
 
     // ファイルスキャン
     void RefreshFileList();
+    void RefreshGPUFileList();
+
+    // GPUパーティクルJSON保存・読込
+    void SaveGPUJson(const std::string& filename);
+    void LoadGPUJson(const std::string& filename);
+
+    // カメラプリセット視点
+    void SetCameraPresetView(int preset); // 0: 斜め(Iso), 1: 正面(Front), 2: 真上(Top), 3: 側面(Side)
+    void FocusOrigin();
 
 private:
     EffectStudio() = default;
@@ -41,6 +53,7 @@ private:
 
     void CreateRenderTargets();
     void HandleCameraInput(float contentWidth, float contentHeight);
+    void DrawGPUControlTab();
 
 private:
     DirectXCommon* dxCommon_ = nullptr;
@@ -69,8 +82,27 @@ private:
     float cameraYaw_ = 0.0f;
     float cameraPitch_ = 0.35f;
 
-    // プレビュー用エフェクト
+    // スムーズカメラ補間用の目標値
+    Vector3 targetCameraTarget_ = { 0.0f, 0.0f, 0.0f };
+    float targetCameraDistance_ = 6.0f;
+    float targetCameraYaw_ = 0.0f;
+    float targetCameraPitch_ = 0.35f;
+
+    // ドラッグ継続用フラグ
+    bool isDraggingOrbit_ = false;
+    bool isDraggingPan_ = false;
+
+    // プレビュー用エフェクト (CPU)
     ParticleEffect previewEffect_;
+
+    // プレビュー用エフェクト (GPU)
+    GPUParticleSystem gpuParticleSystem_;
+    GPUEmitterData gpuEmitterData_;
+    GPUParticleBlendMode gpuBlendMode_ = GPUParticleBlendMode::Add;
+    bool isGPUMode_ = true; // デフォルトでGPUパーティクルモード
+    bool gpuAutoEmit_ = true;
+    float gpuEmitInterval_ = 0.5f;
+    float gpuEmitTimer_ = 0.0f;
 
     // 再生コントロール
     bool autoLoop_ = true;
@@ -79,19 +111,26 @@ private:
     float playbackSpeed_ = 1.0f;
 
     // 表示設定
-    Vector4 backgroundColor_ = { 0.12f, 0.12f, 0.15f, 1.0f };
+    Vector4 backgroundColor_ = { 0.08f, 0.08f, 0.12f, 1.0f };
     bool showGrid_ = true;
-    float gridSize_ = 10.0f;
-    float gridSpacing_ = 1.0f;
+    float gridSize_ = 80.0f;
+    float gridSpacing_ = 2.0f;
     bool showAxisGizmo_ = true;
     bool showViewport_ = true;
     bool showEditor_ = true;
 
-    // JSON ファイル管理
+    // CPU JSON ファイル管理
     std::vector<std::string> jsonFiles_;
     int selectedFileIndex_ = -1;
     char saveAsFileName_[64] = "new_effect.json";
     std::string currentLoadedFile_ = "default_effect.json";
+
+    // GPU JSON ファイル管理
+    std::vector<std::string> gpuJsonFiles_;
+    int selectedGpuFileIndex_ = -1;
+    char saveGpuFileName_[64] = "cyber_explosion.json";
+    std::string currentLoadedGpuFile_ = "cyber_voxel_explosion.json";
+
     std::string statusMessage_ = "";
 
     // グリッド描画ヘルパー

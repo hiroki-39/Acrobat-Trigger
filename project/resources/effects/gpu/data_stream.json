@@ -1,0 +1,15 @@
+{
+  "name": "data_stream",
+  "patternType": 2,
+  "count": 128,
+  "radius": 2.5,
+  "speed": 18.0,
+  "spread": 0.5,
+  "gravity": 0.0,
+  "lifeTime": 1.5,
+  "startScale": 0.15,
+  "endScale": 0.1,
+  "startColor": [0.2, 0.7, 1.0, 1.0],
+  "endColor": [0.0, 0.2, 1.0, 0.0],
+  "blendMode": 1
+}

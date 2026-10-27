@@ -1,4 +1,4 @@
-#define NOMINMAX
+﻿#define NOMINMAX
 #include "GamePlayScene.h"
 #include "KHEngine/Core/Services/EngineServices.h"
 #include "KHEngine/Core/Utility/Log/Logger.h"
@@ -711,7 +711,7 @@ void GamePlayScene::Initialize()
 	char logBuf[512];
 	snprintf(logBuf, sizeof(logBuf),
 		"\n========================================\n"
-		"[Load Profiler Breakdown]\n"
+ 		"[Load Profiler Breakdown]\n"
 		"  - Skybox Load:         %8.2f ms\n"
 		"  - ReloadLevel (Map):   %8.2f ms\n"
 		"  - GPU Texture Upload:  %8.2f ms\n"
@@ -721,7 +721,7 @@ void GamePlayScene::Initialize()
 	OutputDebugStringA(logBuf);
 
 	// ゲームオーバー演出状態のリセット
-	gameOverStep_ = GameOverStep::FALLING;
+	gameOverStep_ = GameOverStep::HIT_STOP;
 	gameOverTimer_ = 0.0f;
 	if (player_)
 	{
@@ -2254,6 +2254,50 @@ void GamePlayScene::Update()
 					StartGameOverSequence();
 				}
 				ImGui::PopStyleColor(2);
+				if (ImGui::TreeNode("ゲームオーバーUI・アンダーバー設定 (GameOver Underline)"))
+				{
+					ImGui::Checkbox("UIプレビュー表示 (Preview UI)", &debugPreviewGameOverUI_);
+					ImGui::SameLine();
+					ImGui::TextDisabled("※即座に画面上で確認可能");
+
+					auto textMgr = UITextManager::GetInstance();
+					UITextItem* titleItemEdit = textMgr ? textMgr->GetTextItem("GameOverTitle", "GAMEPLAY") : nullptr;
+					if (titleItemEdit)
+					{
+						bool changed = false;
+						if (ImGui::Checkbox("アンダーバーを表示", &titleItemEdit->hasUnderline)) changed = true;
+						if (ImGui::SliderFloat("線の幅 (Width)", &titleItemEdit->underlineWidth, 0.0f, 800.0f, "%.1f px")) changed = true;
+						if (ImGui::SliderFloat("線の太さ (Thickness)", &titleItemEdit->underlineThickness, 0.5f, 20.0f, "%.1f px")) changed = true;
+						if (ImGui::SliderFloat("Yオフセット (Offset Y)", &titleItemEdit->underlineOffsetY, -50.0f, 150.0f, "%.1f px")) changed = true;
+						if (ImGui::ColorEdit4("線の色 (Color)", &titleItemEdit->underlineColor.x)) changed = true;
+						if (ImGui::Button("初期値にリセット"))
+						{
+							titleItemEdit->hasUnderline = true;
+							titleItemEdit->underlineWidth = 320.0f;
+							titleItemEdit->underlineThickness = 2.5f;
+							titleItemEdit->underlineOffsetY = 42.0f;
+							titleItemEdit->underlineColor = { 0.92f, 0.12f, 0.18f, 0.86f };
+							changed = true;
+						}
+						if (changed)
+						{
+							textMgr->SaveSettings();
+						}
+					}
+					else
+					{
+						ImGui::Checkbox("アンダーバーを表示", &gameOverBarVisible_);
+						ImGui::SliderFloat("線の幅 (Width)", &gameOverBarWidth_, 0.0f, 800.0f, "%.1f px");
+						ImGui::SliderFloat("線の太さ (Thickness)", &gameOverBarThickness_, 0.5f, 20.0f, "%.1f px");
+						ImGui::SliderFloat("Yオフセット (Offset Y)", &gameOverBarOffsetY_, -50.0f, 150.0f, "%.1f px");
+						float col[4] = { gameOverBarColor_.x, gameOverBarColor_.y, gameOverBarColor_.z, gameOverBarColor_.w };
+						if (ImGui::ColorEdit4("線の色 (Color)", col))
+						{
+							gameOverBarColor_ = { col[0], col[1], col[2], col[3] };
+						}
+					}
+					ImGui::TreePop();
+				}
 				if (gamePhase_ == GamePhase::GAMEOVER)
 				{
 					ImGui::SameLine();
@@ -3490,6 +3534,30 @@ void GamePlayScene::Draw()
 		if (object3dCommon) object3dCommon->SetCommonDrawSetting();
 		player_->Draw();
 
+		// GameOver shockwave ring & triangle shards drawing
+		if (gamePhase_ == GamePhase::GAMEOVER)
+		{
+			if (object3dCommon) object3dCommon->SetCommonDrawSetting();
+
+			if (gameOverStep_ == GameOverStep::HIT_STOP && gameOverShockwaveRing_)
+			{
+				gameOverShockwaveRing_->SetCamera(activeCamera_);
+				gameOverShockwaveRing_->Draw();
+			}
+
+			if (gameOverStep_ == GameOverStep::POLYGON_SHATTER)
+			{
+				for (auto& shard : gameOverShards_)
+				{
+					if (shard.object && shard.scale.x > 0.001f)
+					{
+						shard.object->SetCamera(activeCamera_);
+						shard.object->Draw();
+					}
+				}
+			}
+		}
+
 		// スタート演出中の自機復元ポリゴン破片描画（Phase 2: 自機集束フェーズ 2.20s〜3.05s のみ描画）
 		if (gamePhase_ == GamePhase::START_CUTSCENE && cutsceneTimer_ >= 2.20f && cutsceneTimer_ < 3.05f)
 		{
@@ -4666,122 +4734,288 @@ void GamePlayScene::DrawCutsceneUI()
 void GamePlayScene::StartGameOverSequence()
 {
 	gamePhase_ = GamePhase::GAMEOVER;
-	gameOverStep_ = GameOverStep::FALLING;
+	gameOverStep_ = GameOverStep::HIT_STOP;
 	gameOverSelectedOption_ = GameOverMenuOption::Retry;
 	gameOverTimer_ = 0.0f;
-	gameOverFallVelocity_ = 2.0f; // 落下初速
+	shockwaveScale_ = 0.2f;
+	shockwaveAlpha_ = 1.0f;
+	gameOverShards_.clear();
+
+	if (auto modelMgr = ModelManager::GetInstance())
+	{
+		modelMgr->LoadModel("Ring.obj");
+		modelMgr->LoadModel("polygon_shard.obj");
+	}
 
 	if (player_)
 	{
-		gameOverPlayerFallPos_ = player_->GetTranslate();
-		gameOverPlayerFallRot_ = player_->GetRotation();
-		player_->SetCutsceneOverride(true, gameOverPlayerFallPos_, gameOverPlayerFallRot_);
+		player_->SetCutsceneOverride(true, player_->GetTranslate(), player_->GetRotation());
 		player_->Update3DObjectOnly();
 		player_->SetDead(true);
-
-		// 初回被弾時の火花＆白煙エフェクト（作り直すため一旦無効化）
-		// hitEffect_.SetPosition(player_->GetWorldPosition());
-		// hitEffect_.Play();
 	}
 
-	// レールカメラの前進を即座に停止（その場にとどまる）
+	// Keep background terrain visible
+	for (auto& model : modelInstances)
+	{
+		if (model) model->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+	}
+	for (auto& obs : obstacles_)
+	{
+		if (obs && obs->GetObject3d()) obs->GetObject3d()->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+	}
+
+	auto services = EngineServices::GetInstance();
+	auto object3dCommon = services ? services->GetObject3dCommon() : nullptr;
+	if (object3dCommon && player_)
+	{
+		gameOverShockwaveRing_ = std::make_unique<Object3d>();
+		gameOverShockwaveRing_->Initialize(object3dCommon);
+		gameOverShockwaveRing_->SetModel("Ring.obj");
+		gameOverShockwaveRing_->SetSelectLightings(6);
+		gameOverShockwaveRing_->SetColor({ 0.30f, 1.5f, 1.9f, 1.0f });
+		gameOverShockwaveRing_->SetScale({ 0.2f, 0.2f, 0.2f });
+		gameOverShockwaveRing_->SetTranslate(player_->GetWorldPosition());
+		gameOverShockwaveRing_->SetRotation({ 0.0f, 0.0f, 0.0f });
+		gameOverShockwaveRing_->Update();
+	}
+
 	if (railCameraController_)
 	{
 		railCameraController_->SetSpeedMultiplier(0.0f);
 	}
 
-	// 被弾の衝撃によるカメラ揺れ
-	cameraShakeTimer_ = 25.0f;
+	if (auto pp = services ? services->GetPostProcess() : nullptr)
+	{
+		pp->SetEffectActive("Random(Glitch)", true);
+		if (auto* d = pp->GetData())
+		{
+			d->glitchStrength = 0.70f;
+			d->noiseStrength = 0.20f;
+		}
+	}
+
+	cameraShakeTimer_ = 15.0f;
 }
 
 void GamePlayScene::UpdateGameOverSequence(float dt)
 {
 	gameOverTimer_ += dt;
 
-	// カメラ前進は完全停止を維持
 	if (railCameraController_)
 	{
 		railCameraController_->SetSpeedMultiplier(0.0f);
 	}
 
-	switch (gameOverStep_)
-	{
-	case GameOverStep::FALLING:
-	{
-		// 重力加速度による急降下
-		gameOverFallVelocity_ += 24.0f * dt;
-		gameOverPlayerFallPos_.y -= gameOverFallVelocity_ * dt;
-		gameOverPlayerFallPos_.z += 4.5f * dt; // 慣性による前方進行
-		gameOverPlayerFallRot_.x += 2.2f * dt; // ピッチ機首下げ
-		gameOverPlayerFallRot_.z += 5.5f * dt; // ロールキリモミ回転
+	auto services = EngineServices::GetInstance();
 
-		if (player_)
+		if (gameOverTimer_ < 0.15f)
+	{
+		gameOverStep_ = GameOverStep::HIT_STOP;
+
+		float t = gameOverTimer_ / 0.15f;
+		shockwaveScale_ = 0.2f + t * 18.0f;
+		shockwaveAlpha_ = 1.0f - (t * t);
+
+		if (gameOverShockwaveRing_ && player_)
 		{
-			player_->SetCutsceneOverride(true, gameOverPlayerFallPos_, gameOverPlayerFallRot_);
-			player_->Update3DObjectOnly();
+			gameOverShockwaveRing_->SetScale({ shockwaveScale_, shockwaveScale_, shockwaveScale_ });
+			gameOverShockwaveRing_->SetColor({ 0.30f, 1.5f, 1.9f, shockwaveAlpha_ });
+			gameOverShockwaveRing_->Update();
+		}
 
-			// 落下中の煙トレイル（自機のワールド座標から黒煙を連続放出）
-			Vector3 pWorldPos = player_->GetWorldPosition();
-			missileSmokeEffect_.SetPosition(pWorldPos);
-			missileSmokeEffect_.Play();
+		// HPが0になった瞬間（ポリゴン破片が出るまで）は画面ノイズ・グリッチを一切入れない
+		if (auto pp = services ? services->GetPostProcess() : nullptr)
+		{
+			pp->SetEffectActive("Random(Glitch)", false);
+		}
+	}
+	else if (gameOverTimer_ < 1.00f)
+	{
+		if (gameOverStep_ == GameOverStep::HIT_STOP)
+		{
+			gameOverStep_ = GameOverStep::POLYGON_SHATTER;
 
-			// 地上激突判定
-			// ※被弾直後（0.5秒以内）は直前の障害物接触を無視し、確実に墜落フェーズを見せる！
-			bool hitGround = false;
-			if (gameOverTimer_ >= 0.5f)
+			// ポリゴン破片が弾け散った瞬間からグリッチノイズを発動！
+			if (auto pp = services ? services->GetPostProcess() : nullptr)
 			{
-				OBB playerOBB = player_->GetWorldOBB();
-				for (const auto& obs : obstacles_)
+				pp->SetEffectActive("Random(Glitch)", true);
+				if (auto* d = pp->GetData())
 				{
-					if (!obs || obs->IsDead()) continue;
-					CollisionResult res;
-					if (obs->CheckCollisionWithOBB(playerOBB, &res))
-					{
-						hitGround = true;
-						break;
-					}
+					d->glitchStrength = 0.65f;
+					d->noiseStrength = 0.18f;
 				}
 			}
 
-			// 地形・障害物接触、または高度約-14m以下、または落下時間1.2秒経過で地上激突・爆散！
-			if (hitGround || gameOverPlayerFallPos_.y <= -14.0f || gameOverTimer_ >= 1.2f)
+			if (player_)
 			{
-				gameOverStep_ = GameOverStep::EXPLODED;
-				gameOverTimer_ = 0.0f;
-
-				// 機体を非表示化（爆散消滅）
 				player_->SetVisible(false);
+			}
+			if (gameOverShockwaveRing_)
+			{
+				gameOverShockwaveRing_->SetScale({ 0.0f, 0.0f, 0.0f });
+			}
 
-				// 大爆発エフェクトを発生！
-				explosionEffect_.SetPosition(pWorldPos);
-				explosionEffect_.Play();
+			gameOverShards_.clear();
+			auto object3dCommon = services ? services->GetObject3dCommon() : nullptr;
 
-				// 大爆発による画面激震（カメラシェイク）
-				cameraShakeTimer_ = 50.0f;
+			if (object3dCommon && player_)
+			{
+				Vector3 shipWorldPos = player_->GetWorldPosition();
+				std::mt19937 rng(88888);
+				std::uniform_real_distribution<float> distRot(-3.14f, 3.14f);
+				std::uniform_real_distribution<float> distRotSpd(-14.0f, 14.0f);
+				std::uniform_real_distribution<float> distSpeedOut(14.0f, 28.0f);
+				std::uniform_real_distribution<float> distSpeedZ(18.0f, 36.0f);
+
+				const Vector3 targetOffsets[64] = {
+					{  0.0f,  0.02f,  2.5f }, {  0.0f, -0.06f,  2.2f }, {  0.0f,  0.10f,  1.9f }, {  0.0f, -0.10f,  1.6f },
+					{ -0.15f, 0.05f,  1.8f }, {  0.15f, 0.05f,  1.8f }, { -0.12f,-0.05f,  1.5f }, {  0.12f,-0.05f,  1.5f },
+					{  0.0f,  0.38f,  1.0f }, {  0.0f,  0.42f,  0.6f }, {  0.0f,  0.30f,  0.2f },
+					{ -0.25f, 0.28f,  0.8f }, {  0.25f, 0.28f,  0.8f }, { -0.28f, 0.22f,  0.4f }, {  0.28f, 0.22f,  0.4f },
+					{  0.0f,  0.15f,  0.0f }, {  0.0f, -0.22f,  0.0f }, {  0.0f,  0.12f, -0.5f }, {  0.0f, -0.18f, -0.5f },
+					{ -0.35f, 0.02f, -0.1f }, {  0.35f, 0.02f, -0.1f }, { -0.42f, 0.05f, -0.6f }, {  0.42f, 0.05f, -0.6f },
+					{ -0.85f, 0.02f,  0.4f }, { -1.45f, 0.04f,  0.1f }, { -2.10f, 0.06f, -0.3f },
+					{ -2.80f, 0.09f, -0.7f }, { -3.50f, 0.12f, -1.1f }, { -3.95f, 0.14f, -1.3f },
+					{ -1.80f,-0.02f, -0.7f }, { -2.60f,-0.02f, -1.1f }, { -3.30f, 0.03f, -1.5f },
+					{  0.85f, 0.02f,  0.4f }, {  1.45f, 0.04f,  0.1f }, {  2.10f, 0.06f, -0.3f },
+					{  2.80f, 0.09f, -0.7f }, {  3.50f, 0.12f, -1.1f }, {  3.95f, 0.14f, -1.3f },
+					{  1.80f,-0.02f, -0.7f }, {  2.60f,-0.02f, -1.1f }, {  3.30f, 0.03f, -1.5f },
+					{  0.0f,  0.65f, -0.8f }, {  0.0f,  1.05f, -1.2f }, {  0.0f,  1.35f, -1.6f },
+					{ -0.35f, 0.75f, -1.1f }, {  0.35f, 0.75f, -1.1f }, { -0.55f, 1.15f, -1.4f }, {  0.55f, 1.15f, -1.4f },
+					{ -0.65f,-0.18f,  0.3f }, {  0.65f,-0.18f,  0.3f },
+					{ -0.88f,-0.08f, -0.5f }, {  0.88f,-0.08f, -0.5f },
+					{ -0.52f, 0.00f, -1.8f }, {  0.52f, 0.00f, -1.8f },
+					{ -0.52f,-0.05f, -2.1f }, {  0.52f,-0.05f, -2.1f },
+					{  0.0f, -0.08f, -1.7f }, {  0.0f,  0.05f, -2.0f },
+					{  0.0f, -0.45f, -0.6f }, {  0.0f, -0.65f, -1.1f },
+					{ -0.22f,-0.40f, -0.9f }, {  0.22f,-0.40f, -0.9f }
+				};
+
+				for (int i = 0; i < 64; ++i)
+				{
+					GameOverShard shard;
+					Vector3 offset = targetOffsets[i] * 0.5f;
+					shard.position = shipWorldPos + offset;
+
+					Vector3 dirOut = { offset.x, offset.y + 0.3f, 0.0f };
+					float lenOut = std::sqrt(dirOut.x * dirOut.x + dirOut.y * dirOut.y);
+					if (lenOut > 0.001f)
+					{
+						dirOut.x /= lenOut;
+						dirOut.y /= lenOut;
+					}
+					else
+					{
+						dirOut = { ((i % 2 == 0) ? 1.0f : -1.0f), 0.5f, 0.0f };
+					}
+
+					float spdOut = distSpeedOut(rng);
+					shard.velocity = {
+						dirOut.x * spdOut,
+						dirOut.y * spdOut + 2.0f,
+						distSpeedZ(rng)
+					};
+
+					shard.rotation = { distRot(rng), distRot(rng), distRot(rng) };
+					shard.rotSpeed = { distRotSpd(rng), distRotSpd(rng), distRotSpd(rng) };
+					float sc = 1.4f + (i % 4) * 0.35f;
+					shard.scale = { sc, sc, sc };
+					shard.life = 0.0f;
+					shard.maxLife = 0.85f;
+
+					if (i % 3 == 0)
+						shard.color = { 1.9f, 0.15f, 0.80f, 1.0f };
+					else if (i % 3 == 1)
+						shard.color = { 1.9f, 0.20f, 0.25f, 1.0f };
+					else
+						shard.color = { 1.8f, 0.80f, 0.90f, 1.0f };
+
+					shard.object = std::make_unique<Object3d>();
+					shard.object->Initialize(object3dCommon);
+					shard.object->SetModel("polygon_shard.obj");
+					shard.object->SetSelectLightings(6);
+					shard.object->SetColor(shard.color);
+					shard.object->SetScale(shard.scale);
+					shard.object->SetRotation(shard.rotation);
+					shard.object->SetTranslate(shard.position);
+					shard.object->Update();
+
+					gameOverShards_.push_back(std::move(shard));
+				}
+			}
+
+			cameraShakeTimer_ = 35.0f;
+		}
+
+		float shatterPhase = (gameOverTimer_ - 0.15f) / 0.85f;
+		for (auto& shard : gameOverShards_)
+		{
+			if (!shard.object) continue;
+			shard.position += shard.velocity * dt;
+			shard.rotation += shard.rotSpeed * dt;
+
+			float fade = std::clamp(1.0f - shatterPhase * shatterPhase, 0.0f, 1.0f);
+			Vector4 col = shard.color;
+			col.w = fade;
+
+			shard.object->SetColor(col);
+			shard.object->SetTranslate(shard.position);
+			shard.object->SetRotation(shard.rotation);
+			shard.object->SetScale(shard.scale * (1.0f + shatterPhase * 0.4f));
+			shard.object->Update();
+		}
+
+		if (auto pp = services ? services->GetPostProcess() : nullptr)
+		{
+			if (auto* d = pp->GetData())
+			{
+				d->glitchStrength = (std::max)(0.0f, 0.60f * (1.0f - shatterPhase));
+				d->noiseStrength = (std::max)(0.0f, 0.15f * (1.0f - shatterPhase));
 			}
 		}
-		break;
 	}
-
-	case GameOverStep::EXPLODED:
+	else if (gameOverTimer_ < 2.00f)
 	{
-		// 激突・爆散直後の余韻（0.8秒待機）
-		if (gameOverTimer_ >= 0.8f)
+		gameOverStep_ = GameOverStep::VOID_DISINTEGRATE;
+
+		for (auto& shard : gameOverShards_)
 		{
-			gameOverStep_ = GameOverStep::SHOW_UI;
-			gameOverTimer_ = 0.0f;
+			if (shard.object) shard.object->SetScale({ 0.0f, 0.0f, 0.0f });
 		}
-		break;
-	}
 
-	case GameOverStep::SHOW_UI:
+		if (auto pp = services ? services->GetPostProcess() : nullptr)
+		{
+			pp->SetEffectActive("Random(Glitch)", false);
+		}
+
+	// Keep background terrain visible
+	for (auto& model : modelInstances)
+		{
+			if (model) model->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+		}
+		for (auto& obs : obstacles_)
+		{
+			if (obs && obs->GetObject3d()) obs->GetObject3d()->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+		}
+	}
+	else
 	{
-		// W / S キー（または矢印キー上下）でリトライとタイトルを切り替え
-		// SPACEキー（またはENTERキー）で決定
+		gameOverStep_ = GameOverStep::SHOW_UI;
+
+	// Keep background terrain visible
+	for (auto& model : modelInstances)
+		{
+			if (model) model->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+		}
+		for (auto& obs : obstacles_)
+		{
+			if (obs && obs->GetObject3d()) obs->GetObject3d()->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+		}
+
 		auto sceneManager = GetSceneManager();
 		if (sceneManager && !sceneManager->IsTransitioning())
 		{
-			auto input = EngineServices::GetInstance()->GetInput();
+			auto input = services ? services->GetInput() : nullptr;
 			if (input)
 			{
 				if (input->TriggerKey(DIK_W) || input->TriggerKey(DIK_UP))
@@ -4793,7 +5027,8 @@ void GamePlayScene::UpdateGameOverSequence(float dt)
 					gameOverSelectedOption_ = GameOverMenuOption::Title;
 				}
 
-				if (input->TriggerKey(DIK_SPACE) || input->TriggerKey(DIK_RETURN))
+				if (input->TriggerKey(DIK_SPACE) || input->TriggerKey(DIK_RETURN) ||
+					input->TriggerPadButton(XINPUT_GAMEPAD_A) || input->TriggerPadButton(XINPUT_GAMEPAD_START))
 				{
 					if (gameOverSelectedOption_ == GameOverMenuOption::Retry)
 					{
@@ -4806,16 +5041,14 @@ void GamePlayScene::UpdateGameOverSequence(float dt)
 				}
 			}
 		}
-		break;
-	}
 	}
 }
 
 void GamePlayScene::DrawGameOverUI()
 {
 #ifdef USE_IMGUI
-	if (gamePhase_ != GamePhase::GAMEOVER) return;
-	if (gameOverStep_ == GameOverStep::FALLING) return; // 落下中は映像のみに集中
+	if (gamePhase_ != GamePhase::GAMEOVER && !debugPreviewGameOverUI_) return;
+	if (gamePhase_ == GamePhase::GAMEOVER && gameOverTimer_ < 1.0f && !debugPreviewGameOverUI_) return;
 
 	if (ImGui::GetCurrentContext() == nullptr) return;
 	ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -4823,7 +5056,6 @@ void GamePlayScene::DrawGameOverUI()
 	ImDrawList* drawList = ImGui::GetForegroundDrawList(viewport);
 	if (!drawList) return;
 
-	// ゲーム画面の表示領域を取得（エディタモード時はゲーム画面ビューポート内、フルスクリーン時は全画面）
 	ImVec2 viewPos(0.0f, 0.0f);
 	ImVec2 viewSize = viewport->Size;
 #ifdef ENABLE_EDITOR
@@ -4838,7 +5070,6 @@ void GamePlayScene::DrawGameOverUI()
 	float screenW = viewSize.x;
 	float screenH = viewSize.y;
 
-	// トランジション（画面遷移）中のアルファ制御
 	float transitionAlpha = 1.0f;
 	auto sceneManager = EngineServices::GetInstance()->GetSceneManager();
 	if (sceneManager && sceneManager->IsTransitioning())
@@ -4864,10 +5095,8 @@ void GamePlayScene::DrawGameOverUI()
 		}
 	}
 
-	// ゲーム画面ビューポートの枠外へはみ出さないようにクリッピング
 	drawList->PushClipRect(viewPos, ImVec2(viewPos.x + screenW, viewPos.y + screenH), true);
 
-	// 画面遷移の完全暗転中はUIテキストを描画せず、ビューポートを真っ黒にしてテキストを完全に「画面遷移の後ろ」に隠す
 	if (transitionAlpha <= 0.001f)
 	{
 		drawList->AddRectFilled(viewPos, ImVec2(viewPos.x + screenW, viewPos.y + screenH), IM_COL32(0, 0, 0, 255));
@@ -4875,16 +5104,14 @@ void GamePlayScene::DrawGameOverUI()
 		return;
 	}
 
-	// スケーリング比率（1280x720 基準）
 	float scale = std::min(screenW / 1280.0f, screenH / 720.0f);
 	if (scale < 0.3f) scale = 0.3f;
 
-	// === 上下の映画風黒帯（シネマスコープ・レターボックス） ===
 	float barHeightMax = screenH * 0.12f;
 	float barProgress = 1.0f;
-	if (gameOverStep_ == GameOverStep::EXPLODED)
+	if (gameOverTimer_ < 2.00f && !debugPreviewGameOverUI_)
 	{
-		barProgress = std::clamp(gameOverTimer_ / 0.5f, 0.0f, 1.0f);
+		barProgress = std::clamp((gameOverTimer_ - 1.00f) / 0.80f, 0.0f, 1.0f);
 	}
 	float barHeight = barHeightMax * barProgress;
 	if (barHeight > 0.5f)
@@ -4893,132 +5120,179 @@ void GamePlayScene::DrawGameOverUI()
 		drawList->AddRectFilled(ImVec2(viewPos.x, viewPos.y + screenH - barHeight), ImVec2(viewPos.x + screenW, viewPos.y + screenH), IM_COL32(0, 0, 0, static_cast<int>(255 * transitionAlpha)));
 	}
 
-	if (gameOverStep_ == GameOverStep::SHOW_UI)
+	if (gameOverTimer_ >= 2.00f || debugPreviewGameOverUI_)
 	{
 		auto imguiManager = EngineServices::GetInstance()->GetImGuiManager();
 		auto textMgr = UITextManager::GetInstance();
+		float elapsedUI = debugPreviewGameOverUI_ ? 10.0f : (gameOverTimer_ - 2.00f);
 
-		// フェードイン率 (0.0 -> 1.0, 0.6秒)
-		float fadeAlpha = std::clamp(gameOverTimer_ / 0.6f, 0.0f, 1.0f);
+		ImFont* fontMono = imguiManager ? imguiManager->GetFont(ImGuiManager::FontType::English_FiraMono) : ImGui::GetFont();
+		if (!fontMono) fontMono = ImGui::GetFont();
 
-		// 画面中央に濃い黒帯バナーを敷いて視認性を大幅強化（裏側が透けないよう不透明度を245に向上）
-		float centerY = viewPos.y + screenH * 0.42f;
-		float bannerH = 150.0f * scale;
-		drawList->AddRectFilled(
-			ImVec2(viewPos.x, centerY - bannerH * 0.5f),
-			ImVec2(viewPos.x + screenW, centerY + bannerH * 0.5f),
-			IM_COL32(8, 4, 4, static_cast<int>(245.0f * fadeAlpha * transitionAlpha))
-		);
+		const char* errorLogs[4] = {
+			"[ERROR 0x8004100E] CRITICAL INTEGRITY FAILURE",
+			"AVATAR DATA STRUCTURE: DECOMPILED",
+			"LINK CONNECTION: TERMINATED",
+			"--> STANDBY FOR RE-INITIALIZATION"
+		};
+		const float logTimes[4] = { 0.00f, 0.14f, 0.28f, 0.42f };
 
-		// 汎用アイテム描画ラムダ（UITextManager設定に完全同期）
-		auto renderTextItem = [&](const UITextItem* item, float alpha, float customScale = 1.0f, const std::string& overrideText = "", bool isHighlight = false) {
-			if (!item || item->text.empty() || alpha <= 0.001f) return;
-			ImFont* font = imguiManager ? imguiManager->GetFont(item->fontType) : ImGui::GetFont();
-			if (!font) font = ImGui::GetFont();
+		float logStartX = viewPos.x + screenW * 0.28f;
+		float logStartY = viewPos.y + screenH * 0.23f;
+		float logFontSize = 15.0f * scale;
 
-			float fSize = item->fontSize * scale * customScale;
-			const std::string& str = overrideText.empty() ? item->text : overrideText;
-			ImVec2 tSize = font->CalcTextSizeA(fSize, FLT_MAX, -1.0f, str.c_str());
-
-			float posX = viewPos.x + item->position.x * (screenW / 1280.0f);
-			float posY = viewPos.y + item->position.y * (screenH / 720.0f);
-			ImVec2 tPos(posX, posY);
-			if (item->align == UITextAlign::Center)
+		for (int i = 0; i < 4; ++i)
+		{
+			if (elapsedUI >= logTimes[i])
 			{
-				tPos.x -= tSize.x * 0.5f;
+				float lineAlpha = std::clamp((elapsedUI - logTimes[i]) / 0.10f, 0.0f, 1.0f);
+				ImU32 logCol = IM_COL32(0, 235, 255, static_cast<int>(245.0f * lineAlpha * transitionAlpha));
+				ImVec2 logPos(logStartX, logStartY + i * (logFontSize * 1.35f));
+				drawList->AddText(fontMono, logFontSize, logPos, logCol, errorLogs[i]);
 			}
-			else if (item->align == UITextAlign::Right)
-			{
-				tPos.x -= tSize.x;
-			}
+		}
 
-			if (item->hasShadow)
-			{
-				ImU32 shadowCol = ImColor(item->shadowColor.x, item->shadowColor.y, item->shadowColor.z, item->shadowColor.w * alpha);
-				ImVec2 sPos(tPos.x + item->shadowOffset.x * scale, tPos.y + item->shadowOffset.y * scale);
-				drawList->AddText(font, fSize, sPos, shadowCol, str.c_str());
-			}
+		if (elapsedUI >= 0.60f)
+		{
+			float menuAlpha = debugPreviewGameOverUI_ ? 1.0f : std::clamp((elapsedUI - 0.60f) / 0.45f, 0.0f, 1.0f);
 
-			if (item->hasOutline)
-			{
-				ImU32 outlineCol = ImColor(item->outlineColor.x, item->outlineColor.y, item->outlineColor.z, item->outlineColor.w * alpha);
-				float thick = item->outlineThickness * scale;
-				const float offsets[8][2] = {
-					{ -thick, -thick }, { 0.0f, -thick }, { thick, -thick },
-					{ -thick, 0.0f },                     { thick, 0.0f },
-					{ -thick, thick },  { 0.0f, thick },  { thick, thick }
-				};
-				for (int k = 0; k < 8; ++k)
+			float centerY = viewPos.y + screenH * 0.46f;
+			float bannerH = 150.0f * scale;
+			float bTop = centerY - bannerH * 0.5f;
+			float bBottom = centerY + bannerH * 0.5f;
+			drawList->AddRectFilled(
+				ImVec2(viewPos.x, bTop),
+				ImVec2(viewPos.x + screenW, bBottom),
+				IM_COL32(2, 12, 22, static_cast<int>(215.0f * menuAlpha * transitionAlpha))
+			);
+			drawList->AddLine(
+				ImVec2(viewPos.x, bTop),
+				ImVec2(viewPos.x + screenW, bTop),
+				IM_COL32(0, 235, 255, static_cast<int>(180.0f * menuAlpha * transitionAlpha)),
+				1.5f * scale
+			);
+			drawList->AddLine(
+				ImVec2(viewPos.x, bBottom),
+				ImVec2(viewPos.x + screenW, bBottom),
+				IM_COL32(0, 235, 255, static_cast<int>(180.0f * menuAlpha * transitionAlpha)),
+				1.5f * scale
+			);
+
+			auto renderTextItem = [&](const UITextItem* item, float alpha, float customScale = 1.0f, const std::string& overrideText = "", bool isHighlight = false) {
+				if (!item || item->text.empty() || alpha <= 0.001f) return;
+				ImFont* font = imguiManager ? imguiManager->GetFont(item->fontType) : ImGui::GetFont();
+				if (!font) font = ImGui::GetFont();
+
+				float fSize = item->fontSize * scale * customScale;
+				const std::string& str = overrideText.empty() ? item->text : overrideText;
+				ImVec2 tSize = font->CalcTextSizeA(fSize, FLT_MAX, -1.0f, str.c_str());
+
+				float posX = viewPos.x + item->position.x * (screenW / 1280.0f);
+				float posY = viewPos.y + item->position.y * (screenH / 720.0f);
+				ImVec2 tPos(posX, posY);
+				if (item->align == UITextAlign::Center) tPos.x -= tSize.x * 0.5f;
+				else if (item->align == UITextAlign::Right) tPos.x -= tSize.x;
+
+				if (item->hasShadow)
 				{
-					drawList->AddText(font, fSize, ImVec2(tPos.x + offsets[k][0], tPos.y + offsets[k][1]), outlineCol, str.c_str());
+					ImU32 shadowCol = ImColor(item->shadowColor.x, item->shadowColor.y, item->shadowColor.z, item->shadowColor.w * alpha);
+					ImVec2 sPos(tPos.x + item->shadowOffset.x * scale, tPos.y + item->shadowOffset.y * scale);
+					drawList->AddText(font, fSize, sPos, shadowCol, str.c_str());
+				}
+
+				if (item->hasOutline)
+				{
+					ImU32 outlineCol = ImColor(item->outlineColor.x, item->outlineColor.y, item->outlineColor.z, item->outlineColor.w * alpha);
+					float thick = item->outlineThickness * scale;
+					const float offsets[8][2] = {
+						{ -thick, -thick }, { 0.0f, -thick }, { thick, -thick },
+						{ -thick, 0.0f },                     { thick, 0.0f },
+						{ -thick, thick },  { 0.0f, thick },  { thick, thick }
+					};
+					for (int k = 0; k < 8; ++k)
+					{
+						drawList->AddText(font, fSize, ImVec2(tPos.x + offsets[k][0], tPos.y + offsets[k][1]), outlineCol, str.c_str());
+					}
+				}
+
+				Vector4 col = item->color;
+				if (isHighlight)
+				{
+					col = { 0.95f, 1.00f, 1.00f, 1.0f }; // 白熱サイバーホワイトシアン
+				}
+				else
+				{
+					col = { 0.35f, 0.78f, 0.92f, 0.85f };
+				}
+				ImU32 textCol = ImColor(col.x, col.y, col.z, col.w * alpha);
+				drawList->AddText(font, fSize, tPos, textCol, str.c_str());
+			};
+
+			const UITextItem* titleItem = textMgr ? textMgr->GetTextItem("GameOverTitle", "GAMEPLAY") : nullptr;
+			if (titleItem)
+			{
+				UITextItem cyberTitle = *titleItem;
+				cyberTitle.color = { 0.20f, 0.98f, 1.00f, 1.0f }; // 鮮烈なサイバーシアン
+				cyberTitle.shadowColor = { 0.02f, 0.20f, 0.35f, 0.85f };
+				renderTextItem(&cyberTitle, menuAlpha);
+
+				bool isBarVisible = titleItem ? titleItem->hasUnderline : gameOverBarVisible_;
+				if (isBarVisible)
+				{
+					float offsetY = titleItem ? titleItem->underlineOffsetY : gameOverBarOffsetY_;
+					float barWidth = titleItem ? titleItem->underlineWidth : gameOverBarWidth_;
+					float thickness = titleItem ? titleItem->underlineThickness : gameOverBarThickness_;
+					Vector4 barCol = { 0.25f, 0.98f, 1.00f, 0.90f }; // ネオンシアン発光アンダーライン
+
+					float scaleX = screenW / 1280.0f;
+					float scaleY = screenH / 720.0f;
+					float barY = viewPos.y + (titleItem->position.y + offsetY) * scaleY;
+					float barHalfW = (barWidth * 0.5f) * scale;
+					float centerX = viewPos.x + titleItem->position.x * scaleX;
+
+					drawList->AddLine(
+						ImVec2(centerX - barHalfW, barY),
+						ImVec2(centerX + barHalfW, barY),
+						IM_COL32(
+							static_cast<int>(barCol.x * 255.0f),
+							static_cast<int>(barCol.y * 255.0f),
+							static_cast<int>(barCol.z * 255.0f),
+							static_cast<int>(barCol.w * 255.0f * menuAlpha)
+						),
+						thickness * scale
+					);
 				}
 			}
 
-			Vector4 col = item->color;
-			if (isHighlight)
-			{
-				col = { 1.0f, 0.95f, 0.35f, 1.0f }; // 選択中の強調ゴールド
-			}
-			ImU32 textCol = ImColor(col.x, col.y, col.z, col.w * alpha);
-			drawList->AddText(font, fSize, tPos, textCol, str.c_str());
-		};
+			float pulse = 0.85f + 0.15f * std::sin((gameOverTimer_ - 2.6f) * 6.0f);
 
-		// 1. "GAME OVER" タイトル描画（UITextManager設定参照）
-		const UITextItem* titleItem = textMgr ? textMgr->GetTextItem("GameOverTitle", "GAMEPLAY") : nullptr;
-		if (titleItem)
-		{
-			renderTextItem(titleItem, fadeAlpha);
-
-			// 赤色アクセントアンダーバー
-			float barY = viewPos.y + (titleItem->position.y + titleItem->fontSize * 0.65f) * (screenH / 720.0f);
-			float barHalfW = 160.0f * scale;
-			drawList->AddLine(
-				ImVec2(viewPos.x + screenW * 0.5f - barHalfW, barY),
-				ImVec2(viewPos.x + screenW * 0.5f + barHalfW, barY),
-				IM_COL32(235, 30, 45, static_cast<int>(220.0f * fadeAlpha)),
-				2.5f * scale
-			);
-		}
-
-		// 2. メニュー選択肢（W / S で選択、SPACEで決定）
-		if (gameOverTimer_ >= 0.5f)
-		{
-			float guideFade = std::clamp((gameOverTimer_ - 0.5f) / 0.5f, 0.0f, 1.0f);
-			float pulse = 0.85f + 0.15f * std::sin(gameOverTimer_ * 5.0f);
-
-			// RETRY 項目
 			const UITextItem* retryItem = textMgr ? textMgr->GetTextItem("GameOverRetry", "GAMEPLAY") : nullptr;
 			if (retryItem)
 			{
 				bool isSelected = (gameOverSelectedOption_ == GameOverMenuOption::Retry);
-				float itemAlpha = isSelected ? (guideFade * pulse) : (guideFade * 0.55f);
+				float itemAlpha = isSelected ? (menuAlpha * pulse) : (menuAlpha * 0.55f);
 				std::string retryStr = isSelected ? ("> " + retryItem->text) : ("  " + retryItem->text);
 				renderTextItem(retryItem, itemAlpha, isSelected ? 1.08f : 1.0f, retryStr, isSelected);
 			}
 
-			// TITLE 項目
 			const UITextItem* titleNavItem = textMgr ? textMgr->GetTextItem("GameOverTitleNav", "GAMEPLAY") : nullptr;
 			if (titleNavItem)
 			{
 				bool isSelected = (gameOverSelectedOption_ == GameOverMenuOption::Title);
-				float itemAlpha = isSelected ? (guideFade * pulse) : (guideFade * 0.55f);
+				float itemAlpha = isSelected ? (menuAlpha * pulse) : (menuAlpha * 0.55f);
 				std::string titleStr = isSelected ? ("> " + titleNavItem->text) : ("  " + titleNavItem->text);
 				renderTextItem(titleNavItem, itemAlpha, isSelected ? 1.08f : 1.0f, titleStr, isSelected);
 			}
 
-			// 画面下部に操作ナビゲーション（控えめに表示）
-			ImFont* fontSub = imguiManager ? imguiManager->GetFont(ImGuiManager::FontType::English_FiraMono) : ImGui::GetFont();
-			if (!fontSub) fontSub = ImGui::GetFont();
 			const char* navText = "[W / S] SELECT      [SPACE] DECIDE";
-			float navFontSize = 18.0f * scale;
-			ImVec2 navSize = fontSub->CalcTextSizeA(navFontSize, FLT_MAX, -1.0f, navText);
-			ImVec2 navPos(viewPos.x + (screenW - navSize.x) * 0.5f, viewPos.y + screenH * 0.78f);
-			drawList->AddText(fontSub, navFontSize, ImVec2(navPos.x + 1.5f, navPos.y + 1.5f), IM_COL32(0, 0, 0, static_cast<int>(180.0f * guideFade)), navText);
-			drawList->AddText(fontSub, navFontSize, navPos, IM_COL32(180, 190, 200, static_cast<int>(200.0f * guideFade)), navText);
+			float navFontSize = 17.0f * scale;
+			ImVec2 navSize = fontMono->CalcTextSizeA(navFontSize, FLT_MAX, -1.0f, navText);
+			ImVec2 navPos(viewPos.x + (screenW - navSize.x) * 0.5f, viewPos.y + screenH * 0.80f);
+			drawList->AddText(fontMono, navFontSize, ImVec2(navPos.x + 1.5f, navPos.y + 1.5f), IM_COL32(0, 0, 0, static_cast<int>(180.0f * menuAlpha)), navText);
+			drawList->AddText(fontMono, navFontSize, navPos, IM_COL32(110, 220, 245, static_cast<int>(220.0f * menuAlpha)), navText);
 		}
 	}
 
-	// 画面遷移（トランジション）の黒カーテンをテキストの手前に被せることで、テキストを完全に「画面遷移の後ろ」に配置
 	if (transitionAlpha < 0.999f)
 	{
 		float blackAlpha = std::clamp(1.0f - transitionAlpha, 0.0f, 1.0f);
@@ -5032,7 +5306,6 @@ void GamePlayScene::DrawGameOverUI()
 	drawList->PopClipRect();
 #endif
 }
-
 void GamePlayScene::StartClearSequence()
 {
 	if (gamePhase_ != GamePhase::PLAYING) return;

@@ -32,6 +32,12 @@ struct UITextItem
 	Vector4 shadowColor = { 0.0f, 0.0f, 0.0f, 0.7f };   // 影の色
 	Vector2 shadowOffset = { 2.0f, 2.0f };              // 影のオフセット
 
+	bool hasUnderline = false;                           // 下線 (アンダーバー)
+	Vector4 underlineColor = { 0.92f, 0.12f, 0.18f, 0.86f }; // 下線の色 (RGBA)
+	float underlineWidth = 320.0f;                       // 下線の幅・長さ (px)
+	float underlineThickness = 2.5f;                     // 下線の太さ (px)
+	float underlineOffsetY = 42.0f;                      // 下線のY位置オフセット (px)
+
 	UITextAlign align = UITextAlign::Left;              // 配置揃え
 	bool isVisible = true;                              // 表示フラグ
 };

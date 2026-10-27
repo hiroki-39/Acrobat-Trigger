@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64">
@@ -209,6 +209,7 @@
     <ClCompile Include="KHEngine\Graphics\3d\Particle\ParticleEmitter.cpp" />
     <ClCompile Include="KHEngine\Graphics\3d\Particle\ParticleManager.cpp" />
     <ClCompile Include="KHEngine\Graphics\3d\Particle\ParticleRenderer.cpp" />
+    <ClCompile Include="KHEngine\Graphics\3d\GPUParticle\GPUParticleSystem.cpp" />
     <ClCompile Include="KHEngine\Graphics\3d\Particle\ParticleEffect.cpp" />
     <ClCompile Include="KHEngine\Graphics\Resource\Descriptor\SrvManager.cpp" />
     <ClCompile Include="KHEngine\Graphics\Resource\Texture\TextureManager.cpp" />
@@ -311,6 +312,7 @@
     <ClInclude Include="KHEngine\Graphics\3d\Model\ModelManager.h" />
     <ClInclude Include="KHEngine\Graphics\3d\Particle\Particle.h" />
     <ClInclude Include="KHEngine\Graphics\3d\Particle\ParticleRenderer.h" />
+    <ClInclude Include="KHEngine\Graphics\3d\GPUParticle\GPUParticleSystem.h" />
     <ClInclude Include="KHEngine\Graphics\3d\Particle\ParticleEffect.h" />
     <ClInclude Include="KHEngine\Sound\Core\Sound.h" />
     <ClInclude Include="KHEngine\Sound\Core\SoundManager.h" />
