@@ -1,4 +1,4 @@
-#include "UITextManager.h"
+﻿#include "UITextManager.h"
 #include "KHEngine/Core/Services/EngineServices.h"
 #include "KHEngine/Scene/SceneManager.h"
 #include "externals/nlohmann/json.hpp"
@@ -204,13 +204,18 @@ void UITextManager::SetupDefaultScenes()
 		gameOverTitle.position = { 640.0f, 275.0f };
 		gameOverTitle.fontSize = 64.0f;
 		gameOverTitle.fontType = ImGuiManager::FontType::English_FiraMono_Large;
-		gameOverTitle.color = { 0.92f, 0.12f, 0.18f, 1.0f };
+		gameOverTitle.color = { 0.20f, 0.98f, 1.00f, 1.0f };
 		gameOverTitle.hasOutline = true;
 		gameOverTitle.outlineColor = { 0.0f, 0.0f, 0.0f, 1.0f };
 		gameOverTitle.outlineThickness = 3.0f;
 		gameOverTitle.hasShadow = true;
-		gameOverTitle.shadowColor = { 0.0f, 0.0f, 0.0f, 0.8f };
+		gameOverTitle.shadowColor = { 0.02f, 0.20f, 0.35f, 0.85f };
 		gameOverTitle.shadowOffset = { 3.0f, 3.0f };
+		gameOverTitle.hasUnderline = true;
+		gameOverTitle.underlineColor = { 0.25f, 0.98f, 1.00f, 0.90f };
+		gameOverTitle.underlineWidth = 320.0f;
+		gameOverTitle.underlineThickness = 2.5f;
+		gameOverTitle.underlineOffsetY = 42.0f;
 		gameOverTitle.align = UITextAlign::Center;
 		gameOverTitle.isVisible = false;
 		gameplayScene.items.push_back(gameOverTitle);
@@ -360,6 +365,11 @@ void UITextManager::SetupDefaultScenes()
 		overTitle.hasShadow = true;
 		overTitle.shadowColor = { 0.0f, 0.0f, 0.0f, 0.7f };
 		overTitle.shadowOffset = { 3.0f, 3.0f };
+		overTitle.hasUnderline = true;
+		overTitle.underlineColor = { 0.92f, 0.12f, 0.18f, 0.86f };
+		overTitle.underlineWidth = 320.0f;
+		overTitle.underlineThickness = 2.5f;
+		overTitle.underlineOffsetY = 42.0f;
 		overTitle.align = UITextAlign::Center;
 		overScene.items.push_back(overTitle);
 		overScene.itemMap[overTitle.id] = 0;
@@ -496,6 +506,11 @@ void UITextManager::SaveSettings()
 				j["hasShadow"] = item.hasShadow;
 				j["shadowColor"] = { item.shadowColor.x, item.shadowColor.y, item.shadowColor.z, item.shadowColor.w };
 				j["shadowOffset"] = { item.shadowOffset.x, item.shadowOffset.y };
+				j["hasUnderline"] = item.hasUnderline;
+				j["underlineColor"] = { item.underlineColor.x, item.underlineColor.y, item.underlineColor.z, item.underlineColor.w };
+				j["underlineWidth"] = item.underlineWidth;
+				j["underlineThickness"] = item.underlineThickness;
+				j["underlineOffsetY"] = item.underlineOffsetY;
 				j["align"] = static_cast<int>(item.align);
 				j["isVisible"] = item.isVisible;
 
@@ -571,6 +586,15 @@ void UITextManager::LoadSettings()
 				{
 					item.shadowOffset = { j["shadowOffset"][0], j["shadowOffset"][1] };
 				}
+
+				item.hasUnderline = j.value("hasUnderline", (id == "GameOverTitle"));
+				if (j.contains("underlineColor") && j["underlineColor"].is_array() && j["underlineColor"].size() >= 4)
+				{
+					item.underlineColor = { j["underlineColor"][0], j["underlineColor"][1], j["underlineColor"][2], j["underlineColor"][3] };
+				}
+				item.underlineWidth = j.value("underlineWidth", 320.0f);
+				item.underlineThickness = j.value("underlineThickness", 2.5f);
+				item.underlineOffsetY = j.value("underlineOffsetY", 42.0f);
 
 				item.align = static_cast<UITextAlign>(j.value("align", 0));
 				item.isVisible = j.value("isVisible", true);
@@ -823,6 +847,19 @@ void UITextManager::DrawImGuiEditor()
 			}
 		}
 
+		// 下線 (アンダーバー)
+		if (ImGui::CollapsingHeader("下線設定 (Underline)", item.hasUnderline ? ImGuiTreeNodeFlags_DefaultOpen : 0))
+		{
+			if (ImGui::Checkbox("下線を有効化", &item.hasUnderline)) isChanged = true;
+			if (item.hasUnderline)
+			{
+				if (ImGui::SliderFloat("下線の長さ (幅)", &item.underlineWidth, 10.0f, 1280.0f, "%.1f")) isChanged = true;
+				if (ImGui::SliderFloat("下線の太さ", &item.underlineThickness, 0.5f, 20.0f, "%.1f")) isChanged = true;
+				if (ImGui::DragFloat("Yオフセット (上下位置)", &item.underlineOffsetY, 0.5f, -100.0f, 200.0f, "%.1f")) isChanged = true;
+				if (ImGui::ColorEdit4("下線の色", &item.underlineColor.x)) isChanged = true;
+			}
+			}
+
 		if (isChanged)
 		{
 			SaveSettings();
@@ -952,6 +989,23 @@ void UITextManager::Draw(ImDrawList* drawList, const ImVec2& screenOffset, const
 		// 3. 本体のテキスト描画
 		ImU32 textCol = ImColor(item.color.x, item.color.y, item.color.z, item.color.w * effectiveAlpha);
 		drawList->AddText(font, scaledFontSize, textPos, textCol, item.text.c_str());
+
+		// 3.5. 下線 (アンダーバー) の描画
+		if (item.hasUnderline)
+		{
+			ImU32 lineCol = ImColor(item.underlineColor.x, item.underlineColor.y, item.underlineColor.z, item.underlineColor.w * effectiveAlpha);
+			float lineThickness = item.underlineThickness * uniformScale;
+			float halfW = (item.underlineWidth > 0.0f ? item.underlineWidth : textSize.x) * 0.5f * uniformScale;
+			float lineCenterY = textPos.y + item.underlineOffsetY * uniformScale;
+			float centerX = textPos.x + textSize.x * 0.5f;
+
+			drawList->AddLine(
+				ImVec2(centerX - halfW, lineCenterY),
+				ImVec2(centerX + halfW, lineCenterY),
+				lineCol,
+				lineThickness
+			);
+		}
 
 		// 4. エディタモード中かつ選択中の項目の場合のみ、ギズモ（枠線）を表示 & マウス直接ドラッグ（通常プレイ中・リリース時は絶対に非表示）
 #ifdef ENABLE_EDITOR

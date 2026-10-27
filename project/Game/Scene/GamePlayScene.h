@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "KHEngine/Graphics/2d/Sprite.h"
 #include "KHEngine/Graphics/3d/Object/Object3d.h"
 #include "KHEngine/Sound/Core/Sound.h"
@@ -242,22 +242,42 @@ private:
     void DrawPauseUI();
     bool IsPaused() const { return isPaused_; }
 
-    // ゲームオーバー演出（GameOver Sequence）
+    // GameOver Sequence
     enum class GameOverStep {
-        FALLING,        // 被弾・地上へ落下中（カメラ停止、自機キリモミ回転、黒煙放出）
-        EXPLODED,       // 地上激突・大爆発（画面揺れ、機体非表示、余韻）
-        SHOW_UI         // ゲームオーバーUI表示（「GAME OVER」、リトライ/タイトル選択待ち）
+        HIT_STOP = 0,         // 0.00 - 0.15s: Critical hit stop, RGB chromatic aberration, red wire shockwave
+        POLYGON_SHATTER = 1,  // 0.15 - 1.00s: Triangle polygon shatter, magenta/red burst
+        VOID_DISINTEGRATE = 2,// 1.00 - 2.00s: Spatial void disintegration, red wireframe fade
+        SHOW_UI = 3           // 2.00s+: Letterbox, console error log, neon GAME OVER
     };
     enum class GameOverMenuOption {
         Retry = 0,
         Title = 1
     };
-    GameOverStep gameOverStep_ = GameOverStep::FALLING;
+    GameOverStep gameOverStep_ = GameOverStep::HIT_STOP;
     GameOverMenuOption gameOverSelectedOption_ = GameOverMenuOption::Retry;
     float gameOverTimer_ = 0.0f;
-    Vector3 gameOverPlayerFallPos_ = { 0.0f, 0.0f, 0.0f };
-    Vector3 gameOverPlayerFallRot_ = { 0.0f, 0.0f, 0.0f };
-    float gameOverFallVelocity_ = 0.0f;
+    bool debugPreviewGameOverUI_ = false;
+    bool gameOverBarVisible_ = true;
+    float gameOverBarWidth_ = 320.0f;
+    float gameOverBarThickness_ = 2.5f;
+    float gameOverBarOffsetY_ = 42.0f;
+    Vector4 gameOverBarColor_ = { 0.92f, 0.12f, 0.18f, 0.86f };
+
+    struct GameOverShard {
+        std::unique_ptr<Object3d> object;
+        Vector3 position;
+        Vector3 velocity;
+        Vector3 rotation;
+        Vector3 rotSpeed;
+        Vector3 scale;
+        Vector4 color;
+        float life = 0.0f;
+        float maxLife = 0.85f;
+    };
+    std::vector<GameOverShard> gameOverShards_;
+    std::unique_ptr<Object3d> gameOverShockwaveRing_;
+    float shockwaveScale_ = 0.2f;
+    float shockwaveAlpha_ = 1.0f;
 
     void StartGameOverSequence();
     void UpdateGameOverSequence(float dt);

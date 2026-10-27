@@ -1,0 +1,15 @@
+{
+  "name": "digital_spark",
+  "patternType": 0,
+  "count": 384,
+  "radius": 0.3,
+  "speed": 12.0,
+  "spread": 4.0,
+  "gravity": 5.0,
+  "lifeTime": 0.6,
+  "startScale": 0.18,
+  "endScale": 0.0,
+  "startColor": [1.0, 0.9, 0.1, 1.0],
+  "endColor": [1.0, 0.2, 0.0, 0.0],
+  "blendMode": 1
+}

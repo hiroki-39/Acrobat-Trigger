@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <vector>
 #include <memory>
 #include <random>
@@ -8,6 +8,7 @@
 #include "KHEngine/Graphics/3d/Skybox/Skybox.h"
 #include "KHEngine/Graphics/3d/Object/Object3d.h"
 #include "KHEngine/Graphics/3d/Particle/ParticleEffect.h"
+#include "KHEngine/Graphics/3d/GPUParticle/GPUParticleSystem.h"
 #include "KHEngine/Math/Vector3.h"
 #include "KHEngine/Math/Vector4.h"
 
@@ -78,22 +79,34 @@ private:
     Vector3 diveStartCamRot_ = { 0.04f, 0.0f, 0.0f };
     float diveStartProgressZ_ = 0.0f;
 
-    // 仮想空間自機ポリゴン消滅演出（VirtualShatter / PolygonDissolve）用データ
-    struct PolygonShard3D {
-        std::unique_ptr<Object3d> object;
+// GPUボクセルパーティクルシステム (3Dキューブインスタンシング)
+    std::unique_ptr<GPUParticleSystem> gpuParticleSystem_;
+    float dissolveProgress_ = 0.0f;
+
+    // 前回のボクセル演出シミュレーション（GPUインスタンシングで高速描画）
+    struct VoxelCubeParticle {
         Vector3 position;
         Vector3 velocity;
         Vector3 rotation;
         Vector3 rotSpeed;
         Vector3 scale;
+        float baseScale = 0.12f;
         Vector4 color;
-        float life = 1.0f;
+        float delay = 0.0f;
+        float life = 0.0f;
+        float maxLife = 1.0f;
+        float noiseSeed = 0.0f;
+        bool isForwardDiffuse = false;
     };
-    std::vector<PolygonShard3D> polyShards3D_;
-    float dissolveProgress_ = 0.0f;
-    bool glitchStarted_ = false;
+    static constexpr size_t kMaxVoxelCubes = 640;
+    std::vector<VoxelCubeParticle> voxelCubes_;
 
-    void SpawnShipPolygonShards(const Vector3& shipPos);
+    Microsoft::WRL::ComPtr<ID3D12Resource> voxelBufferResource_;
+    GPUParticleData* mappedVoxelBuffer_ = nullptr;
+    uint32_t voxelSrvIndex_ = 0;
+
+    void SpawnShipVoxelCubes(const Vector3& shipPos);
+    void UpdateShipVoxelCubes(float dt, const Vector3& curPos);
 
     // 案2（左旋回クライムブレイク）リアルタイム調整用パラメータ
     Vector3 prop2Rot_ = { -0.60f, 0.0f, -1.15f }; // ピッチ(X), ヨー(Y), ロール(Z) [rad]

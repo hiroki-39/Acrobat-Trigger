@@ -183,90 +183,92 @@ void KHFramework::FrameworkUpdate(float deltaTime)
 			// フルスクリーンプレイ時: ForegroundDrawListでUIテキストを描画（画面全体にフィット）
 			UITextManager::GetInstance()->Draw(ImGui::GetForegroundDrawList(), ImVec2(0.0f, 0.0f), ImVec2(static_cast<float>(bbWidth), static_cast<float>(bbHeight)));
 		}
-		// Guide badge for Demo mode and Manual play mode (larger font, high visibility)
-		auto drawList = ImGui::GetForegroundDrawList();
-		auto services = EngineServices::GetInstance();
-		if (drawList && services)
-		{
-			bool isEditor = false;
 #ifdef ENABLE_EDITOR
-			isEditor = services->GetEditorMode();
+		// エディターモード時は EditorSystem::DrawViewport 内でゲーム画面内に描画するため、ここではスキップ
+		if (!EngineServices::GetInstance()->GetEditorMode())
 #endif
-			// Use 24px high-visibility font (English_FiraMono)
-			ImFont* font = imguiManager_ ? imguiManager_->GetFont(ImGuiManager::FontType::English_FiraMono) : nullptr;
-			const float fontSize = 24.0f;
-
-			bool isDemo = services->IsDemoMode();
-			const char* badgeText = isDemo ? "DEMO PLAY MODE | Press [1] to Play" : "PLAY MODE (MANUAL) | Press [1] for Demo";
-
-			// Calculate badge size with 24px font
-			ImVec2 textSize;
-			if (font)
+		{
+			// フルスクリーンプレイ時: ForegroundDrawListでバッジを描画
+			auto drawList = ImGui::GetForegroundDrawList();
+			auto services = EngineServices::GetInstance();
+			if (drawList && services)
 			{
-				textSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, badgeText);
-			}
-			else
-			{
-				textSize = ImGui::CalcTextSize(badgeText);
-			}
+				// Use 24px high-visibility font (English_FiraMono)
+				ImFont* font = imguiManager_ ? imguiManager_->GetFont(ImGuiManager::FontType::English_FiraMono) : nullptr;
+				const float fontSize = 24.0f;
 
-			float badgeX = 20.0f;
-			float badgeY = isEditor ? 36.0f : 20.0f;
-			float padX = 18.0f;
-			float padY = 8.0f;
-			float dotRadius = 5.0f;
-			float dotSpacing = 16.0f;
+				bool isDemo = services->IsDemoMode();
+				const char* badgeText = isDemo ? "DEMO PLAY MODE | Press [1] to Play" : "PLAY MODE (MANUAL) | Press [1] for Demo";
 
-			float badgeWidth = textSize.x + padX * 2.0f + dotSpacing;
-			float badgeHeight = textSize.y + padY * 2.0f;
-
-			static float pulseTimer = 0.0f;
-			float dt = services->GetDeltaTime();
-			pulseTimer += dt * 3.5f;
-			float pulse = (sinf(pulseTimer) * 0.5f + 0.5f);
-
-			if (isDemo)
-			{
-				// Demo play mode badge (cyber blue neon, large size)
-				drawList->AddRectFilled(ImVec2(badgeX - 2.0f, badgeY - 2.0f), ImVec2(badgeX + badgeWidth + 2.0f, badgeY + badgeHeight + 2.0f), IM_COL32(0, 180, 255, static_cast<int>(30 + pulse * 45)), 8.0f);
-				drawList->AddRectFilled(ImVec2(badgeX, badgeY), ImVec2(badgeX + badgeWidth, badgeY + badgeHeight), IM_COL32(6, 16, 28, 235), 7.0f);
-				drawList->AddRect(ImVec2(badgeX, badgeY), ImVec2(badgeX + badgeWidth, badgeY + badgeHeight), IM_COL32(0, 220, 255, static_cast<int>(200 + pulse * 55)), 7.0f, 0, 2.0f);
-
-				// Blinking indicator dot
-				float dotCenterX = badgeX + padX + dotRadius;
-				float dotCenterY = badgeY + badgeHeight * 0.5f;
-				drawList->AddCircleFilled(ImVec2(dotCenterX, dotCenterY), dotRadius, IM_COL32(0, 240, 255, static_cast<int>(180 + pulse * 75)));
-				drawList->AddCircle(ImVec2(dotCenterX, dotCenterY), dotRadius + 1.5f, IM_COL32(0, 200, 255, static_cast<int>(100 + pulse * 100)), 0, 1.2f);
-
-				// Text (24px font)
-				ImVec2 textPos(dotCenterX + dotRadius + 8.0f, badgeY + padY);
+				// Calculate badge size with 24px font
+				ImVec2 textSize;
 				if (font)
 				{
-					drawList->AddText(font, fontSize, textPos, IM_COL32(0, 240, 255, 255), badgeText);
+					textSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, badgeText);
 				}
 				else
 				{
-					drawList->AddText(textPos, IM_COL32(0, 240, 255, 255), badgeText);
+					textSize = ImGui::CalcTextSize(badgeText);
 				}
-			}
-			else
-			{
-				// Manual play mode badge (emerald green, larger)
-				drawList->AddRectFilled(ImVec2(badgeX, badgeY), ImVec2(badgeX + badgeWidth, badgeY + badgeHeight), IM_COL32(6, 22, 14, 210), 7.0f);
-				drawList->AddRect(ImVec2(badgeX, badgeY), ImVec2(badgeX + badgeWidth, badgeY + badgeHeight), IM_COL32(50, 220, 130, 200), 7.0f, 0, 1.5f);
 
-				float dotCenterX = badgeX + padX + dotRadius;
-				float dotCenterY = badgeY + badgeHeight * 0.5f;
-				drawList->AddCircleFilled(ImVec2(dotCenterX, dotCenterY), dotRadius, IM_COL32(60, 240, 140, 240));
+				float badgeX = 20.0f;
+				float badgeY = 20.0f;
+				float padX = 18.0f;
+				float padY = 8.0f;
+				float dotRadius = 5.0f;
+				float dotSpacing = 16.0f;
 
-				ImVec2 textPos(dotCenterX + dotRadius + 8.0f, badgeY + padY);
-				if (font)
+				float badgeWidth = textSize.x + padX * 2.0f + dotSpacing;
+				float badgeHeight = textSize.y + padY * 2.0f;
+
+				static float pulseTimer = 0.0f;
+				float dt = services->GetDeltaTime();
+				pulseTimer += dt * 3.5f;
+				float pulse = (sinf(pulseTimer) * 0.5f + 0.5f);
+
+				if (isDemo)
 				{
-					drawList->AddText(font, fontSize, textPos, IM_COL32(80, 255, 160, 240), badgeText);
+					// Demo play mode badge (cyber blue neon, large size)
+					drawList->AddRectFilled(ImVec2(badgeX - 2.0f, badgeY - 2.0f), ImVec2(badgeX + badgeWidth + 2.0f, badgeY + badgeHeight + 2.0f), IM_COL32(0, 180, 255, static_cast<int>(30 + pulse * 45)), 8.0f);
+					drawList->AddRectFilled(ImVec2(badgeX, badgeY), ImVec2(badgeX + badgeWidth, badgeY + badgeHeight), IM_COL32(6, 16, 28, 235), 7.0f);
+					drawList->AddRect(ImVec2(badgeX, badgeY), ImVec2(badgeX + badgeWidth, badgeY + badgeHeight), IM_COL32(0, 220, 255, static_cast<int>(200 + pulse * 55)), 7.0f, 0, 2.0f);
+
+					// Blinking indicator dot
+					float dotCenterX = badgeX + padX + dotRadius;
+					float dotCenterY = badgeY + badgeHeight * 0.5f;
+					drawList->AddCircleFilled(ImVec2(dotCenterX, dotCenterY), dotRadius, IM_COL32(0, 240, 255, static_cast<int>(180 + pulse * 75)));
+					drawList->AddCircle(ImVec2(dotCenterX, dotCenterY), dotRadius + 1.5f, IM_COL32(0, 200, 255, static_cast<int>(100 + pulse * 100)), 0, 1.2f);
+
+					// Text (24px font)
+					ImVec2 textPos(dotCenterX + dotRadius + 8.0f, badgeY + padY);
+					if (font)
+					{
+						drawList->AddText(font, fontSize, textPos, IM_COL32(0, 240, 255, 255), badgeText);
+					}
+					else
+					{
+						drawList->AddText(textPos, IM_COL32(0, 240, 255, 255), badgeText);
+					}
 				}
 				else
 				{
-					drawList->AddText(textPos, IM_COL32(80, 255, 160, 240), badgeText);
+					// Manual play mode badge (emerald green, larger)
+					drawList->AddRectFilled(ImVec2(badgeX, badgeY), ImVec2(badgeX + badgeWidth, badgeY + badgeHeight), IM_COL32(6, 22, 14, 210), 7.0f);
+					drawList->AddRect(ImVec2(badgeX, badgeY), ImVec2(badgeX + badgeWidth, badgeY + badgeHeight), IM_COL32(50, 220, 130, 200), 7.0f, 0, 1.5f);
+
+					float dotCenterX = badgeX + padX + dotRadius;
+					float dotCenterY = badgeY + badgeHeight * 0.5f;
+					drawList->AddCircleFilled(ImVec2(dotCenterX, dotCenterY), dotRadius, IM_COL32(60, 240, 140, 240));
+
+					ImVec2 textPos(dotCenterX + dotRadius + 8.0f, badgeY + padY);
+					if (font)
+					{
+						drawList->AddText(font, fontSize, textPos, IM_COL32(80, 255, 160, 240), badgeText);
+					}
+					else
+					{
+						drawList->AddText(textPos, IM_COL32(80, 255, 160, 240), badgeText);
+					}
 				}
 			}
 		}
