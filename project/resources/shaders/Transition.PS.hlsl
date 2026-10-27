@@ -1,4 +1,4 @@
-struct VertexShaderOutput {
+﻿struct VertexShaderOutput {
     float4 position : SV_POSITION;
     float2 texcoord : TEXCOORD0;
 };
@@ -239,8 +239,198 @@ PixelShaderOutput RenderHexagon(float2 uv) {
     return output;
 }
 
+
+// =========================================================================
+// 方式3: CRT TV 電源オフ演出 (CRTOff) - 高視認性サイバーシャットダウン仕様
+// =========================================================================
+PixelShaderOutput RenderCRTOff(float2 uv) {
+    PixelShaderOutput output;
+    float aspect = 16.0 / 9.0;
+    float2 d = abs(uv - 0.5);
+
+    // サイバーパレット (高彩度・高輝度ネオン)
+    float3 black = fadeColor.rgb;
+    float3 cyberCyan = float3(0.0, 1.0, 1.0);        // ネオンシアン
+    float3 cyberMagenta = float3(1.0, 0.05, 0.55);   // ネオンマゼンタ（色収差エッジ外側）
+    float3 plasmaWhite = float3(2.0, 2.0, 2.0);      // 純白プラズマ白熱芯
+
+    // CRT走査線＆グリッチハッシュ
+    float scanline = sin(uv.y * 500.0 * 3.14159) * 0.5 + 0.5; // クッキリ視認できる走査線
+    float cellRand = Hash21(floor(uv * float2(50.0, 30.0) + progress * 50.0));
+
+    if (isOpening == 0) {
+        // =================================================================
+        // ---【電源OFF (閉じる): システムシャットダウン】---
+        // =================================================================
+        if (progress < 0.44) {
+            // [Phase 1: 上下圧縮 + CRT走査線ベール + 多層RGB色収差ネオンエッジ]
+            float t = progress / 0.44;
+            float ease = t * t * t; // 加速しながらギュッと潰れる
+            float halfH = lerp(0.5, 0.006, ease);
+
+            if (d.y > halfH) {
+                // 外側の漆黒 ＋ エッジから漏れ出るマゼンタ/シアンのネオンオーラ
+                float auraDist = d.y - halfH;
+                float aura = saturate(1.0 - auraDist / 0.040);
+                float3 auraCol = lerp(black, cyberMagenta * 0.6 + cyberCyan * 0.3, pow(aura, 2.0));
+                output.color = float4(auraCol, 1.0);
+                return output;
+            } else {
+                // 上下の圧縮境界: 存在感のある太い多層RGB色収差ビーム！
+                float edgeDist = halfH - d.y;
+                float beamWidth = 0.012 + (1.0 - halfH * 2.0) * 0.018;
+
+                if (edgeDist < beamWidth) {
+                    float factor = 1.0 - (edgeDist / beamWidth);
+                    // 外側=マゼンタ, 中間=シアン, 芯=強烈なプラズマホワイト
+                    float3 beamCol = lerp(cyberMagenta, cyberCyan, saturate(factor * 1.5));
+                    beamCol = lerp(beamCol, plasmaWhite, pow(factor, 1.8) * 1.3);
+                    output.color = float4(beamCol, factor * (0.92 + ease * 0.08));
+                    return output;
+                }
+
+                // 圧縮中の可視画面: CRT走査線と水平ラスタグリッチのオーバーレイ
+                float noiseBand = Hash21(floor(uv.yy * float2(24.0, 24.0) + progress * 70.0));
+                float glitch = (noiseBand > 0.85) ? 0.45 : 0.0;
+                float scanAlpha = lerp(0.35, 0.65, ease) * (1.0 - scanline * 0.65) + glitch;
+                float3 scanColor = lerp(float3(0.01, 0.03, 0.05), cyberCyan * 0.9, glitch);
+                output.color = float4(scanColor, scanAlpha);
+                return output;
+            }
+        } else if (progress < 0.78) {
+            // [Phase 2: 水平圧縮 + プラズマ波形・デジタルデータパルス]
+            float t = (progress - 0.44) / 0.34;
+            float ease = t * t * (3.0 - 2.0 * t); // SmoothStep
+            float halfW = lerp(0.5, 0.008, ease);
+            float halfH = 0.0065; // 太さをしっかり維持
+
+            float yDist = abs(d.y);
+            float lineGlow = saturate(1.0 - yDist / 0.035);
+
+            if (d.y > halfH || d.x > halfW) {
+                // 外側の漆黒 ＋ 水平ビームからのプラズマ漏れ光
+                float3 glowLeak = (cyberCyan * 0.7 + cyberMagenta * 0.3) * pow(lineGlow, 2.5) * (1.0 - ease) * 0.6;
+                output.color = float4(black + glowLeak, 1.0);
+                return output;
+            } else {
+                // 激しく脈動するデジタルパルス波形
+                float centerFocus = 1.0 - (d.x / halfW);
+                float wave = sin(uv.x * 120.0 - progress * 110.0) * 0.5 + 0.5;
+                float spark = (cellRand > 0.75) ? 1.5 : 1.0;
+
+                float3 lineCol = lerp(cyberMagenta, cyberCyan, centerFocus);
+                lineCol = lerp(lineCol, plasmaWhite, pow(centerFocus, 1.4) * wave * spark);
+                output.color = float4(lineCol, 1.0);
+                return output;
+            }
+        } else {
+            // [Phase 3: 中心の光点消失 + 大判サイバーショックウェーブ拡散]
+            float t = saturate((progress - 0.78) / 0.22);
+            float2 aspectD = float2(d.x * aspect, d.y);
+            float dist = length(aspectD);
+
+            if (t >= 0.98) {
+                output.color = float4(black, 1.0);
+                return output;
+            }
+
+            // 1. 中心の光の点（スポット）
+            float spotRadius = lerp(0.012, 0.0005, t);
+            float spotIntensity = (1.0 - t) * smoothstep(spotRadius * 2.8, 0.0, dist);
+            float3 spotCol = lerp(cyberCyan, plasmaWhite * 1.8, spotIntensity) * spotIntensity;
+
+            // 2. 画面いっぱいに広がるサイバー・ショックウェーブ（円環パルス波紋）
+            float ringRadius = t * 0.42; // 画面の広範囲に拡散
+            float ringWidth = 0.008;      // クッキリ太いリング
+            float ringDist = abs(dist - ringRadius);
+            float ringIntensity = smoothstep(ringWidth, 0.0, ringDist) * (1.0 - t) * 2.5;
+            float3 ringCol = (lerp(cyberCyan, cyberMagenta, t) + plasmaWhite * 0.4) * ringIntensity;
+
+            float3 finalColor = black + spotCol + ringCol;
+            output.color = float4(finalColor, 1.0);
+            return output;
+        }
+    } else {
+        // =================================================================
+        // ---【電源ON (開く): システム再起動】---
+        // =================================================================
+        if (progress < 0.18) {
+            // [Phase 1: 中心のサイバースポット点灯 + 逆収束リング]
+            float t = progress / 0.18;
+            float2 aspectD = float2(d.x * aspect, d.y);
+            float dist = length(aspectD);
+
+            float spotRadius = lerp(0.001, 0.012, t);
+            float spotIntensity = t * smoothstep(spotRadius * 2.8, 0.0, dist);
+            float3 spotCol = lerp(cyberCyan, plasmaWhite * 1.8, spotIntensity) * spotIntensity;
+
+            float ringRadius = (1.0 - t) * 0.35;
+            float ringWidth = 0.008;
+            float ringIntensity = smoothstep(ringWidth, 0.0, abs(dist - ringRadius)) * t * 2.0;
+            float3 ringCol = (cyberCyan + plasmaWhite * 0.3) * ringIntensity;
+
+            float3 finalColor = black + spotCol + ringCol;
+            output.color = float4(finalColor, 1.0);
+            return output;
+        } else if (progress < 0.50) {
+            // [Phase 2: 水平プラズマ波形ラインの左右伸長]
+            float t = (progress - 0.18) / 0.32;
+            float ease = t * t * (3.0 - 2.0 * t);
+            float halfW = lerp(0.008, 0.5, ease);
+            float halfH = 0.0065;
+
+            float yDist = abs(d.y);
+            float lineGlow = saturate(1.0 - yDist / 0.035);
+
+            if (d.y > halfH || d.x > halfW) {
+                float3 glowLeak = cyberCyan * pow(lineGlow, 2.5) * ease * 0.5;
+                output.color = float4(black + glowLeak, 1.0);
+                return output;
+            } else {
+                float centerFocus = 1.0 - (d.x / max(halfW, 0.001));
+                float wave = sin(uv.x * 120.0 + progress * 100.0) * 0.5 + 0.5;
+                float3 lineCol = lerp(cyberMagenta, cyberCyan, 0.5);
+                lineCol = lerp(lineCol, plasmaWhite, pow(centerFocus, 1.3) * wave);
+                output.color = float4(lineCol, 1.0);
+                return output;
+            }
+        } else {
+            // [Phase 3: 上下全開 + 走査線ベールのフェードアウト]
+            float t = (progress - 0.50) / 0.50;
+            float ease = 1.0 - pow(1.0 - t, 2.0); // Ease-Out
+            float halfH = lerp(0.0065, 0.51, ease);
+
+            if (d.y > halfH) {
+                output.color = float4(black, 1.0);
+                return output;
+            } else {
+                float edgeDist = halfH - d.y;
+                float beamWidth = 0.010;
+                if (edgeDist < beamWidth && halfH < 0.48) {
+                    float factor = 1.0 - (edgeDist / beamWidth);
+                    float3 col = lerp(cyberCyan, plasmaWhite, factor);
+                    output.color = float4(col, factor * 0.90);
+                    return output;
+                }
+
+                if (t < 0.65) {
+                    float veilAlpha = (0.65 - t) * 0.5 * (1.0 - scanline * 0.5);
+                    output.color = float4(cyberCyan * 0.45, veilAlpha);
+                    return output;
+                }
+                discard;
+            }
+        }
+    }
+
+    output.color = float4(black, 1.0);
+    return output;
+}
+
 PixelShaderOutput main(VertexShaderOutput input) {
-    if (transitionType == 1) {
+    if (transitionType == 2) {
+        return RenderCRTOff(input.texcoord);
+    } else if (transitionType == 1) {
         return RenderHexagon(input.texcoord);
     } else {
         return RenderSquareGrid(input.texcoord);

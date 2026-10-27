@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "KHEngine/Graphics/2d/Sprite.h"
 #include "KHEngine/Graphics/3d/Object/Object3d.h"
 #include "KHEngine/Sound/Core/Sound.h"
@@ -46,9 +46,10 @@ public:
     
     
     void ReloadEnemiesOnly();
+    void SeamlessResetForRetry();
 
 private:
-    
+    std::unique_ptr<struct LevelData> cachedLevelData_;
     std::vector<std::unique_ptr<Object3d>> modelInstances;
 
     std::unique_ptr<Camera> camera;
@@ -244,10 +245,11 @@ private:
 
     // GameOver Sequence
     enum class GameOverStep {
-        HIT_STOP = 0,         // 0.00 - 0.15s: Critical hit stop, RGB chromatic aberration, red wire shockwave
-        POLYGON_SHATTER = 1,  // 0.15 - 1.00s: Triangle polygon shatter, magenta/red burst
-        VOID_DISINTEGRATE = 2,// 1.00 - 2.00s: Spatial void disintegration, red wireframe fade
-        SHOW_UI = 3           // 2.00s+: Letterbox, console error log, neon GAME OVER
+        HIT_STOP = 0,             // 0.00 - 0.15s: Critical hit stop
+        POLYGON_SHATTER = 1,      // 0.15 - 1.80s: プリズム四散
+        VOID_DISINTEGRATE = 2,    // 1.80 - 2.30s: サイバーグリッド・スキャンライン展開
+        SHOW_UI = 3,              // 2.30s+: GAME OVER モザイク崩壊テキスト、メニューUI
+        RETRY_DEMATERIALIZE = 4   // リトライ時シームレス逆マテリアライズ演出
     };
     enum class GameOverMenuOption {
         Retry = 0,
@@ -262,6 +264,16 @@ private:
     float gameOverBarThickness_ = 2.5f;
     float gameOverBarOffsetY_ = 42.0f;
     Vector4 gameOverBarColor_ = { 0.92f, 0.12f, 0.18f, 0.86f };
+
+    // リトライ時シームレス逆マテリアライズ用
+    float retryDematerializeTimer_ = 0.0f;
+    const float kRetryDematerializeDuration = 1.10f; // 0.90s消滅 + 0.20sボイド間
+    Vector3 retryStartCamPos_ = { 0.0f, 0.0f, 0.0f };
+    Vector3 retryStartCamTarget_ = { 0.0f, 0.0f, 0.0f };
+    float retryStartProgress_ = 0.0f;
+    int retryStartRailIndex_ = 0;
+    Vector3 gameOverPlayerStartPos_ = { 0.0f, 0.0f, 0.0f };
+    Vector3 gameOverPlayerStartRot_ = { 0.0f, 0.0f, 0.0f };
 
     struct GameOverShard {
         std::unique_ptr<Object3d> object;

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -31,6 +31,7 @@ public:
 
 	void Draw();
 	void DrawUI();
+	void DrawTransition();
 
 	/// <summary>
 	/// シーン変更（トランジション付き）
@@ -38,7 +39,7 @@ public:
 	/// <param name="sceneName">遷移先のシーン名</param>
 	/// <param name="fadeDuration">フェードアウト/インにかける時間（秒）</param>
 	/// <param name="fadeColor">フェード色（デフォルト: 仮想空間ディープティール）</param>
-	void ChangeScene(const std::string& sceneName, float fadeDuration = 0.5f, const Vector4& fadeColor = { 0.012f, 0.045f, 0.080f, 1.0f });
+	void ChangeScene(const std::string& sceneName, float fadeDuration = 0.5f, const Vector4& fadeColor = { 0.012f, 0.045f, 0.080f, 1.0f }, TransitionType type = TransitionType::Hexagon);
 
 	/// <summary>
 	/// 遷移中かどうか
@@ -89,6 +90,7 @@ private:
 	std::string currentSceneName_ = "TITLE";
 
 	// トランジション管理
+	TransitionType defaultTransitionType_ = TransitionType::Hexagon;
 	TransitionType transitionType_ = TransitionType::Hexagon; // デフォルト: ヘキサゴン
 	TransitionState transitionState_ = TransitionState::None;
 	std::string nextSceneName_;

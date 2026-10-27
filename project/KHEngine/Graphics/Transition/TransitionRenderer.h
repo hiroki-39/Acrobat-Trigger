@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <wrl.h>
 #include <d3d12.h>
 #include <cstdint>
@@ -11,7 +11,8 @@ class DirectXCommon;
 enum class TransitionType
 {
 	SquareGrid = 0, // 四角形サイバーグリッド（すっきりフラットタイル）
-	Hexagon = 1     // ヘキサゴン・トランジション（六角形波紋伝播＆ネオン発光）
+	Hexagon = 1,    // ヘキサゴン・トランジション（六角形波紋伝播＆ネオン発光）
+	CRT_Off = 2     // CRT TV 電源オフ演出（上下圧縮 -> 左右圧縮 -> 点消失）
 };
 
 class TransitionRenderer

@@ -33,6 +33,17 @@ void TitleScene::Initialize()
     auto services = Services();
     if (!services) return;
 
+    // 前シーン（ゲームオーバー等）のグリッチノイズが残存しないよう完全に無効化
+    if (auto pp = services->GetPostProcess())
+    {
+        pp->SetEffectActive("Random(Glitch)", false);
+        if (auto* d = pp->GetData())
+        {
+            d->glitchStrength = 0.0f;
+            d->noiseStrength = 0.0f;
+        }
+    }
+
     auto dxCommon = services->GetDirectXCommon();
     auto object3dCommon = services->GetObject3dCommon();
     auto srvManager = services->GetSrvManager();
@@ -855,7 +866,8 @@ void TitleScene::Update()
     // -------------------------------------------------------------
     bool isDecisionPressed = false;
 
-    if (input && isPlaying)
+    // イントロ中（機体が手前から進入して巡航が始まるまで）は決定ボタンを無効化
+    if (input && isPlaying && !isIntro_)
     {
         if (input->TriggerKey(DIK_SPACE) || input->TriggerKey(DIK_RETURN) ||
             input->TriggerPadButton(XINPUT_GAMEPAD_A) || input->TriggerPadButton(XINPUT_GAMEPAD_START))
@@ -880,7 +892,7 @@ void TitleScene::Update()
     {
         demoTimer_ = 0.0f;
     }
-    if (isDecisionPressed && !isDiving_)
+    if (isDecisionPressed && !isDiving_ && !isIntro_)
     {
         TriggerStartTransition(false); // 通常のゲームプレイ突入
     }

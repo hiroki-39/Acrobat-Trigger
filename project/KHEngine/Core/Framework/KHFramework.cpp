@@ -318,8 +318,12 @@ void KHFramework::FrameworkDrawEnd()
 	{
 		imguiManager_->End();
 		// エディターモードON、またはエディターモードOFF時のUIテキスト描画を反映
-		imguiManager_->Draw();
-	}
+		imguiManager_->Draw();
+
+		}
+	// 最前面トランジション描画（スプライト・ImGui・UIすべての手前に描画）
+	DrawTransition();
+
 
 	if (dxCommon_)
 	{

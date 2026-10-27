@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "KHEngine/Core/OS/WinApp.h"
 #include "KHEngine/Core/Graphics/DirectXCommon.h"
 #include "KHEngine/Input/Input.h"
@@ -35,6 +35,7 @@ public:
     
     void Draw() override;
     void DrawUI() override;
+    void DrawTransition() override;
 
 private:
     

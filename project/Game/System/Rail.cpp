@@ -78,13 +78,7 @@ float Rail::GetTFromDistance(float distance) const {
 }
 
 void Rail::GetSegment(float rawT, int& outIndex, float& outLocalT) const {
-    if (points_.empty()) {
-        outIndex = 0;
-        outLocalT = 0.0f;
-        return;
-    }
-    
-    if (points_.size() == 1) {
+    if (points_.size() < 2) {
         outIndex = 0;
         outLocalT = 0.0f;
         return;
@@ -92,15 +86,27 @@ void Rail::GetSegment(float rawT, int& outIndex, float& outLocalT) const {
 
     rawT = std::clamp(rawT, 0.0f, 1.0f);
     int segmentCount = static_cast<int>(points_.size()) - 1;
+    if (segmentCount <= 0) {
+        outIndex = 0;
+        outLocalT = 0.0f;
+        return;
+    }
+
     float scaledT = rawT * segmentCount;
     outIndex = static_cast<int>(scaledT);
     
     if (outIndex >= segmentCount) {
         outIndex = segmentCount - 1;
         outLocalT = 1.0f;
+    } else if (outIndex < 0) {
+        outIndex = 0;
+        outLocalT = 0.0f;
     } else {
         outLocalT = scaledT - static_cast<float>(outIndex);
     }
+
+    outIndex = std::clamp(outIndex, 0, (std::max)(0, segmentCount - 1));
+    outLocalT = std::clamp(outLocalT, 0.0f, 1.0f);
 }
 
 Vector3 Rail::EvaluateRawPosition(float rawT) const {
@@ -111,10 +117,13 @@ Vector3 Rail::EvaluateRawPosition(float rawT) const {
     float localT = 0.0f;
     GetSegment(rawT, i, localT);
 
+    int maxIdx = static_cast<int>(points_.size()) - 1;
+    i = std::clamp(i, 0, (std::max)(0, maxIdx - 1));
+
     Vector3 P0 = (i - 1 >= 0) ? points_[i - 1].position : points_[i].position;
     Vector3 P1 = points_[i].position;
-    Vector3 P2 = points_[i + 1].position;
-    Vector3 P3 = (i + 2 < static_cast<int>(points_.size())) ? points_[i + 2].position : points_[i + 1].position;
+    Vector3 P2 = (i + 1 <= maxIdx) ? points_[i + 1].position : points_[maxIdx].position;
+    Vector3 P3 = (i + 2 <= maxIdx) ? points_[i + 2].position : P2;
 
     float t2 = localT * localT;
     float t3 = t2 * localT;
@@ -135,10 +144,13 @@ Vector3 Rail::EvaluateRawForward(float rawT) const {
     float localT = 0.0f;
     GetSegment(rawT, i, localT);
 
+    int maxIdx = static_cast<int>(points_.size()) - 1;
+    i = std::clamp(i, 0, (std::max)(0, maxIdx - 1));
+
     Vector3 P0 = (i - 1 >= 0) ? points_[i - 1].position : points_[i].position;
     Vector3 P1 = points_[i].position;
-    Vector3 P2 = points_[i + 1].position;
-    Vector3 P3 = (i + 2 < static_cast<int>(points_.size())) ? points_[i + 2].position : points_[i + 1].position;
+    Vector3 P2 = (i + 1 <= maxIdx) ? points_[i + 1].position : points_[maxIdx].position;
+    Vector3 P3 = (i + 2 <= maxIdx) ? points_[i + 2].position : P2;
 
     float t2 = localT * localT;
 

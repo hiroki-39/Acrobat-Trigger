@@ -1,4 +1,4 @@
-#include "RailCameraController.h"
+﻿#include "RailCameraController.h"
 #include "externals/imgui/imgui.h"
 
 void RailCameraController::Initialize(const std::vector<Rail*>& rails, Camera* camera, Object3d* parentObject) {
@@ -57,7 +57,15 @@ void RailCameraController::Reset() {
     currentCameraLocalPos_ = cameraOffset_;
     isCinematicActive_ = false;
     cinematicBlend_ = 0.0f;
-    ApplyTransform({0.0f, 0.0f, 0.0f});
+    if (!rails_.empty() && currentRailIndex_ < rails_.size() && rails_[currentRailIndex_] != nullptr) {
+        ApplyTransform({0.0f, 0.0f, 0.0f});
+    }
+}
+
+void RailCameraController::ClearRails() {
+    rails_.clear();
+    currentRailIndex_ = 0;
+    progress_ = 0.0f;
 }
 
 void RailCameraController::ApplyTransform(const Vector3& playerLocalPos) {
