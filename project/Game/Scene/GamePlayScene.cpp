@@ -1,4 +1,4 @@
-#define NOMINMAX
+﻿#define NOMINMAX
 #include "GamePlayScene.h"
 #include "KHEngine/Core/Services/EngineServices.h"
 #include "KHEngine/Core/Utility/Log/Logger.h"
@@ -5395,7 +5395,9 @@ void GamePlayScene::UpdateGameOverSequence(float dt)
 					}
 					else if (gameOverSelectedOption_ == GameOverMenuOption::Title)
 					{
-						sceneManager->ChangeScene("TITLE", 0.6f);
+						SoundManager::GetInstance()->StopBGM();
+						SoundManager::GetInstance()->PlaySE("button");
+						sceneManager->ChangeScene("TITLE", 0.90f, { 0.0f, 0.0f, 0.0f, 1.0f }, TransitionType::CRT_Off);
 					}
 				}
 			}
@@ -5755,19 +5757,26 @@ void GamePlayScene::DrawGameOverUI()
 			if (titleItem->align == UITextAlign::Center) tPos.x -= tSize.x * 0.5f;
 			else if (titleItem->align == UITextAlign::Right) tPos.x -= tSize.x;
 
-			// 2. RGBスプリット（色ズレ崩壊）
+			// 2. RGBスプリット（赤系統色ズレ崩壊）
 			if (glitchIntensity > 0.08f)
 			{
 				float splitDist = (5.0f * glitchIntensity) * scale;
-				// シアンゴースト（左ズレ）
-				drawList->AddText(font, fSize, ImVec2(tPos.x - splitDist, tPos.y), IM_COL32(0, 210, 255, static_cast<int>(120.0f * titleAlpha * glitchIntensity)), displayTitle.c_str());
-				// マゼンタ／ホワイトゴースト（右ズレ）
-				drawList->AddText(font, fSize, ImVec2(tPos.x + splitDist, tPos.y), IM_COL32(255, 80, 180, static_cast<int>(100.0f * titleAlpha * glitchIntensity)), displayTitle.c_str());
+				// ビビッドレッドゴースト（左ズレ）
+				drawList->AddText(font, fSize, ImVec2(tPos.x - splitDist, tPos.y), IM_COL32(255, 20, 50, static_cast<int>(130.0f * titleAlpha * glitchIntensity)), displayTitle.c_str());
+				// アンバー／オレンジゴースト（右ズレ）
+				drawList->AddText(font, fSize, ImVec2(tPos.x + splitDist, tPos.y), IM_COL32(255, 130, 45, static_cast<int>(100.0f * titleAlpha * glitchIntensity)), displayTitle.c_str());
 			}
 
-			// 3. メインテキスト描画（シャドウ ＋ 鮮烈なサイバーシアン発光）
-			drawList->AddText(font, fSize, ImVec2(tPos.x + 2.0f * scale, tPos.y + 2.0f * scale), IM_COL32(2, 20, 35, static_cast<int>(220.0f * titleAlpha)), displayTitle.c_str());
-			drawList->AddText(font, fSize, tPos, IM_COL32(40, 250, 255, static_cast<int>(255.0f * titleAlpha)), displayTitle.c_str());
+			// 3. メインテキスト描画（重厚なダークワインシャドウ ＋ 鮮烈なサイバーネオンレッド発光）
+			ImU32 shadowCol = IM_COL32(45, 4, 10, static_cast<int>(230.0f * titleAlpha));
+			ImU32 mainCol = titleItem ? ImU32(ImColor(titleItem->color.x, titleItem->color.y, titleItem->color.z, titleItem->color.w * titleAlpha)) : IM_COL32(255, 45, 60, static_cast<int>(255.0f * titleAlpha));
+			if (titleItem && (titleItem->color.x < 0.5f || (titleItem->color.y > 0.6f && titleItem->color.z > 0.6f)))
+			{
+				mainCol = IM_COL32(255, 45, 60, static_cast<int>(255.0f * titleAlpha));
+			}
+
+			drawList->AddText(font, fSize, ImVec2(tPos.x + 2.0f * scale, tPos.y + 2.0f * scale), shadowCol, displayTitle.c_str());
+			drawList->AddText(font, fSize, tPos, mainCol, displayTitle.c_str());
 
 			// 4. 水平スライス崩壊ライン（文字が横に引き裂かれるグリッチ）
 			if (glitchIntensity > 0.12f)
@@ -5780,14 +5789,14 @@ void GamePlayScene::DrawGameOverUI()
 
 				// スライスクリップ矩形で文字の一部分を横にシフトさせて崩壊感を表現
 				drawList->PushClipRect(ImVec2(tPos.x - 30.0f * scale, sliceY), ImVec2(tPos.x + tSize.x + 30.0f * scale, sliceY + sliceH), true);
-				drawList->AddText(font, fSize, ImVec2(tPos.x + sliceOffset, tPos.y), IM_COL32(220, 255, 255, static_cast<int>(240.0f * titleAlpha)), displayTitle.c_str());
+				drawList->AddText(font, fSize, ImVec2(tPos.x + sliceOffset, tPos.y), IM_COL32(255, 215, 220, static_cast<int>(240.0f * titleAlpha)), displayTitle.c_str());
 				drawList->PopClipRect();
 
 				// スライス走査線
 				drawList->AddLine(
 					ImVec2(tPos.x - 15.0f * scale, sliceY),
 					ImVec2(tPos.x + tSize.x + 15.0f * scale, sliceY),
-					IM_COL32(0, 255, 255, static_cast<int>(180.0f * titleAlpha * glitchIntensity)),
+					IM_COL32(255, 50, 70, static_cast<int>(180.0f * titleAlpha * glitchIntensity)),
 					1.0f * scale
 				);
 			}
@@ -5806,12 +5815,12 @@ void GamePlayScene::DrawGameOverUI()
 				float pSize = (2.0f + (pi % 3) * 1.5f) * scale;
 
 				ImU32 pCol = (pi % 2 == 0)
-					? IM_COL32(0, 240, 255, static_cast<int>(210.0f * titleAlpha))
-					: IM_COL32(220, 255, 255, static_cast<int>(230.0f * titleAlpha));
+					? IM_COL32(255, 45, 65, static_cast<int>(220.0f * titleAlpha))
+					: IM_COL32(255, 180, 190, static_cast<int>(230.0f * titleAlpha));
 				drawList->AddRectFilled(ImVec2(pX, pY), ImVec2(pX + pSize, pY + pSize), pCol);
 			}
 
-			// 6. 発光アンダーライン
+			// 6. 発光アンダーライン（サイバークリムゾンレッド）
 			bool isBarVisible = titleItem ? titleItem->hasUnderline : gameOverBarVisible_;
 			if (isBarVisible)
 			{
@@ -5824,10 +5833,11 @@ void GamePlayScene::DrawGameOverUI()
 				float barHalfW = (barWidth * 0.5f) * scale;
 				float centerX = viewPos.x + titleItem->position.x * scaleX;
 
+				ImU32 lineCol = titleItem ? ImU32(ImColor(titleItem->underlineColor.x, titleItem->underlineColor.y, titleItem->underlineColor.z, titleItem->underlineColor.w * titleAlpha)) : IM_COL32(255, 45, 65, static_cast<int>(240.0f * titleAlpha));
 				drawList->AddLine(
 					ImVec2(centerX - barHalfW, barY),
 					ImVec2(centerX + barHalfW, barY),
-					IM_COL32(0, 240, 255, static_cast<int>(230.0f * titleAlpha)),
+					lineCol,
 					thickness * scale
 				);
 			}

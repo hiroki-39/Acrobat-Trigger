@@ -1,4 +1,4 @@
-#include "SceneManager.h"
+﻿#include "SceneManager.h"
 #include <cassert>
 #include <algorithm>
 #include "KHEngine/Graphics/Transition/TransitionRenderer.h"
@@ -180,6 +180,7 @@ void SceneManager::Update()
 			// 中央から左右端へ完全に開いた（遷移完了）
 			transitionState_ = TransitionState::None;
 			transitionProgress_ = 0.0f;
+			transitionType_ = defaultTransitionType_;
 		}
 		break;
 	}
@@ -218,7 +219,11 @@ void SceneManager::DrawUI()
 	}
 #endif
 
-	// ルール画像トランジション（最前面）描画
+}
+
+void SceneManager::DrawTransition()
+{
+// ルール画像トランジション（最前面）描画
 	if (transitionState_ != TransitionState::None && transitionRenderer_ && ruleTextureIndex_ != UINT32_MAX)
 	{
 		bool isOpening = (transitionState_ == TransitionState::FadeIn || transitionState_ == TransitionState::FadeInWait);
@@ -237,7 +242,7 @@ void SceneManager::DrawUI()
 	}
 }
 
-void SceneManager::ChangeScene(const std::string& sceneName, float fadeDuration, const Vector4& fadeColor)
+void SceneManager::ChangeScene(const std::string& sceneName, float fadeDuration, const Vector4& fadeColor, TransitionType type)
 {
 	assert(sceneFactory_);
 
@@ -287,10 +292,16 @@ void SceneManager::ChangeScene(const std::string& sceneName, float fadeDuration,
 	// イン（トランジション）開始
 	nextSceneName_ = sceneName;
 	fadeDuration_ = fadeDuration;
+	transitionType_ = type;
 	if (transitionType_ == TransitionType::Hexagon)
 	{
 		fadeColor_ = hexFadeColor_;
 		edgeColor_ = hexGlowColor_;
+	}
+	else if (transitionType_ == TransitionType::CRT_Off)
+	{
+		fadeColor_ = { 0.0f, 0.0f, 0.0f, 1.0f };
+		edgeColor_ = { 0.35f, 0.90f, 1.0f, 1.0f };
 	}
 	else
 	{
@@ -367,6 +378,14 @@ void SceneManager::DrawTransitionSettingsUI()
 		fadeDuration_ = 0.5f;
 		fadeColor_ = squareFadeColor_;
 		edgeColor_ = squareEdgeColor_;
+	}
+	ImGui::SameLine();
+	if (ImGui::RadioButton("CRT 電源オフ (CRT TV Off)", &currentType, 2))
+	{
+		transitionType_ = TransitionType::CRT_Off;
+		fadeDuration_ = 0.5f;
+		fadeColor_ = { 0.0f, 0.0f, 0.0f, 1.0f };
+		edgeColor_ = { 0.35f, 0.90f, 1.0f, 1.0f };
 	}
 
 	ImGui::Separator();

@@ -1,4 +1,4 @@
-#define NOMINMAX
+﻿#define NOMINMAX
 #include "Application.h"
 #include <Windows.h>
 #include <combaseapi.h>
@@ -85,5 +85,14 @@ void Application::DrawUI()
     if (sceneManager_)
     {
         sceneManager_->DrawUI();
+    }
+}
+
+
+void Application::DrawTransition()
+{
+    if (sceneManager_)
+    {
+        sceneManager_->DrawTransition();
     }
 }

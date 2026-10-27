@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <cstdint>
 #include <memory>
 
@@ -47,6 +47,7 @@ protected:
     
     
     virtual void DrawUI() {}
+    virtual void DrawTransition() {}
 
     
     

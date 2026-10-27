@@ -1,6 +1,10 @@
-#include "TransitionRenderer.h"
+﻿#include "TransitionRenderer.h"
 #include "KHEngine/Core/Graphics/DirectXCommon.h"
 #include "KHEngine/Graphics/Resource/Descriptor/SrvManager.h"
+#ifdef ENABLE_EDITOR
+#include "KHEngine/Debug/Editor/EditorSystem.h"
+#include "KHEngine/Core/Services/EngineServices.h"
+#endif
 #include <cassert>
 
 void TransitionRenderer::Initialize(DirectXCommon* dxCommon)
@@ -148,6 +152,44 @@ void TransitionRenderer::Draw(uint32_t ruleTextureIndex, float progress, bool is
 	constMap_->padding2 = 0.0f;
 
 	auto commandList = dxCommon_->GetCommandList();
+
+	uint32_t bbWidth = dxCommon_->GetBackBufferWidth();
+	uint32_t bbHeight = dxCommon_->GetBackBufferHeight();
+
+	float vpX = 0.0f;
+	float vpY = 0.0f;
+	float vpW = static_cast<float>(bbWidth);
+	float vpH = static_cast<float>(bbHeight);
+
+#ifdef ENABLE_EDITOR
+	auto services = EngineServices::GetInstance();
+	if (services && services->GetEditorMode())
+	{
+		auto editor = EditorSystem::GetInstance();
+		if (editor)
+		{
+			ImVec2 vPos = editor->GetViewportPos();
+			ImVec2 vSize = editor->GetViewportSize();
+			if (vSize.x > 10.0f && vSize.y > 10.0f)
+			{
+				vpX = vPos.x;
+				vpY = vPos.y;
+				vpW = vSize.x;
+				vpH = vSize.y;
+			}
+		}
+	}
+#endif
+
+	D3D12_VIEWPORT vp{ vpX, vpY, vpW, vpH, 0.0f, 1.0f };
+	D3D12_RECT scissor{
+		static_cast<LONG>(vpX),
+		static_cast<LONG>(vpY),
+		static_cast<LONG>(vpX + vpW),
+		static_cast<LONG>(vpY + vpH)
+	};
+	commandList->RSSetViewports(1, &vp);
+	commandList->RSSetScissorRects(1, &scissor);
 
 	// パイプライン設定
 	commandList->SetPipelineState(pipelineState_.Get());
