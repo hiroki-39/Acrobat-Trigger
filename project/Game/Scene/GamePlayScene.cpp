@@ -1,4 +1,4 @@
-﻿#define NOMINMAX
+#define NOMINMAX
 #include "GamePlayScene.h"
 #include "KHEngine/Core/Services/EngineServices.h"
 #include "KHEngine/Core/Utility/Log/Logger.h"
@@ -752,12 +752,13 @@ void GamePlayScene::ReloadLevel()
 	missiles_.clear();
 	railVisualizers_.clear();
 	enemyRailVisualizers_.clear();
-	mainRails_.clear();
-	bossRail_.reset();
 	if (railCameraController_)
 	{
-		railCameraController_->Reset();
+		// 解放される古いレールへのダングリングポインタアクセスを完全に防止
+		railCameraController_->ClearRails();
 	}
+	mainRails_.clear();
+	bossRail_.reset();
 	acquiredEnhanceRingCount_ = 0;
 	if (player_)
 	{
@@ -774,13 +775,16 @@ void GamePlayScene::ReloadLevel()
 	if (armoredTrainBoss_)
 	{
 		armoredTrainBoss_->SetActive(false);
+		armoredTrainBoss_->SetRail(nullptr);
+		armoredTrainBoss_->SetTerrainObjects(nullptr);
 	}
 
 
 	auto levelData = LevelLoader::Load("resources/json/maps/template/template.json");
 	if (levelData)
 	{
-		for (const auto& objData : levelData->objects)
+		cachedLevelData_ = std::move(levelData);
+		for (const auto& objData : cachedLevelData_->objects)
 		{
 			CreateObjectFromNode(objData, nullptr, modelInstances, mainRails_, bossRail_, bossSpawnProgressThreshold_, object3dCommon, skybox_->GetCubemapSrvIndex(), enemies_, obstacles_, enhanceRings_);
 		}
@@ -810,7 +814,10 @@ void GamePlayScene::ReloadLevel()
 			std::vector<Rail*> railsRaw;
 			for (auto& r : mainRails_)
 			{
-				railsRaw.push_back(r.get());
+				if (r && r->IsValid())
+				{
+					railsRaw.push_back(r.get());
+				}
 			}
 			railCameraController_->Initialize(railsRaw, activeCamera_, cameraObject_.get());
 		}
@@ -1029,6 +1036,91 @@ void GamePlayScene::ReloadEnemiesOnly()
 	}
 }
 
+void GamePlayScene::SeamlessResetForRetry()
+{
+	auto services = EngineServices::GetInstance();
+	auto object3dCommon = services ? services->GetObject3dCommon() : nullptr;
+
+	// 1. 弾、ミサイル、破片エフェクト等の即時クリア
+	bullets_.clear();
+	missiles_.clear();
+	scorePopups_.clear();
+	reconstructShards_.clear();
+	thrusterEffect_.ClearParticles();
+	explosionEffect_.ClearParticles();
+	hitEffect_.ClearParticles();
+	dodgeEffect_.ClearParticles();
+	for (auto& shard : gameOverShards_)
+	{
+		if (shard.object) shard.object->SetScale({ 0.0f, 0.0f, 0.0f });
+	}
+
+	// 2. 敵・障害物・リングの再生成（キャッシュデータから復元、地形やレールは一切破棄せずゼロフレームで復帰！）
+	enemies_.clear();
+	obstacles_.clear();
+	enhanceRings_.clear();
+	acquiredEnhanceRingCount_ = 0;
+
+	if (cachedLevelData_ && object3dCommon)
+	{
+		for (const auto& objData : cachedLevelData_->objects)
+		{
+			LoadEnemiesOnlyFromNode(objData, object3dCommon, skybox_->GetCubemapSrvIndex(), enemies_, obstacles_, enhanceRings_);
+		}
+		ApplyVirtualSpaceStyle();
+	}
+
+	// 3. ボス状態のリセット（モデルや車両は破棄せず、パラメータとチェイス状態のみ初期化）
+	bossBattleStep_ = BossBattleStep::NOT_ACTIVE;
+	isBossSpawned_ = false;
+	bossWarningTimer_ = 0.0f;
+	bossDefeatTimer_ = 0.0f;
+	bossDisplayedHpRate_ = 1.0f;
+	bossWarningSirenTimer_ = 0.0f;
+	if (armoredTrainBoss_)
+	{
+		armoredTrainBoss_->SetActive(false);
+		armoredTrainBoss_->ResetChaseState();
+		if (bossRail_ && bossRail_->IsValid())
+		{
+			armoredTrainBoss_->SetRail(bossRail_.get());
+			armoredTrainBoss_->SetRailProgress(0.0f);
+		}
+		else if (railCameraController_ && !mainRails_.empty() && mainRails_[0]->IsValid())
+		{
+			armoredTrainBoss_->SetRail(mainRails_[0].get());
+			armoredTrainBoss_->SetRailProgress(0.0f);
+		}
+	}
+
+	// 4. レールカメラを進行度 0.0f に巻き戻し
+	if (railCameraController_)
+	{
+		railCameraController_->Reset();
+	}
+
+	// 5. 自機の状態を完全初期化
+	if (player_)
+	{
+		player_->SetDead(false);
+		player_->Heal(player_->GetMaxHp());
+		player_->ResetBoost();
+		player_->ResetPosture();
+		player_->SetPowerUpLevel(0);
+		player_->SetVisible(true);
+	}
+
+	score_ = 0;
+	gameOverStep_ = GameOverStep::HIT_STOP;
+	gameOverTimer_ = 0.0f;
+
+	// 6. シームレスにオープニングカットシーン（地形マテリアライズ・自機再構成）を開始！
+	StartOpeningCutscene();
+
+	// 7. ゲームプレイBGMを再生
+	SoundManager::GetInstance()->PlayBGM("gameplayBGM.mp3", 0.25f, true);
+}
+
 
 void GamePlayScene::Finalize()
 {
@@ -1043,6 +1135,12 @@ void GamePlayScene::Finalize()
 	{
 		pp->SetEffectActive("Grayscale", false);
 		pp->SetEffectActive("Vignetting", false);
+		pp->SetEffectActive("Random(Glitch)", false);
+		if (auto* d = pp->GetData())
+		{
+			d->glitchStrength = 0.0f;
+			d->noiseStrength = 0.0f;
+		}
 	}
 
 	skybox_.reset();
@@ -1862,7 +1960,7 @@ void GamePlayScene::Update()
 
 		bool shouldEmitThruster = false;
 
-		if (!player_->IsDead())
+		if (!player_->IsDead() && gamePhase_ != GamePhase::GAMEOVER)
 		{
 			if (gamePhase_ == GamePhase::START_CUTSCENE)
 			{
@@ -1900,6 +1998,11 @@ void GamePlayScene::Update()
 				thrusterEffect_.ClearParticles();
 			}
 		}
+		else
+		{
+			// 死亡時・ゲームオーバー時はスラスターパーティクルを即座に消去
+			thrusterEffect_.ClearParticles();
+		}
 		explosionEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
 		hitEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
 		dodgeEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
@@ -1908,8 +2011,15 @@ void GamePlayScene::Update()
 		ringEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
 		healRingEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
 
-		// 気流線（風の筋）エフェクトの発生（自機前方から奥へと通り過ぎる白い空気抵抗パーティクル）
-		if (isPlaying_)
+		// 気流線（スピードライン・風の筋）エフェクトの発生
+		// プレイヤーが前進していない時（停止時・カットシーン待機・ゲームオーバー・被弾・リトライ時等）は完全消去
+		bool isPlayerMoving = isPlaying_ && !isPaused_ &&
+		                      (gamePhase_ == GamePhase::PLAYING || 
+		                       (gamePhase_ == GamePhase::START_CUTSCENE && cutsceneTimer_ >= 3.05f)) &&
+		                      gameSpeed_ > 0.01f &&
+		                      (player_ && !player_->IsDead());
+
+		if (isPlayerMoving)
 		{
 			bool isBoost = player_ && player_->IsBoosting();
 			int spawnCount = isBoost ? 4 : 2;
@@ -1929,6 +2039,11 @@ void GamePlayScene::Update()
 				windEffect_.SetPosition(windSpawnPos);
 				windEffect_.Play();
 			}
+		}
+		else
+		{
+			// プレイヤーが進んでいない時はスピードラインを即座に完全消去
+			windEffect_.ClearParticles();
 		}
 		windEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
 	}
@@ -3414,9 +3529,10 @@ void GamePlayScene::Draw()
 	if (object3dCommon) object3dCommon->SetCommonDrawSetting();
 	for (auto& enemy : enemies_)
 	{
+		if (gameOverStep_ == GameOverStep::RETRY_DEMATERIALIZE) continue; // 地形消滅演出中は敵を完全非表示
 		if (gamePhase_ == GamePhase::START_CUTSCENE && !IsMaterializedAt(enemy->GetPosition()))
 		{
-			continue; // 地形実体化前の領域は非表示
+			continue; // 地形実体化前の敵は非表示
 		}
 		if (enableCulling)
 		{
@@ -3428,7 +3544,7 @@ void GamePlayScene::Draw()
 		}
 		enemy->Draw();
 	}
-	if (armoredTrainBoss_ && isBossSpawned_)
+	if (armoredTrainBoss_ && isBossSpawned_ && gameOverStep_ != GameOverStep::RETRY_DEMATERIALIZE)
 	{
 		if (gamePhase_ != GamePhase::START_CUTSCENE || IsMaterializedAt(armoredTrainBoss_->GetPosition()))
 		{
@@ -3449,6 +3565,7 @@ void GamePlayScene::Draw()
 	}
 	for (auto& ring : enhanceRings_)
 	{
+		if (gameOverStep_ == GameOverStep::RETRY_DEMATERIALIZE) continue; // 地形消滅演出中はリングを完全非表示
 		if (gamePhase_ == GamePhase::START_CUTSCENE && !IsMaterializedAt(ring->GetPosition()))
 		{
 			continue; // 地形実体化前の領域は非表示
@@ -3539,11 +3656,7 @@ void GamePlayScene::Draw()
 		{
 			if (object3dCommon) object3dCommon->SetCommonDrawSetting();
 
-			if (gameOverStep_ == GameOverStep::HIT_STOP && gameOverShockwaveRing_)
-			{
-				gameOverShockwaveRing_->SetCamera(activeCamera_);
-				gameOverShockwaveRing_->Draw();
-			}
+// 衝撃波リング描画は削除
 
 			if (gameOverStep_ == GameOverStep::POLYGON_SHATTER)
 			{
@@ -3587,8 +3700,9 @@ void GamePlayScene::Draw()
 		}
 	}
 
-	// スラスターエフェクト（自機集束完了・バーニア点火前は絶対に描画しない）
-	if (gamePhase_ != GamePhase::START_CUTSCENE || cutsceneTimer_ >= 3.05f || (player_ && player_->IsCutsceneBoosting()))
+	// スラスターエフェクト（自機集束完了前、およびゲームオーバー時は絶対に描画しない）
+	if ((gamePhase_ != GamePhase::START_CUTSCENE || cutsceneTimer_ >= 3.05f || (player_ && player_->IsCutsceneBoosting())) &&
+	    gamePhase_ != GamePhase::GAMEOVER)
 	{
 		thrusterEffect_.Draw();
 	}
@@ -3599,7 +3713,11 @@ void GamePlayScene::Draw()
 	missileSmokeEffect_.Draw();
 	ringEffect_.Draw();
 	healRingEffect_.Draw();
-	windEffect_.Draw();
+	// スピードライン（プレイヤーが前進飛行している時のみ描画）
+	if (gamePhase_ == GamePhase::PLAYING || (gamePhase_ == GamePhase::START_CUTSCENE && cutsceneTimer_ >= 3.05f))
+	{
+		windEffect_.Draw();
+	}
 
 	// 地形コリジョンデバッグ描画（判定の計算が行われている部分のみ描画）
 	if (isDrawTerrainWireframe_ || isDrawCollider_)
@@ -3706,8 +3824,9 @@ void GamePlayScene::StartOpeningCutscene()
 		modelMgr->LoadModel("polygon_shard.obj");
 	}
 
-	// スラスター（ブースター炎）を復元完了まで非表示にするため初期クリア
+	// スラスターおよびスピードラインを進んでいない期間中非表示にするためクリア
 	thrusterEffect_.ClearParticles();
+	windEffect_.ClearParticles();
 
 	// 自機を初期位置（レール原点 0, 0, 0）に待機させ、完全ディゾルブ状態（アルファ0）に設定
 	if (player_)
@@ -3867,9 +3986,38 @@ void GamePlayScene::UpdateOpeningCutscene(float dt)
 	auto input = services->GetInput();
 
 	// スキップ判定（SPACEキーまたはゲームパッドA/START）
+	// ミッションスタートの文字が出る手前（3.18s）までスキップ
 	if (input && (input->TriggerKey(DIK_SPACE) || input->TriggerPadButton(XINPUT_GAMEPAD_A) || input->TriggerPadButton(XINPUT_GAMEPAD_START)))
 	{
-		cutsceneTimer_ = kCutsceneDuration; // 即時終了へ
+		const float kMissionStartHandOffTime = 3.18f;
+		if (cutsceneTimer_ < kMissionStartHandOffTime)
+		{
+			cutsceneTimer_ = kMissionStartHandOffTime;
+			// 地形マテリアライズ、自機復元、破片クリアを一気に整える
+			terrainMaterializeProgress_ = 1.0f;
+			for (auto& model : modelInstances) if (model) model->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+			for (auto& obs : obstacles_) if (obs && obs->GetObject3d()) obs->GetObject3d()->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+
+			playerReconstructAlpha_ = 1.0f;
+			if (player_)
+			{
+				player_->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+				player_->SetCutsceneBoosting(true);
+				player_->SetCutsceneOverride(true, { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f });
+			}
+			reconstructShards_.clear();
+
+			if (auto pp = services ? services->GetPostProcess() : nullptr)
+			{
+				pp->SetEffectActive("RadialBlur", false);
+				if (auto* d = pp->GetData()) d->radialBlurIntensity = 0.0f;
+			}
+		}
+		else
+		{
+			// MISSION START表示中に再度スキップされた場合は即座にプレイ開始へ
+			cutsceneTimer_ = kCutsceneDuration;
+		}
 	}
 	else
 	{
@@ -4749,7 +4897,9 @@ void GamePlayScene::StartGameOverSequence()
 
 	if (player_)
 	{
-		player_->SetCutsceneOverride(true, player_->GetTranslate(), player_->GetRotation());
+		gameOverPlayerStartPos_ = player_->GetTranslate();
+		gameOverPlayerStartRot_ = player_->GetRotation();
+		player_->SetCutsceneOverride(true, gameOverPlayerStartPos_, gameOverPlayerStartRot_);
 		player_->Update3DObjectOnly();
 		player_->SetDead(true);
 	}
@@ -4765,94 +4915,204 @@ void GamePlayScene::StartGameOverSequence()
 	}
 
 	auto services = EngineServices::GetInstance();
-	auto object3dCommon = services ? services->GetObject3dCommon() : nullptr;
-	if (object3dCommon && player_)
-	{
-		gameOverShockwaveRing_ = std::make_unique<Object3d>();
-		gameOverShockwaveRing_->Initialize(object3dCommon);
-		gameOverShockwaveRing_->SetModel("Ring.obj");
-		gameOverShockwaveRing_->SetSelectLightings(6);
-		gameOverShockwaveRing_->SetColor({ 0.30f, 1.5f, 1.9f, 1.0f });
-		gameOverShockwaveRing_->SetScale({ 0.2f, 0.2f, 0.2f });
-		gameOverShockwaveRing_->SetTranslate(player_->GetWorldPosition());
-		gameOverShockwaveRing_->SetRotation({ 0.0f, 0.0f, 0.0f });
-		gameOverShockwaveRing_->Update();
-	}
+	// スラスターおよびスピードラインパーティクルを即座に完全消去
+	thrusterEffect_.ClearParticles();
+	windEffect_.ClearParticles();
 
 	if (railCameraController_)
 	{
 		railCameraController_->SetSpeedMultiplier(0.0f);
+		retryStartProgress_ = railCameraController_->GetProgress();
+		retryStartRailIndex_ = railCameraController_->GetCurrentRailIndex();
 	}
 
+	// HPが0になった直後〜四散完了までは画面ノイズ・グリッチを完全停止
 	if (auto pp = services ? services->GetPostProcess() : nullptr)
 	{
-		pp->SetEffectActive("Random(Glitch)", true);
-		if (auto* d = pp->GetData())
-		{
-			d->glitchStrength = 0.70f;
-			d->noiseStrength = 0.20f;
-		}
+		pp->SetEffectActive("Random(Glitch)", false);
 	}
 
-	cameraShakeTimer_ = 15.0f;
+	// 被弾シェイクを穏やかに（爆発感を抑える）
+	cameraShakeTimer_ = 5.0f;
 }
 
 void GamePlayScene::UpdateGameOverSequence(float dt)
 {
+	// =========================================================================
+	// 【リトライ時シームレス逆マテリアライズ演出】
+	// 地形が奥から手前へデマテリアライズして消滅し、そのままオープニングへ突入！
+	// =========================================================================
+	if (gameOverStep_ == GameOverStep::RETRY_DEMATERIALIZE)
+	{
+		auto services = EngineServices::GetInstance();
+		thrusterEffect_.ClearParticles();
+		windEffect_.ClearParticles();
+
+		retryDematerializeTimer_ += dt;
+		float tTotal = std::clamp(retryDematerializeTimer_ / kRetryDematerializeDuration, 0.0f, 1.0f);
+
+		// 【タイムライン設計: 合計 1.10秒】
+		// 1. [0.00s 〜 0.90s]: 地形デマテリアライズ ＆ カメラEase-Out後退
+		// 2. [0.90s 〜 1.10s]: 地形が完全に消滅した「空っぽの空間（ボイド）」の静寂の間（0.20秒間）
+		const float kDematerializeDuration = 0.90f; // 地形消滅にかける時間
+		const float kVoidDuration = 0.20f;          // 完全消滅後の静寂の間（0.20秒）
+
+		if (retryDematerializeTimer_ < kDematerializeDuration)
+		{
+			// --- フェーズ1: 地形消滅 & カメラEase-Out着地 ---
+			float tMat = retryDematerializeTimer_ / kDematerializeDuration;
+			float uMat = 1.0f - (tMat * tMat * (3.0f - 2.0f * tMat)); // 1.0 -> 0.0 (SmoothStep)
+			terrainMaterializeProgress_ = uMat;
+
+			// ① カメラ後退の終盤（最後の0.2秒程度）に「Ease-Out（滑らかな減速）」を効かせ、
+			//    スタートカメラの位置へフワッと吸い込まれるように着地させる（SmootherStepカーブ）
+			//    t=0からスムーズに動き始め、終盤t=1に向けて加速度・速度がゼロへとフワッと収束
+			float easeCam = tMat * tMat * tMat * (tMat * (tMat * 6.0f - 15.0f) + 10.0f); // Ken Perlin's SmootherStep (C2連続)
+
+			if (railCameraController_)
+			{
+				railCameraController_->SetProgress(retryStartProgress_);
+				railCameraController_->SetCurrentRailIndex(retryStartRailIndex_);
+
+				Vector3 normalCamPos = { 0.0f, 2.5f, -8.0f };
+				Vector3 normalLook = { 0.0f, 1.0f, 30.0f };
+				Vector3 openingCamPos = { 2.0f, 0.45f, -12.0f };
+				Vector3 openingLook = { 0.0f, 1.5f, 35.0f };
+
+				Vector3 curCamLocal = {
+					std::lerp(normalCamPos.x, openingCamPos.x, easeCam),
+					std::lerp(normalCamPos.y, openingCamPos.y, easeCam),
+					std::lerp(normalCamPos.z, openingCamPos.z, easeCam)
+				};
+				Vector3 curLookLocal = {
+					std::lerp(normalLook.x, openingLook.x, easeCam),
+					std::lerp(normalLook.y, openingLook.y, easeCam),
+					std::lerp(normalLook.z, openingLook.z, easeCam)
+				};
+
+				railCameraController_->SetCinematicCamera(true, curCamLocal, curLookLocal, 1.0f);
+			}
+		}
+		else
+		{
+			// --- フェーズ2: ② 地形が完全に消え去った「空っぽの空間（ボイド）」の間（0.20秒間） ---
+			terrainMaterializeProgress_ = 0.0f; // 完全に世界が消滅した状態を維持
+
+			// カメラは着地完了位置（オープニング初期構図）に完全に静止
+			if (railCameraController_)
+			{
+				railCameraController_->SetProgress(retryStartProgress_);
+				railCameraController_->SetCurrentRailIndex(retryStartRailIndex_);
+
+				Vector3 openingCamPos = { 2.0f, 0.45f, -12.0f };
+				Vector3 openingLook = { 0.0f, 1.5f, 35.0f };
+				railCameraController_->SetCinematicCamera(true, openingCamPos, openingLook, 1.0f);
+			}
+		}
+
+		// 地形オブジェクト群・障害物へ進行度を反映（消滅フェーズでは1.0->0.0、ボイドフェーズでは完全0.0）
+		for (auto& model : modelInstances)
+		{
+			if (model && !model->IsBackgroundMountain())
+			{
+				model->SetColor({ 1.0f, 1.0f, 1.0f, terrainMaterializeProgress_ });
+			}
+		}
+		for (auto& obstacle : obstacles_)
+		{
+			if (obstacle && obstacle->GetObject3d())
+			{
+				obstacle->GetObject3d()->SetColor({ 1.0f, 1.0f, 1.0f, terrainMaterializeProgress_ });
+			}
+		}
+
+		// ノイズを速やかに完全停止
+		if (auto pp = services ? services->GetPostProcess() : nullptr)
+		{
+			pp->SetEffectActive("Random(Glitch)", false);
+			if (auto* d = pp->GetData())
+			{
+				d->glitchStrength = 0.0f;
+				d->noiseStrength = 0.0f;
+			}
+		}
+
+		// 「完全消滅の静寂の間」が明けた瞬間（1.10秒到達時）
+		if (tTotal >= 1.0f)
+		{
+			// 地形やレールを再破棄・再生成せず、超高速（1ms未満）に敵と状態をリセットし、
+			// カメラを初期位置へパッと戻してスタート演出（足元からのパルス走査・地形再マテリアライズ・自機再構成）へシームレス突入！
+			SeamlessResetForRetry();
+			return;
+		}
+		return;
+	}
+
 	gameOverTimer_ += dt;
 
 	if (railCameraController_)
 	{
 		railCameraController_->SetSpeedMultiplier(0.0f);
+		retryStartProgress_ = railCameraController_->GetProgress();
+		retryStartRailIndex_ = railCameraController_->GetCurrentRailIndex();
 	}
 
 	auto services = EngineServices::GetInstance();
 
-		if (gameOverTimer_ < 0.15f)
+	// ゲームオーバー中はスラスターパーティクルを確実にクリア
+	thrusterEffect_.ClearParticles();
+
+	// 【ゲームオーバー演出タイムライン】
+	// 1. [0.00s 〜 0.70s]: カメラは停止し、自機のみが慣性で前方へスーッと前進（カメラとの距離を離す）
+	// 2. [0.70s 〜 2.35s]: 絶好の距離（約26m前方）で機体が美しく全方位へ四散（1.65秒間）
+	// 3. [2.35s 〜 2.85s]: サイバーグリッド／スキャンライン展開（0.50秒間）
+	// 4. [2.85s 〜]: UI表示
+	const float kGlideDuration = 0.70f;
+	const float kShatterDuration = 1.65f;
+	const float kNoiseDuration = 0.50f;
+
+	if (gameOverTimer_ < kGlideDuration)
 	{
 		gameOverStep_ = GameOverStep::HIT_STOP;
 
-		float t = gameOverTimer_ / 0.15f;
-		shockwaveScale_ = 0.2f + t * 18.0f;
-		shockwaveAlpha_ = 1.0f - (t * t);
+		float tGlide = gameOverTimer_ / kGlideDuration;
+		// 慣性減速（最初速く、徐々に滑らかに減速する EaseOutCubic）
+		float easeGlide = 1.0f - std::powf(1.0f - tGlide, 3.0f);
 
-		if (gameOverShockwaveRing_ && player_)
+		// 自機をカメラから前方に 18m 進める（通常カメラ位置-8mと合わせて約26m離れ、四散エフェクト全景が画面中央に広々収まる！）
+		Vector3 curGlidePos = {
+			gameOverPlayerStartPos_.x,
+			gameOverPlayerStartPos_.y - 0.4f * easeGlide,
+			gameOverPlayerStartPos_.z + 18.0f * easeGlide
+		};
+		// 被弾による微小な機体姿勢変化（リアルな慣性滑空）
+		Vector3 curGlideRot = {
+			gameOverPlayerStartRot_.x + 0.12f * easeGlide,
+			gameOverPlayerStartRot_.y,
+			gameOverPlayerStartRot_.z + 0.20f * easeGlide
+		};
+
+		if (player_)
 		{
-			gameOverShockwaveRing_->SetScale({ shockwaveScale_, shockwaveScale_, shockwaveScale_ });
-			gameOverShockwaveRing_->SetColor({ 0.30f, 1.5f, 1.9f, shockwaveAlpha_ });
-			gameOverShockwaveRing_->Update();
+			player_->SetCutsceneOverride(true, curGlidePos, curGlideRot);
+			player_->Update3DObjectOnly();
 		}
 
-		// HPが0になった瞬間（ポリゴン破片が出るまで）は画面ノイズ・グリッチを一切入れない
+		// HPが0になった瞬間（ポリゴン破片が出るまで）は画面ノイズ・グリッチを入れない
 		if (auto pp = services ? services->GetPostProcess() : nullptr)
 		{
 			pp->SetEffectActive("Random(Glitch)", false);
 		}
 	}
-	else if (gameOverTimer_ < 1.00f)
+	else if (gameOverTimer_ < kGlideDuration + kShatterDuration)
 	{
 		if (gameOverStep_ == GameOverStep::HIT_STOP)
 		{
 			gameOverStep_ = GameOverStep::POLYGON_SHATTER;
 
-			// ポリゴン破片が弾け散った瞬間からグリッチノイズを発動！
-			if (auto pp = services ? services->GetPostProcess() : nullptr)
-			{
-				pp->SetEffectActive("Random(Glitch)", true);
-				if (auto* d = pp->GetData())
-				{
-					d->glitchStrength = 0.65f;
-					d->noiseStrength = 0.18f;
-				}
-			}
-
 			if (player_)
 			{
 				player_->SetVisible(false);
-			}
-			if (gameOverShockwaveRing_)
-			{
-				gameOverShockwaveRing_->SetScale({ 0.0f, 0.0f, 0.0f });
 			}
 
 			gameOverShards_.clear();
@@ -4863,9 +5123,8 @@ void GamePlayScene::UpdateGameOverSequence(float dt)
 				Vector3 shipWorldPos = player_->GetWorldPosition();
 				std::mt19937 rng(88888);
 				std::uniform_real_distribution<float> distRot(-3.14f, 3.14f);
-				std::uniform_real_distribution<float> distRotSpd(-14.0f, 14.0f);
-				std::uniform_real_distribution<float> distSpeedOut(14.0f, 28.0f);
-				std::uniform_real_distribution<float> distSpeedZ(18.0f, 36.0f);
+				std::uniform_real_distribution<float> distRotSpd(-10.0f, 10.0f);
+				std::uniform_real_distribution<float> distSpeedTotal(14.0f, 26.0f);
 
 				const Vector3 targetOffsets[64] = {
 					{  0.0f,  0.02f,  2.5f }, {  0.0f, -0.06f,  2.2f }, {  0.0f,  0.10f,  1.9f }, {  0.0f, -0.10f,  1.6f },
@@ -4897,23 +5156,46 @@ void GamePlayScene::UpdateGameOverSequence(float dt)
 					Vector3 offset = targetOffsets[i] * 0.5f;
 					shard.position = shipWorldPos + offset;
 
-					Vector3 dirOut = { offset.x, offset.y + 0.3f, 0.0f };
-					float lenOut = std::sqrt(dirOut.x * dirOut.x + dirOut.y * dirOut.y);
-					if (lenOut > 0.001f)
+					// フィボナッチ球面により、前後・左右・上下（四方八方・360度全球）に均等分散するベクトルを生成
+					float y = 1.0f - (static_cast<float>(i) / 63.0f) * 2.0f; // -1.0 〜 +1.0 (上下)
+					float radiusAtY = std::sqrt((std::max)(0.0f, 1.0f - y * y));
+					const float kGoldenRatioAngle = 2.399963229728653f; // 黄金比角
+					float theta = kGoldenRatioAngle * i;
+					float x = std::cos(theta) * radiusAtY; // 左右
+					float z = std::sin(theta) * radiusAtY; // 前後（手前・奥）
+
+					// 機体パーツ本来の配置方向（offset）も30%ブレンドして自然な爆散形状にする
+					Vector3 rawOffsetDir = offset;
+					float rawLen = std::sqrt(rawOffsetDir.x * rawOffsetDir.x + rawOffsetDir.y * rawOffsetDir.y + rawOffsetDir.z * rawOffsetDir.z);
+					if (rawLen > 0.001f)
 					{
-						dirOut.x /= lenOut;
-						dirOut.y /= lenOut;
+						rawOffsetDir.x /= rawLen;
+						rawOffsetDir.y /= rawLen;
+						rawOffsetDir.z /= rawLen;
 					}
 					else
 					{
-						dirOut = { ((i % 2 == 0) ? 1.0f : -1.0f), 0.5f, 0.0f };
+						rawOffsetDir = { 0.0f, 1.0f, 0.0f };
 					}
 
-					float spdOut = distSpeedOut(rng);
+					Vector3 finalDir = {
+						x * 0.70f + rawOffsetDir.x * 0.30f,
+						y * 0.70f + rawOffsetDir.y * 0.30f,
+						z * 0.70f + rawOffsetDir.z * 0.30f
+					};
+					float finalLen = std::sqrt(finalDir.x * finalDir.x + finalDir.y * finalDir.y + finalDir.z * finalDir.z);
+					if (finalLen > 0.001f)
+					{
+						finalDir.x /= finalLen;
+						finalDir.y /= finalLen;
+						finalDir.z /= finalLen;
+					}
+
+					float speed = distSpeedTotal(rng);
 					shard.velocity = {
-						dirOut.x * spdOut,
-						dirOut.y * spdOut + 2.0f,
-						distSpeedZ(rng)
+						finalDir.x * speed,
+						finalDir.y * speed,
+						finalDir.z * speed
 					};
 
 					shard.rotation = { distRot(rng), distRot(rng), distRot(rng) };
@@ -4921,14 +5203,15 @@ void GamePlayScene::UpdateGameOverSequence(float dt)
 					float sc = 1.4f + (i % 4) * 0.35f;
 					shard.scale = { sc, sc, sc };
 					shard.life = 0.0f;
-					shard.maxLife = 0.85f;
+					shard.maxLife = 1.65f;
 
+					// サイバーシアン／エメラルド／コアホワイトの鮮烈な破片色
 					if (i % 3 == 0)
-						shard.color = { 1.9f, 0.15f, 0.80f, 1.0f };
+						shard.color = { 0.20f, 0.95f, 1.00f, 1.0f };
 					else if (i % 3 == 1)
-						shard.color = { 1.9f, 0.20f, 0.25f, 1.0f };
+						shard.color = { 0.40f, 1.00f, 0.95f, 1.0f };
 					else
-						shard.color = { 1.8f, 0.80f, 0.90f, 1.0f };
+						shard.color = { 0.95f, 1.00f, 1.00f, 1.0f };
 
 					shard.object = std::make_unique<Object3d>();
 					shard.object->Initialize(object3dCommon);
@@ -4944,10 +5227,18 @@ void GamePlayScene::UpdateGameOverSequence(float dt)
 				}
 			}
 
-			cameraShakeTimer_ = 35.0f;
+			// プリズム化時のシェイクを弱めて爆発感を抑える（35.0f -> 10.0f）
+			cameraShakeTimer_ = 10.0f;
 		}
 
-		float shatterPhase = (gameOverTimer_ - 0.15f) / 0.85f;
+		// パーティクルが四散して散らばる間はノイズを入れない（綺麗に四散する演出を長めに見せる）
+		if (auto pp = services ? services->GetPostProcess() : nullptr)
+		{
+			pp->SetEffectActive("Random(Glitch)", false);
+		}
+
+		// 0.70s〜2.35s（1.65秒間）カメラから離れた位置でじっくりプリズムの四散全景を見せる
+		float shatterPhase = std::clamp((gameOverTimer_ - kGlideDuration) / kShatterDuration, 0.0f, 1.0f);
 		for (auto& shard : gameOverShards_)
 		{
 			if (!shard.object) continue;
@@ -4961,20 +5252,11 @@ void GamePlayScene::UpdateGameOverSequence(float dt)
 			shard.object->SetColor(col);
 			shard.object->SetTranslate(shard.position);
 			shard.object->SetRotation(shard.rotation);
-			shard.object->SetScale(shard.scale * (1.0f + shatterPhase * 0.4f));
+			shard.object->SetScale(shard.scale * (1.0f + shatterPhase * 0.35f));
 			shard.object->Update();
 		}
-
-		if (auto pp = services ? services->GetPostProcess() : nullptr)
-		{
-			if (auto* d = pp->GetData())
-			{
-				d->glitchStrength = (std::max)(0.0f, 0.60f * (1.0f - shatterPhase));
-				d->noiseStrength = (std::max)(0.0f, 0.15f * (1.0f - shatterPhase));
-			}
-		}
 	}
-	else if (gameOverTimer_ < 2.00f)
+	else if (gameOverTimer_ < kGlideDuration + kShatterDuration + kNoiseDuration)
 	{
 		gameOverStep_ = GameOverStep::VOID_DISINTEGRATE;
 
@@ -4983,13 +5265,20 @@ void GamePlayScene::UpdateGameOverSequence(float dt)
 			if (shard.object) shard.object->SetScale({ 0.0f, 0.0f, 0.0f });
 		}
 
+		// プリズム四散直後（2.35s〜2.85s）のサイバーグリッド・スキャンライン展開フェーズ
+		float noisePhase = std::clamp((gameOverTimer_ - (kGlideDuration + kShatterDuration)) / kNoiseDuration, 0.0f, 1.0f);
 		if (auto pp = services ? services->GetPostProcess() : nullptr)
 		{
-			pp->SetEffectActive("Random(Glitch)", false);
+			pp->SetEffectActive("Random(Glitch)", true);
+			if (auto* d = pp->GetData())
+			{
+				d->glitchStrength = std::lerp(0.22f, 0.16f, noisePhase);
+				d->noiseStrength = std::lerp(0.20f, 0.50f, noisePhase);
+			}
 		}
 
-	// Keep background terrain visible
-	for (auto& model : modelInstances)
+		// 背景地形は可視状態を維持
+		for (auto& model : modelInstances)
 		{
 			if (model) model->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
 		}
@@ -5002,8 +5291,35 @@ void GamePlayScene::UpdateGameOverSequence(float dt)
 	{
 		gameOverStep_ = GameOverStep::SHOW_UI;
 
-	// Keep background terrain visible
-	for (auto& model : modelInstances)
+		auto sceneManager = GetSceneManager();
+		bool isTransitioning = sceneManager && sceneManager->IsTransitioning();
+
+		// UI表示中は NoiseStrength を 0.5 の状態で維持（シーン遷移開始後は即時リセット）
+		if (auto pp = services ? services->GetPostProcess() : nullptr)
+		{
+			if (!isTransitioning)
+			{
+				pp->SetEffectActive("Random(Glitch)", true);
+				if (auto* d = pp->GetData())
+				{
+					float glitchPulse = 0.16f + 0.06f * std::sin(gameOverTimer_ * 6.0f);
+					d->glitchStrength = glitchPulse;
+					d->noiseStrength = 0.50f; // ユーザー指定：0.5
+				}
+			}
+			else
+			{
+				pp->SetEffectActive("Random(Glitch)", false);
+				if (auto* d = pp->GetData())
+				{
+					d->glitchStrength = 0.0f;
+					d->noiseStrength = 0.0f;
+				}
+			}
+		}
+
+		// 背景地形は可視状態を維持
+		for (auto& model : modelInstances)
 		{
 			if (model) model->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
 		}
@@ -5012,8 +5328,7 @@ void GamePlayScene::UpdateGameOverSequence(float dt)
 			if (obs && obs->GetObject3d()) obs->GetObject3d()->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
 		}
 
-		auto sceneManager = GetSceneManager();
-		if (sceneManager && !sceneManager->IsTransitioning())
+		if (sceneManager && !isTransitioning)
 		{
 			auto input = services ? services->GetInput() : nullptr;
 			if (input)
@@ -5030,9 +5345,53 @@ void GamePlayScene::UpdateGameOverSequence(float dt)
 				if (input->TriggerKey(DIK_SPACE) || input->TriggerKey(DIK_RETURN) ||
 					input->TriggerPadButton(XINPUT_GAMEPAD_A) || input->TriggerPadButton(XINPUT_GAMEPAD_START))
 				{
+					// 決定と同時にノイズを完全停止
+					if (auto pp = services ? services->GetPostProcess() : nullptr)
+					{
+						pp->SetEffectActive("Random(Glitch)", false);
+						if (auto* d = pp->GetData())
+						{
+							d->glitchStrength = 0.0f;
+							d->noiseStrength = 0.0f;
+						}
+					}
+
 					if (gameOverSelectedOption_ == GameOverMenuOption::Retry)
 					{
-						sceneManager->ChangeScene("GAMEPLAY", 0.5f);
+						// シーン再ロード（画面暗転）を行わず、シームレス逆マテリアライズ演出を開始！
+						gameOverStep_ = GameOverStep::RETRY_DEMATERIALIZE;
+						retryDematerializeTimer_ = 0.0f;
+
+						if (railCameraController_)
+						{
+							retryStartProgress_ = railCameraController_->GetProgress();
+							retryStartRailIndex_ = railCameraController_->GetCurrentRailIndex();
+						}
+
+						if (activeCamera_)
+						{
+							retryStartCamPos_ = activeCamera_->GetTranslate();
+							retryStartCamTarget_ = retryStartCamPos_ + Vector3{ 0.0f, 0.0f, 30.0f };
+						}
+
+						// 敵・リング・弾・ミサイル・破片を即座に完全クリーンアップ（地形のみ残して消滅演出へ）
+						bullets_.clear();
+						missiles_.clear();
+						enemyBullets_.clear();
+						enemies_.clear();
+						enhanceRings_.clear();
+						if (armoredTrainBoss_)
+						{
+							armoredTrainBoss_->SetActive(false);
+						}
+						for (auto& shard : gameOverShards_)
+						{
+							if (shard.object) shard.object->SetScale({ 0.0f, 0.0f, 0.0f });
+						}
+						gameOverShards_.clear();
+
+						// BGM停止
+						SoundManager::GetInstance()->StopBGM();
 					}
 					else if (gameOverSelectedOption_ == GameOverMenuOption::Title)
 					{
@@ -5048,7 +5407,7 @@ void GamePlayScene::DrawGameOverUI()
 {
 #ifdef USE_IMGUI
 	if (gamePhase_ != GamePhase::GAMEOVER && !debugPreviewGameOverUI_) return;
-	if (gamePhase_ == GamePhase::GAMEOVER && gameOverTimer_ < 1.0f && !debugPreviewGameOverUI_) return;
+	if (gamePhase_ == GamePhase::GAMEOVER && gameOverTimer_ < 1.80f && !debugPreviewGameOverUI_) return;
 
 	if (ImGui::GetCurrentContext() == nullptr) return;
 	ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -5097,6 +5456,18 @@ void GamePlayScene::DrawGameOverUI()
 
 	drawList->PushClipRect(viewPos, ImVec2(viewPos.x + screenW, viewPos.y + screenH), true);
 
+	// リトライ逆マテリアライズ演出中はUIをスッとフェードアウト
+	if (gameOverStep_ == GameOverStep::RETRY_DEMATERIALIZE)
+	{
+		float uiFade = std::clamp(1.0f - retryDematerializeTimer_ / 0.18f, 0.0f, 1.0f);
+		if (uiFade <= 0.001f)
+		{
+			drawList->PopClipRect();
+			return;
+		}
+		transitionAlpha *= uiFade;
+	}
+
 	if (transitionAlpha <= 0.001f)
 	{
 		drawList->AddRectFilled(viewPos, ImVec2(viewPos.x + screenW, viewPos.y + screenH), IM_COL32(0, 0, 0, 255));
@@ -5107,170 +5478,374 @@ void GamePlayScene::DrawGameOverUI()
 	float scale = std::min(screenW / 1280.0f, screenH / 720.0f);
 	if (scale < 0.3f) scale = 0.3f;
 
-	float barHeightMax = screenH * 0.12f;
-	float barProgress = 1.0f;
-	if (gameOverTimer_ < 2.00f && !debugPreviewGameOverUI_)
+	// 1.80s（プリズム四散後）からのサイバー演出の進行度
+	float cyberProgress = debugPreviewGameOverUI_ ? 1.0f : std::clamp((gameOverTimer_ - 1.80f) / 0.50f, 0.0f, 1.0f);
+
+	if (cyberProgress > 0.001f)
 	{
-		barProgress = std::clamp((gameOverTimer_ - 1.00f) / 0.80f, 0.0f, 1.0f);
-	}
-	float barHeight = barHeightMax * barProgress;
-	if (barHeight > 0.5f)
-	{
-		drawList->AddRectFilled(viewPos, ImVec2(viewPos.x + screenW, viewPos.y + barHeight), IM_COL32(0, 0, 0, static_cast<int>(255 * transitionAlpha)));
-		drawList->AddRectFilled(ImVec2(viewPos.x, viewPos.y + screenH - barHeight), ImVec2(viewPos.x + screenW, viewPos.y + screenH), IM_COL32(0, 0, 0, static_cast<int>(255 * transitionAlpha)));
+		// ----------------------------------------------------
+		// 1. サイバー空間オーバーレイ（薄いサイバーダークネイビー半透明）
+		// ----------------------------------------------------
+		drawList->AddRectFilled(
+			viewPos,
+			ImVec2(viewPos.x + screenW, viewPos.y + screenH),
+			IM_COL32(2, 8, 16, static_cast<int>(145.0f * cyberProgress * transitionAlpha))
+		);
+
+		// ----------------------------------------------------
+		// 2. スキャンライン（走査線）演出
+		// ----------------------------------------------------
+		// 4px ごとの水平スキャンライン
+		int scanAlpha = static_cast<int>(18.0f * cyberProgress * transitionAlpha);
+		ImU32 scanlineCol = IM_COL32(0, 220, 255, scanAlpha);
+		for (float y = viewPos.y; y < viewPos.y + screenH; y += 4.0f)
+		{
+			drawList->AddLine(ImVec2(viewPos.x, y), ImVec2(viewPos.x + screenW, y), scanlineCol, 1.0f);
+		}
+
+		// 上から下へ流れるサイバースキャン光バー（スイープビーム）
+		float sweepTimer = debugPreviewGameOverUI_ ? (float)ImGui::GetTime() : (gameOverTimer_ - 1.80f);
+		float sweepY = viewPos.y + std::fmod(sweepTimer * 280.0f, screenH + 80.0f) - 40.0f;
+		float beamHalfH = 32.0f * scale;
+		ImU32 beamColor = IM_COL32(0, 240, 255, static_cast<int>(32.0f * cyberProgress * transitionAlpha));
+		ImU32 beamCoreColor = IM_COL32(180, 255, 255, static_cast<int>(70.0f * cyberProgress * transitionAlpha));
+		drawList->AddRectFilledMultiColor(
+			ImVec2(viewPos.x, sweepY - beamHalfH),
+			ImVec2(viewPos.x + screenW, sweepY),
+			IM_COL32(0, 240, 255, 0), IM_COL32(0, 240, 255, 0),
+			beamColor, beamColor
+		);
+		drawList->AddLine(ImVec2(viewPos.x, sweepY), ImVec2(viewPos.x + screenW, sweepY), beamCoreColor, 1.5f * scale);
+		drawList->AddRectFilledMultiColor(
+			ImVec2(viewPos.x, sweepY),
+			ImVec2(viewPos.x + screenW, sweepY + beamHalfH),
+			beamColor, beamColor,
+			IM_COL32(0, 240, 255, 0), IM_COL32(0, 240, 255, 0)
+		);
+
+		// ----------------------------------------------------
+		// 3. サイバーグリッド演出（上下に広がるサイバーメッシュ）
+		// ----------------------------------------------------
+		float gridSize = 48.0f * scale;
+		int vertLines = static_cast<int>(screenW / gridSize) + 1;
+		float startX = viewPos.x + std::fmod(screenW, gridSize) * 0.5f;
+		for (int i = 0; i < vertLines; ++i)
+		{
+			float gx = startX + i * gridSize;
+			ImU32 colEdge = IM_COL32(0, 210, 255, static_cast<int>(35.0f * cyberProgress * transitionAlpha));
+			ImU32 colMid = IM_COL32(0, 210, 255, static_cast<int>(6.0f * cyberProgress * transitionAlpha));
+			// 上半分
+			drawList->AddRectFilledMultiColor(
+				ImVec2(gx - 0.5f, viewPos.y),
+				ImVec2(gx + 0.5f, viewPos.y + screenH * 0.5f),
+				colEdge, colEdge, colMid, colMid
+			);
+			// 下半分
+			drawList->AddRectFilledMultiColor(
+				ImVec2(gx - 0.5f, viewPos.y + screenH * 0.5f),
+				ImVec2(gx + 0.5f, viewPos.y + screenH),
+				colMid, colMid, colEdge, colEdge
+			);
+		}
+		int horizLines = static_cast<int>(screenH / gridSize) + 1;
+		float startY = viewPos.y + std::fmod(screenH, gridSize) * 0.5f;
+		for (int j = 0; j < horizLines; ++j)
+		{
+			float gy = startY + j * gridSize;
+			float distFromCenter = std::abs((gy - (viewPos.y + screenH * 0.5f)) / (screenH * 0.5f));
+			int lineAlpha = static_cast<int>((10.0f + 25.0f * distFromCenter) * cyberProgress * transitionAlpha);
+			drawList->AddLine(
+				ImVec2(viewPos.x, gy),
+				ImVec2(viewPos.x + screenW, gy),
+				IM_COL32(0, 210, 255, lineAlpha),
+				1.0f
+			);
+		}
+
+		// ----------------------------------------------------
+		// 4. 上下のサイバーヘッダー/フッターフレーム（黒帯の代わり）
+		// ----------------------------------------------------
+		float edgeMarginY = 24.0f * scale;
+		float frameAlpha = 220.0f * cyberProgress * transitionAlpha;
+		ImU32 frameLineCol = IM_COL32(0, 235, 255, static_cast<int>(frameAlpha));
+		ImU32 frameGlowCol = IM_COL32(0, 160, 220, static_cast<int>(frameAlpha * 0.45f));
+
+		// 上部サイバーバー
+		float topY = viewPos.y + edgeMarginY;
+		drawList->AddLine(ImVec2(viewPos.x + 30.0f * scale, topY), ImVec2(viewPos.x + screenW - 30.0f * scale, topY), frameLineCol, 1.5f * scale);
+		// 上部コーナー装飾ブラケット
+		drawList->AddLine(ImVec2(viewPos.x + 20.0f * scale, topY - 8.0f * scale), ImVec2(viewPos.x + 20.0f * scale, topY + 8.0f * scale), frameLineCol, 2.0f * scale);
+		drawList->AddLine(ImVec2(viewPos.x + screenW - 20.0f * scale, topY - 8.0f * scale), ImVec2(viewPos.x + screenW - 20.0f * scale, topY + 8.0f * scale), frameLineCol, 2.0f * scale);
+
+		// 下部サイバーバー
+		float bottomY = viewPos.y + screenH - edgeMarginY;
+		drawList->AddLine(ImVec2(viewPos.x + 30.0f * scale, bottomY), ImVec2(viewPos.x + screenW - 30.0f * scale, bottomY), frameLineCol, 1.5f * scale);
+		// 下部コーナー装飾ブラケット
+		drawList->AddLine(ImVec2(viewPos.x + 20.0f * scale, bottomY - 8.0f * scale), ImVec2(viewPos.x + 20.0f * scale, bottomY + 8.0f * scale), frameLineCol, 2.0f * scale);
+		drawList->AddLine(ImVec2(viewPos.x + screenW - 20.0f * scale, bottomY - 8.0f * scale), ImVec2(viewPos.x + screenW - 20.0f * scale, bottomY + 8.0f * scale), frameLineCol, 2.0f * scale);
+
+		// 上下のサイバーステータステキスト（マイクロフォント）
+		auto imguiManager = EngineServices::GetInstance()->GetImGuiManager();
+		ImFont* fontMono = imguiManager ? imguiManager->GetFont(ImGuiManager::FontType::English_FiraMono) : ImGui::GetFont();
+		if (!fontMono) fontMono = ImGui::GetFont();
+		float subFontSize = 11.0f * scale;
+		drawList->AddText(fontMono, subFontSize, ImVec2(viewPos.x + 35.0f * scale, topY + 4.0f * scale), frameGlowCol, "SYSTEM CORE: OFFLINE // EMERGENCY RECOVERY PROTOCOL");
+		drawList->AddText(fontMono, subFontSize, ImVec2(viewPos.x + 35.0f * scale, bottomY - 16.0f * scale), frameGlowCol, "MEM_DUMP: 0x00A4FF01 [FAILED] // BUFFER PURGED");
 	}
 
-	if (gameOverTimer_ >= 2.00f || debugPreviewGameOverUI_)
+	// ----------------------------------------------------
+	// 5. テキストおよびメニューUIの描画（2.30s〜）
+	// ----------------------------------------------------
+	if (gameOverTimer_ >= 2.30f || debugPreviewGameOverUI_)
 	{
 		auto imguiManager = EngineServices::GetInstance()->GetImGuiManager();
 		auto textMgr = UITextManager::GetInstance();
-		float elapsedUI = debugPreviewGameOverUI_ ? 10.0f : (gameOverTimer_ - 2.00f);
+		float elapsedUI = debugPreviewGameOverUI_ ? 10.0f : (gameOverTimer_ - 2.30f);
 
 		ImFont* fontMono = imguiManager ? imguiManager->GetFont(ImGuiManager::FontType::English_FiraMono) : ImGui::GetFont();
 		if (!fontMono) fontMono = ImGui::GetFont();
 
-		const char* errorLogs[4] = {
-			"[ERROR 0x8004100E] CRITICAL INTEGRITY FAILURE",
-			"AVATAR DATA STRUCTURE: DECOMPILED",
-			"LINK CONNECTION: TERMINATED",
-			"--> STANDBY FOR RE-INITIALIZATION"
-		};
-		const float logTimes[4] = { 0.00f, 0.14f, 0.28f, 0.42f };
+		// 中央ホログラムコンソールパネルおよびタイトルのフェード（0.0s〜0.4s）
+		float menuAlpha = debugPreviewGameOverUI_ ? 1.0f : std::clamp(elapsedUI / 0.40f, 0.0f, 1.0f);
 
-		float logStartX = viewPos.x + screenW * 0.28f;
-		float logStartY = viewPos.y + screenH * 0.23f;
-		float logFontSize = 15.0f * scale;
+		float centerY = viewPos.y + screenH * 0.46f;
+		float bannerH = 150.0f * scale;
+		float bTop = centerY - bannerH * 0.5f;
+		float bBottom = centerY + bannerH * 0.5f;
 
-		for (int i = 0; i < 4; ++i)
-		{
-			if (elapsedUI >= logTimes[i])
+		// 中央ホログラムコンソールパネル
+		float panelMarginX = screenW * 0.10f;
+		float pLeft = viewPos.x + panelMarginX;
+		float pRight = viewPos.x + screenW - panelMarginX;
+
+		// 半透明サイバープレート
+		drawList->AddRectFilled(
+			ImVec2(pLeft, bTop),
+			ImVec2(pRight, bBottom),
+			IM_COL32(3, 16, 28, static_cast<int>(205.0f * menuAlpha * transitionAlpha)),
+			4.0f * scale
+		);
+
+		// 上下ネオンエッジライン
+		drawList->AddLine(
+			ImVec2(pLeft, bTop),
+			ImVec2(pRight, bTop),
+			IM_COL32(0, 235, 255, static_cast<int>(190.0f * menuAlpha * transitionAlpha)),
+			1.5f * scale
+		);
+		drawList->AddLine(
+			ImVec2(pLeft, bBottom),
+			ImVec2(pRight, bBottom),
+			IM_COL32(0, 235, 255, static_cast<int>(190.0f * menuAlpha * transitionAlpha)),
+			1.5f * scale
+		);
+
+		// パネル四隅のサイバーブラケット（[ ]）
+		float bracketLen = 16.0f * scale;
+		ImU32 bracketCol = IM_COL32(0, 255, 255, static_cast<int>(240.0f * menuAlpha * transitionAlpha));
+		// 左上
+		drawList->AddLine(ImVec2(pLeft, bTop), ImVec2(pLeft + bracketLen, bTop), bracketCol, 2.5f * scale);
+		drawList->AddLine(ImVec2(pLeft, bTop), ImVec2(pLeft, bTop + bracketLen), bracketCol, 2.5f * scale);
+		// 右上
+		drawList->AddLine(ImVec2(pRight, bTop), ImVec2(pRight - bracketLen, bTop), bracketCol, 2.5f * scale);
+		drawList->AddLine(ImVec2(pRight, bTop), ImVec2(pRight, bTop + bracketLen), bracketCol, 2.5f * scale);
+		// 左下
+		drawList->AddLine(ImVec2(pLeft, bBottom), ImVec2(pLeft + bracketLen, bBottom), bracketCol, 2.5f * scale);
+		drawList->AddLine(ImVec2(pLeft, bBottom), ImVec2(pLeft - bracketLen, bBottom), bracketCol, 2.5f * scale);
+		// 右下
+		drawList->AddLine(ImVec2(pRight, bBottom), ImVec2(pRight - bracketLen, bBottom), bracketCol, 2.5f * scale);
+		drawList->AddLine(ImVec2(pRight, bBottom), ImVec2(pRight, bBottom - bracketLen), bracketCol, 2.5f * scale);
+
+		// 汎用テキスト描画ラムダ（選択肢用）
+		auto renderTextItem = [&](const UITextItem* item, float alpha, float customScale = 1.0f, const std::string& overrideText = "", bool isHighlight = false) {
+			if (!item || item->text.empty() || alpha <= 0.001f) return;
+			ImFont* font = imguiManager ? imguiManager->GetFont(item->fontType) : ImGui::GetFont();
+			if (!font) font = ImGui::GetFont();
+
+			float fSize = item->fontSize * scale * customScale;
+			const std::string& str = overrideText.empty() ? item->text : overrideText;
+			ImVec2 tSize = font->CalcTextSizeA(fSize, FLT_MAX, -1.0f, str.c_str());
+
+			float posX = viewPos.x + item->position.x * (screenW / 1280.0f);
+			float posY = viewPos.y + item->position.y * (screenH / 720.0f);
+			ImVec2 tPos(posX, posY);
+			if (item->align == UITextAlign::Center) tPos.x -= tSize.x * 0.5f;
+			else if (item->align == UITextAlign::Right) tPos.x -= tSize.x;
+
+			if (item->hasShadow)
 			{
-				float lineAlpha = std::clamp((elapsedUI - logTimes[i]) / 0.10f, 0.0f, 1.0f);
-				ImU32 logCol = IM_COL32(0, 235, 255, static_cast<int>(245.0f * lineAlpha * transitionAlpha));
-				ImVec2 logPos(logStartX, logStartY + i * (logFontSize * 1.35f));
-				drawList->AddText(fontMono, logFontSize, logPos, logCol, errorLogs[i]);
+				ImU32 shadowCol = ImColor(item->shadowColor.x, item->shadowColor.y, item->shadowColor.z, item->shadowColor.w * alpha);
+				ImVec2 sPos(tPos.x + item->shadowOffset.x * scale, tPos.y + item->shadowOffset.y * scale);
+				drawList->AddText(font, fSize, sPos, shadowCol, str.c_str());
+			}
+
+			if (item->hasOutline)
+			{
+				ImU32 outlineCol = ImColor(item->outlineColor.x, item->outlineColor.y, item->outlineColor.z, item->outlineColor.w * alpha);
+				float thick = item->outlineThickness * scale;
+				const float offsets[8][2] = {
+					{ -thick, -thick }, { 0.0f, -thick }, { thick, -thick },
+					{ -thick, 0.0f },                     { thick, 0.0f },
+					{ -thick, thick },  { 0.0f, thick },  { thick, thick }
+				};
+				for (int k = 0; k < 8; ++k)
+				{
+					drawList->AddText(font, fSize, ImVec2(tPos.x + offsets[k][0], tPos.y + offsets[k][1]), outlineCol, str.c_str());
+				}
+			}
+
+			Vector4 col = isHighlight ? Vector4{ 0.95f, 1.00f, 1.00f, 1.0f } : Vector4{ 0.35f, 0.78f, 0.92f, 0.85f };
+			ImU32 textCol = ImColor(col.x, col.y, col.z, col.w * alpha);
+			drawList->AddText(font, fSize, tPos, textCol, str.c_str());
+		};
+
+		// ========================================================
+		// 【GAME OVER テキスト: モザイク／崩壊／グリッチ演出】
+		// ========================================================
+		const UITextItem* titleItem = textMgr ? textMgr->GetTextItem("GameOverTitle", "GAMEPLAY") : nullptr;
+		if (titleItem)
+		{
+			float titleAlpha = menuAlpha * transitionAlpha;
+
+			// 崩壊・グリッチ強度パラメータ
+			// 出現直後（0.0s〜0.6s）は強いモザイク・崩壊、その後は定期的なサイバー破損ノイズ
+			bool isPeriodicGlitch = (std::fmod(gameOverTimer_ * 3.3f, 2.6f) < 0.20f);
+			float glitchIntensity = (elapsedUI < 0.60f) ? (1.0f - elapsedUI / 0.60f) : (isPeriodicGlitch ? 0.60f : 0.06f);
+
+			// 1. 文字列のサイバーモザイク／デコードスクランブル
+			std::string rawTitle = titleItem->text.empty() ? "GAME OVER" : titleItem->text;
+			std::string displayTitle = rawTitle;
+			static const char scrambleChars[] = "01X#_!%&/?<>[]*+-=@";
+			int scrambleLen = (int)(sizeof(scrambleChars) - 1);
+
+			if (elapsedUI < 0.50f)
+			{
+				// 出現時: 左から順に実体化、未確定部分はサイバー文字で激しくモザイク化
+				float resolveProgress = elapsedUI / 0.50f;
+				int resolvedChars = static_cast<int>(resolveProgress * (rawTitle.size() + 2));
+				for (size_t ci = 0; ci < rawTitle.size(); ++ci)
+				{
+					if (rawTitle[ci] == ' ') continue;
+					if (static_cast<int>(ci) >= resolvedChars)
+					{
+						int rIndex = (static_cast<int>(gameOverTimer_ * 45.0f) + ci * 7) % scrambleLen;
+						displayTitle[ci] = scrambleChars[rIndex];
+					}
+				}
+			}
+			else if (isPeriodicGlitch)
+			{
+				// 確定後の突発的崩壊・破損
+				int glitchCharIdx = static_cast<int>(gameOverTimer_ * 11.0f) % rawTitle.size();
+				if (rawTitle[glitchCharIdx] != ' ')
+				{
+					displayTitle[glitchCharIdx] = scrambleChars[(static_cast<int>(gameOverTimer_ * 25.0f)) % scrambleLen];
+				}
+			}
+
+			// テキストの座標・フォントサイズ計算
+			ImFont* font = imguiManager ? imguiManager->GetFont(titleItem->fontType) : ImGui::GetFont();
+			if (!font) font = ImGui::GetFont();
+			float fSize = titleItem->fontSize * scale;
+			ImVec2 tSize = font->CalcTextSizeA(fSize, FLT_MAX, -1.0f, displayTitle.c_str());
+
+			float posX = viewPos.x + titleItem->position.x * (screenW / 1280.0f);
+			float posY = viewPos.y + titleItem->position.y * (screenH / 720.0f);
+			ImVec2 tPos(posX, posY);
+			if (titleItem->align == UITextAlign::Center) tPos.x -= tSize.x * 0.5f;
+			else if (titleItem->align == UITextAlign::Right) tPos.x -= tSize.x;
+
+			// 2. RGBスプリット（色ズレ崩壊）
+			if (glitchIntensity > 0.08f)
+			{
+				float splitDist = (5.0f * glitchIntensity) * scale;
+				// シアンゴースト（左ズレ）
+				drawList->AddText(font, fSize, ImVec2(tPos.x - splitDist, tPos.y), IM_COL32(0, 210, 255, static_cast<int>(120.0f * titleAlpha * glitchIntensity)), displayTitle.c_str());
+				// マゼンタ／ホワイトゴースト（右ズレ）
+				drawList->AddText(font, fSize, ImVec2(tPos.x + splitDist, tPos.y), IM_COL32(255, 80, 180, static_cast<int>(100.0f * titleAlpha * glitchIntensity)), displayTitle.c_str());
+			}
+
+			// 3. メインテキスト描画（シャドウ ＋ 鮮烈なサイバーシアン発光）
+			drawList->AddText(font, fSize, ImVec2(tPos.x + 2.0f * scale, tPos.y + 2.0f * scale), IM_COL32(2, 20, 35, static_cast<int>(220.0f * titleAlpha)), displayTitle.c_str());
+			drawList->AddText(font, fSize, tPos, IM_COL32(40, 250, 255, static_cast<int>(255.0f * titleAlpha)), displayTitle.c_str());
+
+			// 4. 水平スライス崩壊ライン（文字が横に引き裂かれるグリッチ）
+			if (glitchIntensity > 0.12f)
+			{
+				int sliceSeed = static_cast<int>(gameOverTimer_ * 16.0f);
+				float sliceRelY = (std::sin(sliceSeed * 1.7f) * 0.5f + 0.5f) * tSize.y;
+				float sliceY = tPos.y + sliceRelY;
+				float sliceH = (3.0f + 4.0f * (std::sin(sliceSeed * 2.9f) * 0.5f + 0.5f)) * scale;
+				float sliceOffset = (std::sin(sliceSeed * 7.9f) * 10.0f * glitchIntensity) * scale;
+
+				// スライスクリップ矩形で文字の一部分を横にシフトさせて崩壊感を表現
+				drawList->PushClipRect(ImVec2(tPos.x - 30.0f * scale, sliceY), ImVec2(tPos.x + tSize.x + 30.0f * scale, sliceY + sliceH), true);
+				drawList->AddText(font, fSize, ImVec2(tPos.x + sliceOffset, tPos.y), IM_COL32(220, 255, 255, static_cast<int>(240.0f * titleAlpha)), displayTitle.c_str());
+				drawList->PopClipRect();
+
+				// スライス走査線
+				drawList->AddLine(
+					ImVec2(tPos.x - 15.0f * scale, sliceY),
+					ImVec2(tPos.x + tSize.x + 15.0f * scale, sliceY),
+					IM_COL32(0, 255, 255, static_cast<int>(180.0f * titleAlpha * glitchIntensity)),
+					1.0f * scale
+				);
+			}
+
+			// 5. モザイク・ボクセル崩壊ピクセル（テキストから剥離・散乱するデジタルダスト）
+			int pixelCount = static_cast<int>(18 * glitchIntensity);
+			for (int pi = 0; pi < pixelCount; ++pi)
+			{
+				float pxRatio = std::fmod(std::sin(pi * 12.9898f + gameOverTimer_ * 3.5f) * 43758.5453f, 1.0f);
+				if (pxRatio < 0.0f) pxRatio += 1.0f;
+				float pyRatio = std::fmod(std::sin(pi * 78.233f + gameOverTimer_ * 5.5f) * 43758.5453f, 1.0f);
+				if (pyRatio < 0.0f) pyRatio += 1.0f;
+
+				float pX = tPos.x + pxRatio * tSize.x + (std::sin(pi * 4.3f + gameOverTimer_ * 9.0f) * 14.0f * glitchIntensity) * scale;
+				float pY = tPos.y + pyRatio * tSize.y + (pyRatio * 18.0f * glitchIntensity) * scale;
+				float pSize = (2.0f + (pi % 3) * 1.5f) * scale;
+
+				ImU32 pCol = (pi % 2 == 0)
+					? IM_COL32(0, 240, 255, static_cast<int>(210.0f * titleAlpha))
+					: IM_COL32(220, 255, 255, static_cast<int>(230.0f * titleAlpha));
+				drawList->AddRectFilled(ImVec2(pX, pY), ImVec2(pX + pSize, pY + pSize), pCol);
+			}
+
+			// 6. 発光アンダーライン
+			bool isBarVisible = titleItem ? titleItem->hasUnderline : gameOverBarVisible_;
+			if (isBarVisible)
+			{
+				float offsetY = titleItem ? titleItem->underlineOffsetY : gameOverBarOffsetY_;
+				float barWidth = titleItem ? titleItem->underlineWidth : gameOverBarWidth_;
+				float thickness = titleItem ? titleItem->underlineThickness : gameOverBarThickness_;
+				float scaleX = screenW / 1280.0f;
+				float scaleY = screenH / 720.0f;
+				float barY = viewPos.y + (titleItem->position.y + offsetY) * scaleY;
+				float barHalfW = (barWidth * 0.5f) * scale;
+				float centerX = viewPos.x + titleItem->position.x * scaleX;
+
+				drawList->AddLine(
+					ImVec2(centerX - barHalfW, barY),
+					ImVec2(centerX + barHalfW, barY),
+					IM_COL32(0, 240, 255, static_cast<int>(230.0f * titleAlpha)),
+					thickness * scale
+				);
 			}
 		}
 
-		if (elapsedUI >= 0.60f)
+		// ========================================================
+		// メニュー選択肢（RETRY / TITLE）と操作ナビゲーション（0.45s〜フェードイン）
+		// ========================================================
+		if (elapsedUI >= 0.45f)
 		{
-			float menuAlpha = debugPreviewGameOverUI_ ? 1.0f : std::clamp((elapsedUI - 0.60f) / 0.45f, 0.0f, 1.0f);
-
-			float centerY = viewPos.y + screenH * 0.46f;
-			float bannerH = 150.0f * scale;
-			float bTop = centerY - bannerH * 0.5f;
-			float bBottom = centerY + bannerH * 0.5f;
-			drawList->AddRectFilled(
-				ImVec2(viewPos.x, bTop),
-				ImVec2(viewPos.x + screenW, bBottom),
-				IM_COL32(2, 12, 22, static_cast<int>(215.0f * menuAlpha * transitionAlpha))
-			);
-			drawList->AddLine(
-				ImVec2(viewPos.x, bTop),
-				ImVec2(viewPos.x + screenW, bTop),
-				IM_COL32(0, 235, 255, static_cast<int>(180.0f * menuAlpha * transitionAlpha)),
-				1.5f * scale
-			);
-			drawList->AddLine(
-				ImVec2(viewPos.x, bBottom),
-				ImVec2(viewPos.x + screenW, bBottom),
-				IM_COL32(0, 235, 255, static_cast<int>(180.0f * menuAlpha * transitionAlpha)),
-				1.5f * scale
-			);
-
-			auto renderTextItem = [&](const UITextItem* item, float alpha, float customScale = 1.0f, const std::string& overrideText = "", bool isHighlight = false) {
-				if (!item || item->text.empty() || alpha <= 0.001f) return;
-				ImFont* font = imguiManager ? imguiManager->GetFont(item->fontType) : ImGui::GetFont();
-				if (!font) font = ImGui::GetFont();
-
-				float fSize = item->fontSize * scale * customScale;
-				const std::string& str = overrideText.empty() ? item->text : overrideText;
-				ImVec2 tSize = font->CalcTextSizeA(fSize, FLT_MAX, -1.0f, str.c_str());
-
-				float posX = viewPos.x + item->position.x * (screenW / 1280.0f);
-				float posY = viewPos.y + item->position.y * (screenH / 720.0f);
-				ImVec2 tPos(posX, posY);
-				if (item->align == UITextAlign::Center) tPos.x -= tSize.x * 0.5f;
-				else if (item->align == UITextAlign::Right) tPos.x -= tSize.x;
-
-				if (item->hasShadow)
-				{
-					ImU32 shadowCol = ImColor(item->shadowColor.x, item->shadowColor.y, item->shadowColor.z, item->shadowColor.w * alpha);
-					ImVec2 sPos(tPos.x + item->shadowOffset.x * scale, tPos.y + item->shadowOffset.y * scale);
-					drawList->AddText(font, fSize, sPos, shadowCol, str.c_str());
-				}
-
-				if (item->hasOutline)
-				{
-					ImU32 outlineCol = ImColor(item->outlineColor.x, item->outlineColor.y, item->outlineColor.z, item->outlineColor.w * alpha);
-					float thick = item->outlineThickness * scale;
-					const float offsets[8][2] = {
-						{ -thick, -thick }, { 0.0f, -thick }, { thick, -thick },
-						{ -thick, 0.0f },                     { thick, 0.0f },
-						{ -thick, thick },  { 0.0f, thick },  { thick, thick }
-					};
-					for (int k = 0; k < 8; ++k)
-					{
-						drawList->AddText(font, fSize, ImVec2(tPos.x + offsets[k][0], tPos.y + offsets[k][1]), outlineCol, str.c_str());
-					}
-				}
-
-				Vector4 col = item->color;
-				if (isHighlight)
-				{
-					col = { 0.95f, 1.00f, 1.00f, 1.0f }; // 白熱サイバーホワイトシアン
-				}
-				else
-				{
-					col = { 0.35f, 0.78f, 0.92f, 0.85f };
-				}
-				ImU32 textCol = ImColor(col.x, col.y, col.z, col.w * alpha);
-				drawList->AddText(font, fSize, tPos, textCol, str.c_str());
-			};
-
-			const UITextItem* titleItem = textMgr ? textMgr->GetTextItem("GameOverTitle", "GAMEPLAY") : nullptr;
-			if (titleItem)
-			{
-				UITextItem cyberTitle = *titleItem;
-				cyberTitle.color = { 0.20f, 0.98f, 1.00f, 1.0f }; // 鮮烈なサイバーシアン
-				cyberTitle.shadowColor = { 0.02f, 0.20f, 0.35f, 0.85f };
-				renderTextItem(&cyberTitle, menuAlpha);
-
-				bool isBarVisible = titleItem ? titleItem->hasUnderline : gameOverBarVisible_;
-				if (isBarVisible)
-				{
-					float offsetY = titleItem ? titleItem->underlineOffsetY : gameOverBarOffsetY_;
-					float barWidth = titleItem ? titleItem->underlineWidth : gameOverBarWidth_;
-					float thickness = titleItem ? titleItem->underlineThickness : gameOverBarThickness_;
-					Vector4 barCol = { 0.25f, 0.98f, 1.00f, 0.90f }; // ネオンシアン発光アンダーライン
-
-					float scaleX = screenW / 1280.0f;
-					float scaleY = screenH / 720.0f;
-					float barY = viewPos.y + (titleItem->position.y + offsetY) * scaleY;
-					float barHalfW = (barWidth * 0.5f) * scale;
-					float centerX = viewPos.x + titleItem->position.x * scaleX;
-
-					drawList->AddLine(
-						ImVec2(centerX - barHalfW, barY),
-						ImVec2(centerX + barHalfW, barY),
-						IM_COL32(
-							static_cast<int>(barCol.x * 255.0f),
-							static_cast<int>(barCol.y * 255.0f),
-							static_cast<int>(barCol.z * 255.0f),
-							static_cast<int>(barCol.w * 255.0f * menuAlpha)
-						),
-						thickness * scale
-					);
-				}
-			}
-
-			float pulse = 0.85f + 0.15f * std::sin((gameOverTimer_ - 2.6f) * 6.0f);
+			float optAlpha = debugPreviewGameOverUI_ ? 1.0f : std::clamp((elapsedUI - 0.45f) / 0.35f, 0.0f, 1.0f) * transitionAlpha;
+			float pulse = 0.85f + 0.15f * std::sin((gameOverTimer_ - 2.0f) * 6.0f);
 
 			const UITextItem* retryItem = textMgr ? textMgr->GetTextItem("GameOverRetry", "GAMEPLAY") : nullptr;
 			if (retryItem)
 			{
 				bool isSelected = (gameOverSelectedOption_ == GameOverMenuOption::Retry);
-				float itemAlpha = isSelected ? (menuAlpha * pulse) : (menuAlpha * 0.55f);
+				float itemAlpha = isSelected ? (optAlpha * pulse) : (optAlpha * 0.55f);
 				std::string retryStr = isSelected ? ("> " + retryItem->text) : ("  " + retryItem->text);
 				renderTextItem(retryItem, itemAlpha, isSelected ? 1.08f : 1.0f, retryStr, isSelected);
 			}
@@ -5279,7 +5854,7 @@ void GamePlayScene::DrawGameOverUI()
 			if (titleNavItem)
 			{
 				bool isSelected = (gameOverSelectedOption_ == GameOverMenuOption::Title);
-				float itemAlpha = isSelected ? (menuAlpha * pulse) : (menuAlpha * 0.55f);
+				float itemAlpha = isSelected ? (optAlpha * pulse) : (optAlpha * 0.55f);
 				std::string titleStr = isSelected ? ("> " + titleNavItem->text) : ("  " + titleNavItem->text);
 				renderTextItem(titleNavItem, itemAlpha, isSelected ? 1.08f : 1.0f, titleStr, isSelected);
 			}
@@ -5288,8 +5863,8 @@ void GamePlayScene::DrawGameOverUI()
 			float navFontSize = 17.0f * scale;
 			ImVec2 navSize = fontMono->CalcTextSizeA(navFontSize, FLT_MAX, -1.0f, navText);
 			ImVec2 navPos(viewPos.x + (screenW - navSize.x) * 0.5f, viewPos.y + screenH * 0.80f);
-			drawList->AddText(fontMono, navFontSize, ImVec2(navPos.x + 1.5f, navPos.y + 1.5f), IM_COL32(0, 0, 0, static_cast<int>(180.0f * menuAlpha)), navText);
-			drawList->AddText(fontMono, navFontSize, navPos, IM_COL32(110, 220, 245, static_cast<int>(220.0f * menuAlpha)), navText);
+			drawList->AddText(fontMono, navFontSize, ImVec2(navPos.x + 1.5f, navPos.y + 1.5f), IM_COL32(0, 0, 0, static_cast<int>(180.0f * optAlpha)), navText);
+			drawList->AddText(fontMono, navFontSize, navPos, IM_COL32(110, 220, 245, static_cast<int>(220.0f * optAlpha)), navText);
 		}
 	}
 
@@ -5306,6 +5881,7 @@ void GamePlayScene::DrawGameOverUI()
 	drawList->PopClipRect();
 #endif
 }
+
 void GamePlayScene::StartClearSequence()
 {
 	if (gamePhase_ != GamePhase::PLAYING) return;
@@ -5351,6 +5927,8 @@ void GamePlayScene::UpdateClearSequence(float dt)
 	if (railCameraController_)
 	{
 		railCameraController_->SetSpeedMultiplier(0.0f);
+		retryStartProgress_ = railCameraController_->GetProgress();
+		retryStartRailIndex_ = railCameraController_->GetCurrentRailIndex();
 	}
 
 	// 自機の上昇・加速・姿勢制御

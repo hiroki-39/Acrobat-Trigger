@@ -31,6 +31,11 @@ public:
     void Reset();
 
     /// <summary>
+    /// レール参照を安全にクリアする（再ロード時の解放後アクセス防止）
+    /// </summary>
+    void ClearRails();
+
+    /// <summary>
     /// 進行度を取得
     /// </summary>
     float GetProgress() const { return progress_; }
@@ -42,6 +47,9 @@ public:
         progress_ = std::clamp(p, 0.0f, 1.0f);
         ApplyTransform({0.0f, 0.0f, 0.0f});
     }
+
+    int GetCurrentRailIndex() const { return currentRailIndex_; }
+    void SetCurrentRailIndex(int idx) { currentRailIndex_ = idx; }
 
     /// <summary>
     /// レール基準速度の設定（秒速m/s、ゲーム側で一括管理）

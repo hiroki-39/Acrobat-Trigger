@@ -55,7 +55,7 @@ public:
     /// <summary>
     /// 制御点がセットされているか
     /// </summary>
-    bool IsValid() const { return !points_.empty(); }
+    bool IsValid() const { return points_.size() >= 2; }
 
     /// <summary>
     /// 指定ワールド座標に最も近いレール進行度(0.0f〜1.0f)を取得する
