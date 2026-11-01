@@ -84,9 +84,15 @@ private:
     bool isPlaying_ = true;
 #endif
 
-    // デモプレイ演出用タイマー（スタート演出完了後にタイトルへ戻る）
+    // デモプレイ演出用変数（スタート演出 -> 被弾HP0 -> リトライ -> スタート演出 -> 被弾HP0 -> タイトル遷移）
     float demoTimer_ = 0.0f;
-    float demoPostIntroDuration_ = 2.0f; // スタート演出終了後、通常飛行を見せる時間（秒）
+    float demoPostIntroDuration_ = 2.0f;
+    int demoDeathLoopCount_ = 0;         // デモループ回数 (0: サイクル1 リトライへ, 1: サイクル2 タイトルへ)
+    float demoSurvivalTimer_ = 0.0f;     // 通常飛行開始からのタイマー
+    bool demoBulletSpawned_ = false;     // デモ被弾用敵弾発射フラグ
+    bool demoHitTriggered_ = false;      // デモ被弾直撃フラグ
+    float demoGameOverWaitTimer_ = 0.0f; // ゲームオーバーUI表示後の待機タイマー
+    int demoMenuSelectStep_ = 0;         // デモ中のUI選択ステップ（選択している感を演出するステップ管理）
 
     
     Vector3 currentCameraRot_ = {0.0f, 0.0f, 0.0f};

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include <vector>
 #include <memory>
 #include <random>
@@ -121,7 +121,7 @@ private:
 
     // デモプレイ演出用タイマー・巡航時間設定
     float demoTimer_ = 0.0f;
-    float demoCruiseDuration_ = 10.0f; // 巡航飛行をじっくり眺める時間（秒）
+    float demoCruiseDuration_ = 4.5f; // 巡航飛行をじっくり眺める時間（秒、展示テンポ向上のため4.5秒に短縮）
 
     // 飛行・巡航演出パラメータ（左右上下のゆったりとした移動とバンク）
     float idleTimer_ = 0.0f;
