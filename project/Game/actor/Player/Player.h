@@ -193,6 +193,7 @@ public:
     bool IsDead() const { return isDead_; }
     void SetDead(bool dead) { isDead_ = dead; }
     int GetHp() const { return hp_; }
+    void SetHp(int hp) { hp_ = hp; if (hp_ <= 0) isDead_ = true; }
     int GetMaxHp() const { return maxHp_; }
     size_t GetLockedEnemyCount() const { return multiLockedEnemies_.size(); }
     int GetMaxMissiles() const { return maxMissiles_; }

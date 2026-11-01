@@ -1,4 +1,4 @@
-﻿#define NOMINMAX
+#define NOMINMAX
 #include "GamePlayScene.h"
 #include "KHEngine/Core/Services/EngineServices.h"
 #include "KHEngine/Core/Utility/Log/Logger.h"
@@ -386,6 +386,12 @@ void GamePlayScene::Initialize()
 	auto spriteCommon = services->GetSpriteCommon();
 
 	demoTimer_ = 0.0f;
+	demoDeathLoopCount_ = 0;
+	demoSurvivalTimer_ = 0.0f;
+	demoBulletSpawned_ = false;
+	demoHitTriggered_ = false;
+	demoGameOverWaitTimer_ = 0.0f;
+	demoMenuSelectStep_ = 0;
 
 	collisionManager_ = std::make_unique<CollisionManager>();
 
@@ -723,6 +729,11 @@ void GamePlayScene::Initialize()
 	// ゲームオーバー演出状態のリセット
 	gameOverStep_ = GameOverStep::HIT_STOP;
 	gameOverTimer_ = 0.0f;
+	demoSurvivalTimer_ = 0.0f;
+	demoBulletSpawned_ = false;
+	demoHitTriggered_ = false;
+	demoGameOverWaitTimer_ = 0.0f;
+	demoMenuSelectStep_ = 0;
 	if (player_)
 	{
 		player_->SetVisible(true);
@@ -1113,6 +1124,11 @@ void GamePlayScene::SeamlessResetForRetry()
 	score_ = 0;
 	gameOverStep_ = GameOverStep::HIT_STOP;
 	gameOverTimer_ = 0.0f;
+	demoSurvivalTimer_ = 0.0f;
+	demoBulletSpawned_ = false;
+	demoHitTriggered_ = false;
+	demoGameOverWaitTimer_ = 0.0f;
+	demoMenuSelectStep_ = 0;
 
 	// 6. シームレスにオープニングカットシーン（地形マテリアライズ・自機再構成）を開始！
 	StartOpeningCutscene();
@@ -1193,34 +1209,61 @@ void GamePlayScene::Update()
 		SoundManager::GetInstance()->ToggleMasterMute();
 	}
 
-	// デモプレイ中：スタート演出（降下・マテリアライズ）が完了し、少し通常飛行を見せてからタイトルへ戻る
+	// デモプレイ中：スタート演出（地形展開・自機マテリアライズ）完了後、通常飛行中に敵弾が飛来して直撃し、HP0でゲームオーバーへ突入
 	if (services && services->IsDemoMode())
 	{
-		// スタート降下演出（START_CUTSCENE）が完了した後にタイマーを進める
-		if (gamePhase_ != GamePhase::START_CUTSCENE)
+		if (gamePhase_ == GamePhase::PLAYING)
 		{
-			demoTimer_ += dt;
-			if (demoTimer_ >= demoPostIntroDuration_)
+			demoSurvivalTimer_ += dt;
+
+			// 1. 通常飛行に入って約1.6秒後：自機前方から敵弾が高速飛来
+			if (demoSurvivalTimer_ >= 1.6f && !demoBulletSpawned_)
 			{
-				auto sceneManager = GetSceneManager();
-				if (sceneManager && !sceneManager->IsTransitioning())
+				demoBulletSpawned_ = true;
+				if (player_ && services->GetObject3dCommon())
 				{
-					float fadeDur = sceneManager->GetFadeDuration();
-					Vector4 fadeCol = sceneManager->GetFadeColor();
-					sceneManager->ChangeScene("TITLE", fadeDur, fadeCol);
+					Vector3 pPos = player_->GetWorldPosition();
+					Vector3 spawnPos = pPos + Vector3{ 2.5f, 1.5f, 75.0f };
+					Vector3 toPlayer = pPos - spawnPos;
+					float len = std::sqrt(toPlayer.x * toPlayer.x + toPlayer.y * toPlayer.y + toPlayer.z * toPlayer.z);
+					Vector3 vel = { 0.0f, 0.0f, -80.0f };
+					if (len > 0.001f)
+					{
+						vel = { (toPlayer.x / len) * 90.0f, (toPlayer.y / len) * 90.0f, (toPlayer.z / len) * 90.0f };
+					}
+					auto b = std::make_unique<EnemyBullet>();
+					b->Initialize(services->GetObject3dCommon(), spawnPos, vel, false, player_.get());
+					enemyBullets_.push_back(std::move(b));
 				}
 			}
-		}
-		else
-		{
-			demoTimer_ = 0.0f;
+
+			// 2. 通常飛行に入って約2.3秒後：敵弾が直撃してHPが0になりゲームオーバー演出開始！
+			if (demoSurvivalTimer_ >= 2.3f && !demoHitTriggered_)
+			{
+				demoHitTriggered_ = true;
+				if (player_)
+				{
+					// 直撃した敵弾を消去
+					enemyBullets_.clear();
+
+					// ユーザー要望により被弾時のパーティクルエフェクトは一旦非表示
+					// hitEffect_.SetPosition(pPos); hitEffect_.Play();
+					// explosionEffect_.SetPosition(pPos); explosionEffect_.Play();
+
+					SoundManager::GetInstance()->PlaySE("explosion.mp3", 0.85f);
+					cameraShakeTimer_ = 8.0f;
+					player_->SetHp(0);
+					StartGameOverSequence();
+				}
+			}
 		}
 	}
 	else
 	{
-		demoTimer_ = 0.0f;
+		demoSurvivalTimer_ = 0.0f;
+		demoBulletSpawned_ = false;
+		demoHitTriggered_ = false;
 	}
-
 #ifdef ENABLE_EDITOR
 	// EngineServicesのゲーム再生状態と同期
 	isPlaying_ = services->IsGamePlaying();
@@ -4885,6 +4928,11 @@ void GamePlayScene::StartGameOverSequence()
 	gameOverStep_ = GameOverStep::HIT_STOP;
 	gameOverSelectedOption_ = GameOverMenuOption::Retry;
 	gameOverTimer_ = 0.0f;
+	demoSurvivalTimer_ = 0.0f;
+	demoBulletSpawned_ = false;
+	demoHitTriggered_ = false;
+	demoGameOverWaitTimer_ = 0.0f;
+	demoMenuSelectStep_ = 0;
 	shockwaveScale_ = 0.2f;
 	shockwaveAlpha_ = 1.0f;
 	gameOverShards_.clear();
@@ -5398,6 +5446,143 @@ void GamePlayScene::UpdateGameOverSequence(float dt)
 						SoundManager::GetInstance()->StopBGM();
 						SoundManager::GetInstance()->PlaySE("button");
 						sceneManager->ChangeScene("TITLE", 0.90f, { 0.0f, 0.0f, 0.0f, 1.0f }, TransitionType::CRT_Off);
+					}
+				}
+			}
+
+			// デモモード中の自動決定処理（展示用ループ：プレイヤーが選んでいる感を演出）
+			// サイクル1: RETRY -> (1.0s) TITLE -> (1.9s) RETRY -> (2.7s) 決定！
+			// サイクル2: RETRY -> (1.0s) TITLE -> (1.8s) RETRY -> (2.5s) TITLE -> (3.3s) 決定！
+			if (services && services->IsDemoMode())
+			{
+				demoGameOverWaitTimer_ += dt;
+
+				if (demoDeathLoopCount_ == 0)
+				{
+					// ==========================================
+					// --- サイクル1: RETRY を選択・決定する動き ---
+					// ==========================================
+					// ステップ0 (1.0s経過): カーソルを TITLE へ移動（迷っている演出）
+					if (demoGameOverWaitTimer_ >= 1.0f && demoMenuSelectStep_ == 0)
+					{
+						gameOverSelectedOption_ = GameOverMenuOption::Title;
+						SoundManager::GetInstance()->PlaySE("select.mp3", 0.6f);
+						demoMenuSelectStep_ = 1;
+					}
+					// ステップ1 (1.9s経過): カーソルを RETRY へ戻す
+					else if (demoGameOverWaitTimer_ >= 1.9f && demoMenuSelectStep_ == 1)
+					{
+						gameOverSelectedOption_ = GameOverMenuOption::Retry;
+						SoundManager::GetInstance()->PlaySE("select.mp3", 0.6f);
+						demoMenuSelectStep_ = 2;
+					}
+					// ステップ2 (2.7s経過): RETRY を決定！
+					else if (demoGameOverWaitTimer_ >= 2.7f && demoMenuSelectStep_ == 2)
+					{
+						gameOverSelectedOption_ = GameOverMenuOption::Retry;
+
+						if (auto pp = services->GetPostProcess())
+						{
+							pp->SetEffectActive("Random(Glitch)", false);
+							if (auto* d = pp->GetData())
+							{
+								d->glitchStrength = 0.0f;
+								d->noiseStrength = 0.0f;
+							}
+						}
+
+						gameOverStep_ = GameOverStep::RETRY_DEMATERIALIZE;
+						retryDematerializeTimer_ = 0.0f;
+
+						if (railCameraController_)
+						{
+							retryStartProgress_ = railCameraController_->GetProgress();
+							retryStartRailIndex_ = railCameraController_->GetCurrentRailIndex();
+						}
+
+						if (activeCamera_)
+						{
+							retryStartCamPos_ = activeCamera_->GetTranslate();
+							retryStartCamTarget_ = retryStartCamPos_ + Vector3{ 0.0f, 0.0f, 30.0f };
+						}
+
+						bullets_.clear();
+						missiles_.clear();
+						enemyBullets_.clear();
+						enemies_.clear();
+						enhanceRings_.clear();
+						if (armoredTrainBoss_)
+						{
+							armoredTrainBoss_->SetActive(false);
+						}
+						for (auto& shard : gameOverShards_)
+						{
+							if (shard.object) shard.object->SetScale({ 0.0f, 0.0f, 0.0f });
+						}
+						gameOverShards_.clear();
+
+						SoundManager::GetInstance()->StopBGM();
+						SoundManager::GetInstance()->PlaySE("button.mp3", 0.7f);
+
+						demoDeathLoopCount_ = 1; // 次回はタイトルへ
+						demoSurvivalTimer_ = 0.0f;
+						demoBulletSpawned_ = false;
+						demoHitTriggered_ = false;
+						demoGameOverWaitTimer_ = 0.0f;
+						demoMenuSelectStep_ = 0;
+					}
+				}
+				else
+				{
+					// ==========================================
+					// --- サイクル2: TITLE を選択・決定する動き ---
+					// ==========================================
+					// ステップ0 (1.0s経過): カーソルを TITLE へ移動
+					if (demoGameOverWaitTimer_ >= 1.0f && demoMenuSelectStep_ == 0)
+					{
+						gameOverSelectedOption_ = GameOverMenuOption::Title;
+						SoundManager::GetInstance()->PlaySE("select.mp3", 0.6f);
+						demoMenuSelectStep_ = 1;
+					}
+					// ステップ1 (1.8s経過): カーソルを RETRY へ一旦戻す（迷い）
+					else if (demoGameOverWaitTimer_ >= 1.8f && demoMenuSelectStep_ == 1)
+					{
+						gameOverSelectedOption_ = GameOverMenuOption::Retry;
+						SoundManager::GetInstance()->PlaySE("select.mp3", 0.6f);
+						demoMenuSelectStep_ = 2;
+					}
+					// ステップ2 (2.5s経過): 再び TITLE へ移動！
+					else if (demoGameOverWaitTimer_ >= 2.5f && demoMenuSelectStep_ == 2)
+					{
+						gameOverSelectedOption_ = GameOverMenuOption::Title;
+						SoundManager::GetInstance()->PlaySE("select.mp3", 0.6f);
+						demoMenuSelectStep_ = 3;
+					}
+					// ステップ3 (3.3s経過): TITLE を決定！（CRT電源オフ演出へ）
+					else if (demoGameOverWaitTimer_ >= 3.3f && demoMenuSelectStep_ == 3)
+					{
+						gameOverSelectedOption_ = GameOverMenuOption::Title;
+
+						if (auto pp = services->GetPostProcess())
+						{
+							pp->SetEffectActive("Random(Glitch)", false);
+							if (auto* d = pp->GetData())
+							{
+								d->glitchStrength = 0.0f;
+								d->noiseStrength = 0.0f;
+							}
+						}
+
+						SoundManager::GetInstance()->StopBGM();
+						SoundManager::GetInstance()->PlaySE("button.mp3", 0.7f);
+						sceneManager->ChangeScene("TITLE", 0.90f, { 0.0f, 0.0f, 0.0f, 1.0f }, TransitionType::CRT_Off);
+
+						demoDeathLoopCount_ = 0; // 次回はリトライから
+						demoSurvivalTimer_ = 0.0f;
+						demoBulletSpawned_ = false;
+						demoHitTriggered_ = false;
+						demoGameOverWaitTimer_ = 0.0f;
+						demoMenuSelectStep_ = 0;
 					}
 				}
 			}
