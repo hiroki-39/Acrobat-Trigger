@@ -160,6 +160,9 @@
     <ClCompile Include="Game\Scene\GameOverScene.cpp" />
     <ClCompile Include="Game\Scene\GameClearScene.cpp" />
     <ClCompile Include="Game\Actor\Player\Player.cpp" />
+    <ClCompile Include="Game\Actor\Weapon\WeaponManager.cpp" />
+    <ClCompile Include="Game\Actor\Weapon\NormalWeapon.cpp" />
+    <ClCompile Include="Game\Actor\Weapon\CyberBitWeapon.cpp" />
     <ClCompile Include="Game\Actor\Bullet\PlayerBullet.cpp" />
     <ClCompile Include="Game\Actor\Bullet\PlayerMissile.cpp" />
     <ClCompile Include="Game\Actor\Bullet\EnemyBullet.cpp" />
@@ -248,6 +251,11 @@
     <ClInclude Include="Game\Scene\GameOverScene.h" />
     <ClInclude Include="Game\Scene\GameClearScene.h" />
     <ClInclude Include="Game\Actor\Player\Player.h" />
+    <ClInclude Include="Game\Actor\Weapon\MemoryType.h" />
+    <ClInclude Include="Game\Actor\Weapon\IWeapon.h" />
+    <ClInclude Include="Game\Actor\Weapon\WeaponManager.h" />
+    <ClInclude Include="Game\Actor\Weapon\NormalWeapon.h" />
+    <ClInclude Include="Game\Actor\Weapon\CyberBitWeapon.h" />
     <ClInclude Include="Game\Actor\Bullet\PlayerBullet.h" />
     <ClInclude Include="Game\Actor\Bullet\PlayerMissile.h" />
     <ClInclude Include="Game\Actor\Bullet\EnemyBullet.h" />
