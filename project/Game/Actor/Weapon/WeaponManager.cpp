@@ -1,6 +1,10 @@
 #include "WeaponManager.h"
 #include "NormalWeapon.h"
 #include "CyberBitWeapon.h"
+#include "ChargeShotWeapon.h"
+#include "BombWeapon.h"
+#include "SpreadWeapon.h"
+#include "FunnelWeapon.h"
 #include "Game/Actor/Player/Player.h"
 #include "KHEngine/Core/Services/EngineServices.h"
 #include "KHEngine/Input/Input.h"
@@ -12,9 +16,12 @@ void WeaponManager::Initialize(Player* owner, Object3dCommon* object3dCommon) {
     input_ = EngineServices::GetInstance()->GetInput();
 
     // 武器テーブルの初期化（std::map を使用）
-    weapons_[MemoryType::NONE]      = std::make_unique<NormalWeapon>();
-    weapons_[MemoryType::CYBER_BIT] = std::make_unique<CyberBitWeapon>();
-    // 今後: CHARGE_SHOT, BOMB, SPREAD, FUNNEL, LASER_BEAM を順次登録
+    weapons_[MemoryType::NONE]        = std::make_unique<NormalWeapon>();
+    weapons_[MemoryType::CYBER_BIT]   = std::make_unique<CyberBitWeapon>();
+    weapons_[MemoryType::CHARGE_SHOT] = std::make_unique<ChargeShotWeapon>();
+    weapons_[MemoryType::BOMB]        = std::make_unique<BombWeapon>();
+    weapons_[MemoryType::SPREAD]      = std::make_unique<SpreadWeapon>();
+    weapons_[MemoryType::FUNNEL]      = std::make_unique<FunnelWeapon>();
 
     // 全武器の初期化
     for (auto& [type, weapon] : weapons_) {
@@ -68,29 +75,44 @@ void WeaponManager::DrawUI() {
     }
 }
 
-void WeaponManager::EquipWeapon(MemoryType type) {
+bool WeaponManager::EquipWeapon(MemoryType type) {
+    if (type == MemoryType::NONE) {
+        PurgeMemory();
+        return true;
+    }
+
     auto it = weapons_.find(type);
     if (it != weapons_.end()) {
         currentType_ = type;
         currentWeapon_ = it->second.get();
         currentWeapon_->Reset();
-
-        // 装備SE（サイバーインプット音など）
-        SoundManager::GetInstance()->PlaySE("powerup.mp3", 0.8f);
+        // 装備SE再生
+        SoundManager::GetInstance()->PlaySE("shot.mp3", 0.6f);
+        return true;
     }
+    return false;
 }
 
 void WeaponManager::PurgeMemory() {
-    if (currentType_ == MemoryType::NONE) return;
-
-    // パージSEまたはフォールバック
-    SoundManager::GetInstance()->PlaySE("missile_hit.mp3", 0.5f);
-
-    currentType_ = MemoryType::NONE;
-    currentWeapon_ = weapons_[currentType_].get();
-    if (currentWeapon_) {
-        currentWeapon_->Reset();
+    if (currentType_ != MemoryType::NONE) {
+        currentType_ = MemoryType::NONE;
+        currentWeapon_ = weapons_[currentType_].get();
+        if (currentWeapon_) {
+            currentWeapon_->Reset();
+        }
+        // パージSE再生
+        SoundManager::GetInstance()->PlaySE("shot.mp3", 0.4f);
     }
+}
+
+bool WeaponManager::HasActiveBombExplosion(Vector3* outPos, float* outRadius) const {
+    if (currentType_ == MemoryType::BOMB && currentWeapon_) {
+        auto bombWeapon = dynamic_cast<BombWeapon*>(currentWeapon_);
+        if (bombWeapon) {
+            return bombWeapon->HasActiveExplosion(outPos, outRadius);
+        }
+    }
+    return false;
 }
 
 float WeaponManager::GetRemainingRatio() const {
@@ -104,5 +126,5 @@ std::string WeaponManager::GetAmmoText() const {
     if (currentWeapon_) {
         return currentWeapon_->GetAmmoText();
     }
-    return "";
+    return "NORMAL";
 }

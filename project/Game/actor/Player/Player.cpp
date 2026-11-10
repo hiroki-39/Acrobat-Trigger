@@ -1202,7 +1202,7 @@ void Player::DrawImGuiContent() {
 
         ImGui::Separator();
         ImGui::Text("【メモリ武器システム (Memory System)】");
-        const char* memNames[] = { "通常弾 (NONE)", "チャージショット", "爆弾", "拡散弾", "ファンネル", "ビット (CYBER_BIT)", "レーザービーム" };
+        const char* memNames[] = { "通常弾 (NONE)", "チャージ", "ボム", "拡散弾", "ファンネル", "サイバービット", "レーザー" };
         int currentTypeIdx = static_cast<int>(weaponManager_.GetCurrentType());
         if (currentTypeIdx >= 0 && currentTypeIdx < 7) {
             ImGui::Text("現在の形態: %s", memNames[currentTypeIdx]);
@@ -1213,7 +1213,15 @@ void Player::DrawImGuiContent() {
             weaponManager_.PurgeMemory();
         }
         ImGui::SameLine();
-        if (ImGui::Button("ビット (CYBER_BIT) 装備")) {
+        if (ImGui::Button("ボム (BOMB)")) {
+            weaponManager_.EquipWeapon(MemoryType::BOMB);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("拡散弾 (SPREAD)")) {
+            weaponManager_.EquipWeapon(MemoryType::SPREAD);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("サイバービット (CYBER_BIT)")) {
             weaponManager_.EquipWeapon(MemoryType::CYBER_BIT);
         }
     }

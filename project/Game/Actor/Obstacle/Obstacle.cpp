@@ -124,7 +124,7 @@ void Obstacle::DrawCollider() {
     }
 }
 
-void Obstacle::OnCollision() {
+void Obstacle::OnCollision(float /*damage*/) {
     if (isDestructible_) {
         isDead_ = true;
     }

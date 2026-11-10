@@ -20,7 +20,7 @@ public:
     }
     void Draw();
     void DrawCollider(); // デバッグ描画用
-    void OnCollision(); // 弾が当たった時の処理
+    void OnCollision(float damage = 1.0f); // 弾が当たった時の処理
     void Kill(); // 即座に倒す
 
     void SetMovePath(std::unique_ptr<Rail> path);
@@ -60,7 +60,7 @@ private:
     Vector3 position_;
     Vector3 velocity_ = {0.0f, 0.0f, 0.0f};
     LevelCollider collider_; // コライダー情報
-    int hp_ = 3;
+    float hp_ = 3.0f;
     bool isDead_ = false;
     std::string typeName_;
 

@@ -31,6 +31,9 @@ public:
     void DrawImGuiContent();
 
     bool IsGodMode() const { return isGodMode_; }
+    bool HasActiveBombExplosion(Vector3* outPos = nullptr, float* outRadius = nullptr) const {
+        return weaponManager_.HasActiveBombExplosion(outPos, outRadius);
+    }
     void SetGodMode(bool god) { isGodMode_ = god; }
 
     

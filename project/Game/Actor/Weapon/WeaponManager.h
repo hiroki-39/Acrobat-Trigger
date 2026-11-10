@@ -1,6 +1,7 @@
 #pragma once
 #include "IWeapon.h"
 #include "MemoryType.h"
+#include "KHEngine/Math/Vector3.h"
 #include <map>
 #include <memory>
 #include <string>
@@ -33,7 +34,8 @@ public:
     /// <summary>
     /// メモリを拾った時に通常弾を変化（上書き装備）
     /// </summary>
-    void EquipWeapon(MemoryType type);
+    bool EquipWeapon(MemoryType type);
+    bool EquipMemory(MemoryType type) { return EquipWeapon(type); }
 
     /// <summary>
     /// メモリをパージ（廃棄）して通常弾に戻す（Rキーまたは弾切れ時）
@@ -42,6 +44,8 @@ public:
 
     MemoryType GetCurrentType() const { return currentType_; }
     IWeapon* GetCurrentWeapon() const { return currentWeapon_; }
+
+    bool HasActiveBombExplosion(Vector3* outPos = nullptr, float* outRadius = nullptr) const;
 
     float GetRemainingRatio() const;
     std::string GetAmmoText() const;

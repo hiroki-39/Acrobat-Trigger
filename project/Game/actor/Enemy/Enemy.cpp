@@ -40,7 +40,7 @@ void Enemy::Initialize(Object3dCommon* object3dCommon, const LevelObjectData& no
         modelScale = preset->scale;
         modelPosOffset_ = preset->modelPosOffset;
         modelColor = preset->color;
-        hp_ = preset->hp;
+        hp_ = static_cast<float>(preset->hp);
         moveSpeed_ = preset->moveSpeed;
         moveAmplitude_ = preset->moveAmplitude;
         shootInterval_ = preset->shootInterval;
@@ -330,11 +330,11 @@ void Enemy::DrawCollider() {
     }
 }
 
-void Enemy::OnCollision() {
-    hp_--;
+void Enemy::OnCollision(float damage) {
+    hp_ -= damage;
     invincibilityTimer_ = 6.0f; // 被弾フラッシュ演出用タイマー（約0.1秒）
     
-    if (hp_ <= 0) {
+    if (hp_ <= 0.0f) {
         isDead_ = true;
     }
 }

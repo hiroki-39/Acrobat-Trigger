@@ -219,7 +219,7 @@
                     2.0,
                     2.0
                 ],
-                "text": "",
+                "text": "SCORE: 000000",
                 "underlineColor": [
                     0.9200000166893005,
                     0.11999999731779099,
@@ -264,7 +264,7 @@
                     2.0,
                     2.0
                 ],
-                "text": "",
+                "text": "LOCK ON: 0 / 4",
                 "underlineColor": [
                     0.9200000166893005,
                     0.11999999731779099,
@@ -309,7 +309,7 @@
                     2.0,
                     2.0
                 ],
-                "text": "",
+                "text": "HP: 10000 / 10000",
                 "underlineColor": [
                     0.9200000166893005,
                     0.11999999731779099,
@@ -399,7 +399,7 @@
                     2.0,
                     2.0
                 ],
-                "text": "WASD/移動　Spase/射撃　R/武器切り替え　Q,E/回避　Shift/ブースト",
+                "text": "WASD/移動　Spase/射撃　R/武器を捨てる　Q,E/回避　Shift/ブースト",
                 "underlineColor": [
                     0.9200000166893005,
                     0.11999999731779099,
@@ -644,7 +644,7 @@
                     1.0
                 ],
                 "fontSize": 56.0,
-                "fontType": 1,
+                "fontType": 2,
                 "hasOutline": true,
                 "hasShadow": false,
                 "hasUnderline": false,
@@ -689,7 +689,7 @@
                     1.0
                 ],
                 "fontSize": 34.0,
-                "fontType": 3,
+                "fontType": 2,
                 "hasOutline": true,
                 "hasShadow": false,
                 "hasUnderline": false,
@@ -769,6 +769,321 @@
                 "underlineOffsetY": 42.0,
                 "underlineThickness": 2.5,
                 "underlineWidth": 320.0
+            },
+            {
+                "align": 0,
+                "color": [
+                    1.0,
+                    0.3499999940395355,
+                    0.3100000023841858,
+                    1.0
+                ],
+                "fontSize": 26.399999618530273,
+                "fontType": 2,
+                "hasOutline": true,
+                "hasShadow": true,
+                "hasUnderline": false,
+                "id": "BossTitle",
+                "isVisible": false,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 2.0,
+                "posX": 427.0,
+                "posY": 4.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.800000011920929
+                ],
+                "shadowOffset": [
+                    2.0,
+                    2.0
+                ],
+                "text": "BOSS: ARMORED TRAIN \"BEHEMOTH\"",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
+            },
+            {
+                "align": 1,
+                "color": [
+                    0.0,
+                    0.9200000166893005,
+                    0.8399999737739563,
+                    1.0
+                ],
+                "fontSize": 31.5,
+                "fontType": 2,
+                "hasOutline": false,
+                "hasShadow": false,
+                "hasUnderline": false,
+                "id": "BossTimer",
+                "isVisible": false,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 2.200000047683716,
+                "posX": 635.0,
+                "posY": 95.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.8500000238418579
+                ],
+                "shadowOffset": [
+                    2.0,
+                    2.0
+                ],
+                "text": "TIME LIMIT",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
+            },
+            {
+                "align": 1,
+                "color": [
+                    1.0,
+                    0.15000000596046448,
+                    0.15000000596046448,
+                    1.0
+                ],
+                "fontSize": 58.0,
+                "fontType": 2,
+                "hasOutline": false,
+                "hasShadow": false,
+                "hasUnderline": false,
+                "id": "BossWarningTitle",
+                "isVisible": false,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 3.0,
+                "posX": 640.0,
+                "posY": 280.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.8500000238418579
+                ],
+                "shadowOffset": [
+                    2.0,
+                    2.0
+                ],
+                "text": "WARNING",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
+            },
+            {
+                "align": 1,
+                "color": [
+                    1.0,
+                    0.9399999976158142,
+                    0.9399999976158142,
+                    1.0
+                ],
+                "fontSize": 48.0,
+                "fontType": 2,
+                "hasOutline": true,
+                "hasShadow": false,
+                "hasUnderline": false,
+                "id": "BossWarningSub",
+                "isVisible": false,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 2.0,
+                "posX": 656.0,
+                "posY": 350.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.699999988079071
+                ],
+                "shadowOffset": [
+                    2.0,
+                    2.0
+                ],
+                "text": "制限時間以内にボスを倒せ！！",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
+            },
+            {
+                "align": 1,
+                "color": [
+                    1.0,
+                    0.11999999731779099,
+                    0.11999999731779099,
+                    1.0
+                ],
+                "fontSize": 68.0,
+                "fontType": 2,
+                "hasOutline": true,
+                "hasShadow": true,
+                "hasUnderline": false,
+                "id": "BossTimeOverTitle",
+                "isVisible": false,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 3.0,
+                "posX": 640.0,
+                "posY": 270.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.8999999761581421
+                ],
+                "shadowOffset": [
+                    2.0,
+                    2.0
+                ],
+                "text": "TIME OVER",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
+            },
+            {
+                "align": 1,
+                "color": [
+                    1.0,
+                    0.8600000143051147,
+                    0.20000000298023224,
+                    1.0
+                ],
+                "fontSize": 50.0,
+                "fontType": 2,
+                "hasOutline": true,
+                "hasShadow": false,
+                "hasUnderline": false,
+                "id": "BossTimeOverSub",
+                "isVisible": false,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 2.0,
+                "posX": 640.0,
+                "posY": 350.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.699999988079071
+                ],
+                "shadowOffset": [
+                    2.0,
+                    2.0
+                ],
+                "text": "CRITICAL ANNIHILATION ATTACK INCOMING",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
+            },
+            {
+                "align": 1,
+                "color": [
+                    1.0,
+                    0.8399999737739563,
+                    0.0,
+                    1.0
+                ],
+                "fontSize": 48.0,
+                "fontType": 2,
+                "hasOutline": true,
+                "hasShadow": true,
+                "hasUnderline": false,
+                "id": "BossDefeatedTitle",
+                "isVisible": false,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 3.0,
+                "posX": 640.0,
+                "posY": 300.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.8500000238418579
+                ],
+                "shadowOffset": [
+                    2.0,
+                    2.0
+                ],
+                "text": "TARGET DESTROYED",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
             }
         ],
         "TITLE": [
@@ -820,18 +1135,18 @@
             {
                 "align": 1,
                 "color": [
-                    0.34999436140060425,
-                    0.8799858093261719,
-                    0.9999839067459106,
-                    0.9999645948410034
+                    0.2800000011920929,
+                    0.7039999961853027,
+                    0.800000011920929,
+                    0.5600000023841858
                 ],
-                "fontSize": 40.0,
+                "fontSize": 53.599998474121094,
                 "fontType": 3,
                 "hasOutline": true,
                 "hasShadow": false,
                 "hasUnderline": false,
                 "id": "StartPrompt",
-                "isVisible": false,
+                "isVisible": true,
                 "outlineColor": [
                     0.0,
                     0.0,
@@ -840,7 +1155,7 @@
                 ],
                 "outlineThickness": 2.0,
                 "posX": 640.0,
-                "posY": 590.0,
+                "posY": 543.0,
                 "shadowColor": [
                     0.0,
                     0.0,

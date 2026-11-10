@@ -1,4 +1,4 @@
-#define NOMINMAX
+﻿#define NOMINMAX
 #include "GamePlayScene.h"
 #include "KHEngine/Core/Services/EngineServices.h"
 #include "KHEngine/Core/Utility/Log/Logger.h"
@@ -433,6 +433,7 @@ void GamePlayScene::Initialize()
 	ModelManager::GetInstance()->LoadModel("plane.obj");
 	ModelManager::GetInstance()->LoadModel("cube.obj");
 	ModelManager::GetInstance()->LoadModel("player.obj");
+	ModelManager::GetInstance()->LoadModel("memory.obj");
 
 
 	texManager->LoadTexture("uvChecker.png");
@@ -744,6 +745,126 @@ void GamePlayScene::Initialize()
 
 	// ゲームプレイBGMの再生（ループ再生、音量0.25）
 	SoundManager::GetInstance()->PlayBGM("gameplayBGM.mp3", 0.25f, true);
+
+	// ボス戦用UIテキスト項目の初期登録（JSONに未登録の場合のみ新規作成され、既存のJSON設定は完全に保護される）
+	if (auto textMgr = UITextManager::GetInstance())
+	{
+		if (!textMgr->HasTextItem("BossTitle", "GAMEPLAY"))
+		{
+			UITextItem bossTitle;
+			bossTitle.id = "BossTitle";
+			bossTitle.text = "BOSS: ARMORED TRAIN \"BEHEMOTH\"";
+			bossTitle.position = { 340.0f, 12.0f };
+			bossTitle.fontSize = 20.0f;
+			bossTitle.fontType = ImGuiManager::FontType::Japanese_MPLUS;
+			bossTitle.color = { 1.0f, 0.35f, 0.31f, 1.0f };
+			bossTitle.hasOutline = true;
+			bossTitle.outlineThickness = 2.0f;
+			bossTitle.hasShadow = true;
+			bossTitle.shadowColor = { 0.0f, 0.0f, 0.0f, 0.8f };
+			bossTitle.align = UITextAlign::Left;
+			bossTitle.isVisible = false;
+			textMgr->RegisterText(bossTitle, "GAMEPLAY");
+		}
+		if (!textMgr->HasTextItem("BossTimer", "GAMEPLAY"))
+		{
+			UITextItem bossTimer;
+			bossTimer.id = "BossTimer";
+			bossTimer.text = "TIME LIMIT";
+			bossTimer.position = { 640.0f, 85.0f };
+			bossTimer.fontSize = 28.0f;
+			bossTimer.fontType = ImGuiManager::FontType::English_FiraMono;
+			bossTimer.color = { 0.0f, 0.92f, 0.84f, 1.0f };
+			bossTimer.hasOutline = true;
+			bossTimer.outlineThickness = 2.2f;
+			bossTimer.hasShadow = true;
+			bossTimer.shadowColor = { 0.0f, 0.0f, 0.0f, 0.85f };
+			bossTimer.align = UITextAlign::Center;
+			bossTimer.isVisible = false;
+			textMgr->RegisterText(bossTimer, "GAMEPLAY");
+		}
+		if (!textMgr->HasTextItem("BossWarningTitle", "GAMEPLAY"))
+		{
+			UITextItem bossWarnTitle;
+			bossWarnTitle.id = "BossWarningTitle";
+			bossWarnTitle.text = "WARNING";
+			bossWarnTitle.position = { 640.0f, 280.0f };
+			bossWarnTitle.fontSize = 58.0f;
+			bossWarnTitle.fontType = ImGuiManager::FontType::Japanese_MPLUS;
+			bossWarnTitle.color = { 1.0f, 0.15f, 0.15f, 1.0f };
+			bossWarnTitle.hasOutline = true;
+			bossWarnTitle.outlineThickness = 3.0f;
+			bossWarnTitle.hasShadow = true;
+			bossWarnTitle.shadowColor = { 0.0f, 0.0f, 0.0f, 0.85f };
+			bossWarnTitle.align = UITextAlign::Center;
+			bossWarnTitle.isVisible = false;
+			textMgr->RegisterText(bossWarnTitle, "GAMEPLAY");
+		}
+		if (!textMgr->HasTextItem("BossWarningSub", "GAMEPLAY"))
+		{
+			UITextItem bossWarnSub;
+			bossWarnSub.id = "BossWarningSub";
+			bossWarnSub.text = "EMERGENCY: MASSIVE ARMORED TRAIN DETECTED";
+			bossWarnSub.position = { 640.0f, 350.0f };
+			bossWarnSub.fontSize = 22.0f;
+			bossWarnSub.fontType = ImGuiManager::FontType::Japanese_MPLUS;
+			bossWarnSub.color = { 1.0f, 0.94f, 0.94f, 1.0f };
+			bossWarnSub.hasOutline = true;
+			bossWarnSub.outlineThickness = 2.0f;
+			bossWarnSub.align = UITextAlign::Center;
+			bossWarnSub.isVisible = false;
+			textMgr->RegisterText(bossWarnSub, "GAMEPLAY");
+		}
+		if (!textMgr->HasTextItem("BossTimeOverTitle", "GAMEPLAY"))
+		{
+			UITextItem bossTimeOverTitle;
+			bossTimeOverTitle.id = "BossTimeOverTitle";
+			bossTimeOverTitle.text = "TIME OVER";
+			bossTimeOverTitle.position = { 640.0f, 270.0f };
+			bossTimeOverTitle.fontSize = 68.0f;
+			bossTimeOverTitle.fontType = ImGuiManager::FontType::Japanese_MPLUS;
+			bossTimeOverTitle.color = { 1.0f, 0.12f, 0.12f, 1.0f };
+			bossTimeOverTitle.hasOutline = true;
+			bossTimeOverTitle.outlineThickness = 3.0f;
+			bossTimeOverTitle.hasShadow = true;
+			bossTimeOverTitle.shadowColor = { 0.0f, 0.0f, 0.0f, 0.9f };
+			bossTimeOverTitle.align = UITextAlign::Center;
+			bossTimeOverTitle.isVisible = false;
+			textMgr->RegisterText(bossTimeOverTitle, "GAMEPLAY");
+		}
+		if (!textMgr->HasTextItem("BossTimeOverSub", "GAMEPLAY"))
+		{
+			UITextItem bossTimeOverSub;
+			bossTimeOverSub.id = "BossTimeOverSub";
+			bossTimeOverSub.text = "CRITICAL ANNIHILATION ATTACK INCOMING";
+			bossTimeOverSub.position = { 640.0f, 350.0f };
+			bossTimeOverSub.fontSize = 22.0f;
+			bossTimeOverSub.fontType = ImGuiManager::FontType::Japanese_MPLUS;
+			bossTimeOverSub.color = { 1.0f, 0.86f, 0.2f, 1.0f };
+			bossTimeOverSub.hasOutline = true;
+			bossTimeOverSub.outlineThickness = 2.0f;
+			bossTimeOverSub.align = UITextAlign::Center;
+			bossTimeOverSub.isVisible = false;
+			textMgr->RegisterText(bossTimeOverSub, "GAMEPLAY");
+		}
+		if (!textMgr->HasTextItem("BossDefeatedTitle", "GAMEPLAY"))
+		{
+			UITextItem bossDefeated;
+			bossDefeated.id = "BossDefeatedTitle";
+			bossDefeated.text = "TARGET DESTROYED";
+			bossDefeated.position = { 640.0f, 300.0f };
+			bossDefeated.fontSize = 48.0f;
+			bossDefeated.fontType = ImGuiManager::FontType::Japanese_MPLUS;
+			bossDefeated.color = { 1.0f, 0.84f, 0.0f, 1.0f };
+			bossDefeated.hasOutline = true;
+			bossDefeated.outlineThickness = 3.0f;
+			bossDefeated.hasShadow = true;
+			bossDefeated.shadowColor = { 0.0f, 0.0f, 0.0f, 0.85f };
+			bossDefeated.align = UITextAlign::Center;
+			bossDefeated.isVisible = false;
+			textMgr->RegisterText(bossDefeated, "GAMEPLAY");
+		}
+	}
 }
 
 void GamePlayScene::ReloadLevel()
@@ -783,6 +904,13 @@ void GamePlayScene::ReloadLevel()
 	bossDefeatTimer_ = 0.0f;
 	bossDisplayedHpRate_ = 1.0f;
 	bossWarningSirenTimer_ = 0.0f;
+	bossRemainingTime_ = bossTimeLimit_;
+	bossTimeOverTimer_ = 0.0f;
+	isBossTimeOverFired_ = false;
+	if (railCameraController_)
+	{
+		railCameraController_->SetBaseSpeed(50.0f);
+	}
 	if (armoredTrainBoss_)
 	{
 		armoredTrainBoss_->SetActive(false);
@@ -1070,6 +1198,7 @@ void GamePlayScene::SeamlessResetForRetry()
 	enemies_.clear();
 	obstacles_.clear();
 	enhanceRings_.clear();
+	memoryItems_.clear();
 	acquiredEnhanceRingCount_ = 0;
 
 	if (cachedLevelData_ && object3dCommon)
@@ -1088,6 +1217,13 @@ void GamePlayScene::SeamlessResetForRetry()
 	bossDefeatTimer_ = 0.0f;
 	bossDisplayedHpRate_ = 1.0f;
 	bossWarningSirenTimer_ = 0.0f;
+	bossRemainingTime_ = bossTimeLimit_;
+	bossTimeOverTimer_ = 0.0f;
+	isBossTimeOverFired_ = false;
+	if (railCameraController_)
+	{
+		railCameraController_->SetBaseSpeed(50.0f);
+	}
 	if (armoredTrainBoss_)
 	{
 		armoredTrainBoss_->SetActive(false);
@@ -1690,14 +1826,58 @@ void GamePlayScene::Update()
 			armoredTrainBoss_->Update(camPos, cameraForward, playerSpeed, player_.get(), enemyBullets_, gameSpeed_);
 		}
 
+		#if 1
+		Vector3 bombPos = { 0.0f, 0.0f, 0.0f };
+		float bombRadius = 0.0f;
+		bool isBombClearing = player_ && player_->HasActiveBombExplosion(&bombPos, &bombRadius);
+
+		for (auto it = enemyBullets_.begin(); it != enemyBullets_.end(); )
+		{
+			if (isBombClearing)
+			{
+				Vector3 ebPos = (*it)->GetPosition();
+				float bdx = ebPos.x - bombPos.x;
+				float bdy = ebPos.y - bombPos.y;
+				float bdz = ebPos.z - bombPos.z;
+				if (bdx * bdx + bdy * bdy + bdz * bdz <= bombRadius * bombRadius)
+				{
+					it = enemyBullets_.erase(it);
+					continue;
+				}
+			}
+			(*it)->Update(gameSpeed_);
+			if ((*it)->IsDead())
+			{
+				it = enemyBullets_.erase(it);
+			}
+			else
+			{
+				++it;
+			}
+		}
+#endif
 		for (auto& bullet : enemyBullets_)
 		{
-			bullet->Update(gameSpeed_);
+			// bullet->Update(gameSpeed_);
 		}
 
 		for (auto& ring : enhanceRings_)
 		{
 			ring->Update();
+		}
+
+		// メモリドロップアイテムの更新・マグネット吸引・回収判定
+		for (auto it = memoryItems_.begin(); it != memoryItems_.end(); )
+		{
+			(*it)->Update(gameSpeed_, player_.get());
+			if ((*it)->IsDead())
+			{
+				it = memoryItems_.erase(it);
+			}
+			else
+			{
+				++it;
+			}
 		}
 
 		for (auto& obstacle : obstacles_)
@@ -1752,6 +1932,20 @@ void GamePlayScene::Update()
 			enemyKillShakeFrames_ = 2;
 			// 2. 敵撃破座標にスコア加算ポップアップ演出を登録
 			scorePopups_.push_back({ pos, addScore, 0.0f, 0.65f });
+			// 3. 敵撃破時のメモリドロップ（40%の確率でビットメモリをドロップ）
+			static std::mt19937 memRng(1337);
+			std::uniform_real_distribution<float> memDist(0.0f, 1.0f);
+			if (memDist(memRng) < 0.40f) {
+				const MemoryType kDropTypes[] = {
+					MemoryType::CYBER_BIT,
+
+					MemoryType::BOMB,
+					MemoryType::SPREAD,
+
+				};
+				std::uniform_int_distribution<size_t> typeDist(0, 2);
+				SpawnMemoryItem(pos, kDropTypes[typeDist(memRng)]);
+			}
 		};
 
 		if (collisionManager_)
@@ -2574,6 +2768,55 @@ void GamePlayScene::Update()
 				}
 			}
 
+			if (ImGui::CollapsingHeader("メモリドロップデバッグ (Memory Drop)", ImGuiTreeNodeFlags_DefaultOpen))
+			{
+				Vector3 pPos = player_ ? player_->GetWorldPosition() : Vector3{ 0.0f, 0.0f, 0.0f };
+				if (ImGui::Button("ボム (BOMB)"))
+				{
+					if (player_)
+					{
+						SpawnMemoryItem({ pPos.x, pPos.y, pPos.z + 18.0f }, MemoryType::BOMB);
+					}
+				}
+				ImGui::SameLine();
+				if (ImGui::Button("拡散弾 (SPREAD)"))
+				{
+					if (player_)
+					{
+						SpawnMemoryItem({ pPos.x, pPos.y, pPos.z + 18.0f }, MemoryType::SPREAD);
+					}
+				}
+				ImGui::SameLine();
+				if (ImGui::Button("サイバービット (CYBER_BIT)"))
+				{
+					if (player_)
+					{
+						SpawnMemoryItem({ pPos.x, pPos.y, pPos.z + 18.0f }, MemoryType::CYBER_BIT);
+					}
+				}
+
+				{
+					if (player_)
+					{
+
+
+
+					}
+				}
+				ImGui::Text("現在フィールド上のメモリ数: %zu", memoryItems_.size());
+				if (ImGui::Button("フィールド上のメモリを消去 (Clear)"))
+				{
+					memoryItems_.clear();
+				}
+
+				ImGui::SliderFloat("メモリスケール倍率", &MemoryItem::s_ScaleMultiplier, 0.5f, 3.0f, "%.2f");
+				float memCol[4] = { MemoryItem::s_CustomBitColor.x, MemoryItem::s_CustomBitColor.y, MemoryItem::s_CustomBitColor.z, MemoryItem::s_CustomBitColor.w };
+				if (ImGui::ColorEdit4("ビットメモリ発光色", memCol))
+				{
+					MemoryItem::s_CustomBitColor = { memCol[0], memCol[1], memCol[2], memCol[3] };
+				}
+			}
+
 			if (player_)
 			{
 				player_->DrawImGuiContent();
@@ -2696,6 +2939,7 @@ void GamePlayScene::Update()
 				const char* stepStr = "未遭遇 (NOT_ACTIVE)";
 				if (bossBattleStep_ == BossBattleStep::WARNING_ALERT) stepStr = "WARNING警告中 (ALERT)";
 				else if (bossBattleStep_ == BossBattleStep::BATTLE) stepStr = "戦闘中 (BATTLE)";
+				else if (bossBattleStep_ == BossBattleStep::TIME_OVER_ATTACK) stepStr = "タイムオーバー即死攻撃中 (TIME_OVER)";
 				else if (bossBattleStep_ == BossBattleStep::DEFEATED_SEQUENCE) stepStr = "撃破演出中 (DEFEATED)";
 				else if (bossBattleStep_ == BossBattleStep::FINISHED) stepStr = "撃破完了 (FINISHED)";
 				ImGui::Text("ボス戦フェーズ: %s", stepStr);
@@ -2709,6 +2953,13 @@ void GamePlayScene::Update()
 					if (ImGui::Button("即座に出現させる (Instant Spawn)", ImVec2(-1, 28)))
 					{
 						isBossSpawned_ = true;
+			bossRemainingTime_ = bossTimeLimit_;
+			bossTimeOverTimer_ = 0.0f;
+			isBossTimeOverFired_ = false;
+			if (railCameraController_)
+			{
+				railCameraController_->SetBaseSpeed(50.0f);
+			}
 						bossBattleStep_ = BossBattleStep::BATTLE;
 						if (armoredTrainBoss_)
 						{
@@ -3624,6 +3875,12 @@ void GamePlayScene::Draw()
 		ring->Draw();
 	}
 
+	// メモリドロップアイテムの描画
+	for (auto& item : memoryItems_)
+	{
+		if (item) item->Draw();
+	}
+
 
 	if (isDrawCollider_ || isDrawTerrainWireframe_)
 	{
@@ -3661,7 +3918,38 @@ void GamePlayScene::Draw()
 			{
 				missile->DrawCollider();
 			}
-			for (auto& bullet : enemyBullets_)
+
+			#if 0
+		Vector3 bombPos = { 0.0f, 0.0f, 0.0f };
+		float bombRadius = 0.0f;
+		bool isBombClearing = player_ && player_->HasActiveBombExplosion(&bombPos, &bombRadius);
+
+		for (auto it = enemyBullets_.begin(); it != enemyBullets_.end(); )
+		{
+			if (isBombClearing)
+			{
+				Vector3 ebPos = (*it)->GetPosition();
+				float bdx = ebPos.x - bombPos.x;
+				float bdy = ebPos.y - bombPos.y;
+				float bdz = ebPos.z - bombPos.z;
+				if (bdx * bdx + bdy * bdy + bdz * bdz <= bombRadius * bombRadius)
+				{
+					it = enemyBullets_.erase(it);
+					continue;
+				}
+			}
+			(*it)->Update(gameSpeed_);
+			if ((*it)->IsDead())
+			{
+				it = enemyBullets_.erase(it);
+			}
+			else
+			{
+				++it;
+			}
+		}
+#endif
+		for (auto& bullet : enemyBullets_)
 			{
 				bullet->DrawCollider();
 			}
@@ -6411,6 +6699,13 @@ void GamePlayScene::StartBossWarningSequence()
 	bossBattleStep_ = BossBattleStep::WARNING_ALERT;
 	bossWarningTimer_ = 0.0f;
 	bossWarningSirenTimer_ = 0.0f;
+	bossRemainingTime_ = bossTimeLimit_;
+	bossTimeOverTimer_ = 0.0f;
+	isBossTimeOverFired_ = false;
+	if (railCameraController_)
+	{
+		railCameraController_->SetBaseSpeed(50.0f);
+	}
 	cameraShakeTimer_ = 0.6f;
 
 
@@ -6456,6 +6751,13 @@ void GamePlayScene::UpdateBossBattle(float dt)
 		{
 			bossBattleStep_ = BossBattleStep::BATTLE;
 			isBossSpawned_ = true;
+			bossRemainingTime_ = bossTimeLimit_;
+			bossTimeOverTimer_ = 0.0f;
+			isBossTimeOverFired_ = false;
+			if (railCameraController_)
+			{
+				railCameraController_->SetBaseSpeed(50.0f);
+			}
 			if (armoredTrainBoss_)
 			{
 				armoredTrainBoss_->SetActive(true);
@@ -6466,6 +6768,39 @@ void GamePlayScene::UpdateBossBattle(float dt)
 	}
 	else if (bossBattleStep_ == BossBattleStep::BATTLE)
 	{
+		// 1. レール終端接近チェック（0.98f到達で進行不能となるのを完全防止）
+		bool reachRailEnd = false;
+		if (railCameraController_ && railCameraController_->GetProgress() >= 0.98f)
+		{
+			reachRailEnd = true;
+		}
+
+		// 2. ボス戦制限時間のカウントダウン
+		bossRemainingTime_ -= dt;
+
+		// 残り10秒以下でのサイレン警告演出
+		if (bossRemainingTime_ <= 10.0f && bossRemainingTime_ > 0.0f)
+		{
+			static float lowTimeAlarmTimer = 0.0f;
+			lowTimeAlarmTimer += dt;
+			if (lowTimeAlarmTimer >= 1.0f)
+			{
+				lowTimeAlarmTimer = 0.0f;
+				SoundManager::GetInstance()->PlaySE("Alarm01.wav", 0.65f);
+			}
+		}
+
+		// 3. タイムオーバー判定（時間切れ または レール終端到達 -> 即死殲滅攻撃シークエンス発動！）
+		if (bossRemainingTime_ <= 0.0f || reachRailEnd)
+		{
+			bossRemainingTime_ = 0.0f;
+			bossBattleStep_ = BossBattleStep::TIME_OVER_ATTACK;
+			bossTimeOverTimer_ = 0.0f;
+			isBossTimeOverFired_ = false;
+			cameraShakeTimer_ = 0.8f;
+			SoundManager::GetInstance()->PlaySE("Alarm01.wav", 1.0f);
+		}
+
 		if (armoredTrainBoss_)
 		{
 			// HPゲージのスムーズ遅延追従（格闘ゲーム風のダメージ可視化演出）
@@ -6484,8 +6819,52 @@ void GamePlayScene::UpdateBossBattle(float dt)
 			}
 		}
 	}
+	else if (bossBattleStep_ == BossBattleStep::TIME_OVER_ATTACK)
+	{
+		bossTimeOverTimer_ += dt;
+
+		// タイムオーバー即死攻撃チャージ中（激しいカメラ振動・チャージ予兆）
+		float chargeRatio = std::clamp(bossTimeOverTimer_ / 1.4f, 0.0f, 1.0f);
+		cameraShakeTimer_ = 0.25f + 0.5f * chargeRatio;
+
+		// 即死攻撃発射（1.4秒後：大閃光・極大爆発直撃）
+		if (bossTimeOverTimer_ >= 1.4f && !isBossTimeOverFired_)
+		{
+			isBossTimeOverFired_ = true;
+			SoundManager::GetInstance()->PlaySE("explosion.mp3", 1.0f);
+			cameraShakeTimer_ = 1.8f;
+
+			// プレイヤー位置に特大爆発エフェクトを発生（即座にHP0にせず、爆発演出をしっかり見せる）
+			if (player_ && player_->GetObject3d())
+			{
+				Vector3 pPos = player_->GetObject3d()->GetTranslate();
+				explosionEffect_.SetPosition(pPos);
+				explosionEffect_.Play();
+			}
+		}
+
+		// 即死演出完了後（3.5秒後）、HPをゼロにしてスムーズにゲームオーバー画面へ移行
+		if (bossTimeOverTimer_ >= kBossTimeOverDuration)
+		{
+			bossBattleStep_ = BossBattleStep::FINISHED;
+			if (player_)
+			{
+				player_->SetHp(0);
+			}
+			if (gamePhase_ == GamePhase::PLAYING)
+			{
+				StartGameOverSequence();
+			}
+		}
+	}
 	else if (bossBattleStep_ == BossBattleStep::DEFEATED_SEQUENCE)
 	{
+		// 繝懊せ謦・ｴ譎ゅ・繝ｬ繝ｼ繝ｫ騾溷ｺｦ繧帝壼ｸｸ騾溷ｺｦ縺ｸ蠕ｩ蟶ｰ
+		if (railCameraController_)
+		{
+			railCameraController_->SetBaseSpeed(50.0f);
+		}
+
 		bossDefeatTimer_ += dt;
 
 		// 連続大爆発演出（0.12秒ごと）
@@ -6549,6 +6928,7 @@ void GamePlayScene::DrawBossUI()
 	drawList->PushClipRect(viewPos, ImVec2(viewPos.x + screenW, viewPos.y + screenH), true);
 
 	auto imguiManager = EngineServices::GetInstance()->GetImGuiManager();
+	auto textMgr = UITextManager::GetInstance();
 	ImFont* fontMplus = imguiManager ? imguiManager->GetFont(ImGuiManager::FontType::Japanese_MPLUS) : ImGui::GetFont();
 	if (!fontMplus) fontMplus = ImGui::GetFont();
 
@@ -6602,11 +6982,22 @@ void GamePlayScene::DrawBossUI()
 			);
 		}
 
-		// 中央の「WARNING」テキスト描画
-		const char* warnTitle = "WARNING";
-		float titleFontSize = (54.0f + 6.0f * pulse) * scale;
-		ImVec2 titleSize = fontMplus->CalcTextSizeA(titleFontSize, FLT_MAX, -1.0f, warnTitle);
-		ImVec2 titlePos(viewPos.x + (screenW - titleSize.x) * 0.5f, viewPos.y + screenH * 0.40f - titleSize.y * 0.5f);
+		// 中央の「WARNING」テキスト描画（JSON設定連動）
+		const UITextItem* warnItem = textMgr ? textMgr->GetTextItem("BossWarningTitle", "GAMEPLAY") : nullptr;
+		const char* warnTitle = (warnItem && !warnItem->text.empty()) ? warnItem->text.c_str() : "WARNING";
+		float titleFontSize = (warnItem ? warnItem->fontSize : 58.0f) * scale + (6.0f * pulse * scale);
+		ImFont* warnFont = (warnItem && imguiManager) ? imguiManager->GetFont(warnItem->fontType) : fontMplus;
+		if (!warnFont) warnFont = fontMplus;
+
+		ImVec2 titleSize = warnFont->CalcTextSizeA(titleFontSize, FLT_MAX, -1.0f, warnTitle);
+		float warnX = viewPos.x + (screenW - titleSize.x) * 0.5f;
+		float warnY = viewPos.y + screenH * 0.40f - titleSize.y * 0.5f;
+		if (warnItem)
+		{
+			warnX = viewPos.x + warnItem->position.x * (screenW / 1280.0f) - titleSize.x * 0.5f;
+			warnY = viewPos.y + warnItem->position.y * (screenH / 720.0f) - titleSize.y * 0.5f;
+		}
+		ImVec2 titlePos(warnX, warnY);
 
 		// テキストシャドウ・アウトライン
 		float thick = 3.0f * scale;
@@ -6614,29 +7005,52 @@ void GamePlayScene::DrawBossUI()
 		{
 			for (float oy = -thick; oy <= thick; oy += thick)
 			{
-				drawList->AddText(fontMplus, titleFontSize, ImVec2(titlePos.x + ox, titlePos.y + oy), IM_COL32(0, 0, 0, 255), warnTitle);
+				drawList->AddText(warnFont, titleFontSize, ImVec2(titlePos.x + ox, titlePos.y + oy), IM_COL32(0, 0, 0, 255), warnTitle);
 			}
 		}
-		ImU32 warnCol = pulse > 0.3f ? IM_COL32(255, 40, 40, 255) : IM_COL32(255, 220, 50, 255);
-		drawList->AddText(fontMplus, titleFontSize, titlePos, warnCol, warnTitle);
+				ImU32 warnCol = warnItem ? (ImU32)ImColor(warnItem->color.x, warnItem->color.y, warnItem->color.z, warnItem->color.w * (0.65f + 0.35f * pulse)) : (pulse > 0.3f ? IM_COL32(255, 40, 40, 255) : IM_COL32(255, 220, 50, 255));
+		if (warnItem && warnItem->hasShadow)
+		{
+			ImU32 sCol = (ImU32)ImColor(warnItem->shadowColor.x, warnItem->shadowColor.y, warnItem->shadowColor.z, warnItem->shadowColor.w);
+			drawList->AddText(warnFont, titleFontSize, ImVec2(titlePos.x + warnItem->shadowOffset.x * scale, titlePos.y + warnItem->shadowOffset.y * scale), sCol, warnTitle);
+		}
+		drawList->AddText(warnFont, titleFontSize, titlePos, warnCol, warnTitle);
 
-		// サブテキスト「EMERGENCY: MASSIVE ARMORED TRAIN DETECTED」
-		const char* subText = "EMERGENCY: MASSIVE ARMORED TRAIN DETECTED";
-		float subFontSize = 22.0f * scale;
-		ImVec2 subSize = fontMplus->CalcTextSizeA(subFontSize, FLT_MAX, -1.0f, subText);
-		ImVec2 subPos(viewPos.x + (screenW - subSize.x) * 0.5f, titlePos.y + titleSize.y + 12.0f * scale);
+		// サブテキスト「EMERGENCY: MASSIVE ARMORED TRAIN DETECTED」（JSON設定連動）
+		const UITextItem* subItem = textMgr ? textMgr->GetTextItem("BossWarningSub", "GAMEPLAY") : nullptr;
+		const char* subText = (subItem && !subItem->text.empty()) ? subItem->text.c_str() : "EMERGENCY: MASSIVE ARMORED TRAIN DETECTED";
+		float subFontSize = (subItem ? subItem->fontSize : 22.0f) * scale;
+		ImFont* subFont = (subItem && imguiManager) ? imguiManager->GetFont(subItem->fontType) : fontMplus;
+		if (!subFont) subFont = fontMplus;
+
+		ImVec2 subSize = subFont->CalcTextSizeA(subFontSize, FLT_MAX, -1.0f, subText);
+		float subX = viewPos.x + (screenW - subSize.x) * 0.5f;
+		float subY = titlePos.y + titleSize.y + 12.0f * scale;
+		if (subItem)
+		{
+			subX = viewPos.x + subItem->position.x * (screenW / 1280.0f) - subSize.x * 0.5f;
+			subY = viewPos.y + subItem->position.y * (screenH / 720.0f);
+		}
+		ImVec2 subPos(subX, subY);
+
 		for (float ox = -2.0f; ox <= 2.0f; ox += 2.0f)
 		{
 			for (float oy = -2.0f; oy <= 2.0f; oy += 2.0f)
 			{
-				drawList->AddText(fontMplus, subFontSize, ImVec2(subPos.x + ox, subPos.y + oy), IM_COL32(0, 0, 0, 220), subText);
+				drawList->AddText(subFont, subFontSize, ImVec2(subPos.x + ox, subPos.y + oy), IM_COL32(0, 0, 0, 220), subText);
 			}
 		}
-		drawList->AddText(fontMplus, subFontSize, subPos, IM_COL32(255, 240, 240, 240), subText);
+				if (subItem && subItem->hasShadow)
+		{
+			ImU32 sCol = (ImU32)ImColor(subItem->shadowColor.x, subItem->shadowColor.y, subItem->shadowColor.z, subItem->shadowColor.w);
+			drawList->AddText(subFont, subFontSize, ImVec2(subPos.x + subItem->shadowOffset.x * scale, subPos.y + subItem->shadowOffset.y * scale), sCol, subText);
+		}
+		ImU32 subCol = subItem ? (ImU32)ImColor(subItem->color.x, subItem->color.y, subItem->color.z, subItem->color.w) : IM_COL32(255, 240, 240, 240);
+		drawList->AddText(subFont, subFontSize, subPos, subCol, subText);
 	}
 
 	// 2. ボスHPゲージUI（戦闘中・撃破演出中）
-	if ((bossBattleStep_ == BossBattleStep::BATTLE || bossBattleStep_ == BossBattleStep::DEFEATED_SEQUENCE) && armoredTrainBoss_)
+	if ((bossBattleStep_ == BossBattleStep::BATTLE || bossBattleStep_ == BossBattleStep::TIME_OVER_ATTACK || bossBattleStep_ == BossBattleStep::DEFEATED_SEQUENCE) && armoredTrainBoss_)
 	{
 		float barW = 600.0f * scale;
 		float barH = 18.0f * scale;
@@ -6646,22 +7060,33 @@ void GamePlayScene::DrawBossUI()
 		float realHpRate = (std::clamp)(armoredTrainBoss_->GetTotalHpRate(), 0.0f, 1.0f);
 		float delayHpRate = (std::clamp)(bossDisplayedHpRate_, 0.0f, 1.0f);
 
-		// ボス名タイトル：「BOSS: ARMORED TRAIN "BEHEMOTH"」
-		const char* bossTitle = "BOSS: ARMORED TRAIN \"BEHEMOTH\"";
-		float bossTitleFontSize = 18.0f * scale;
-		ImVec2 bossTitlePos(barX, barY - 24.0f * scale);
+		// ボス名タイトル（JSON設定連動、デフォルト: BOSS: ARMORED TRAIN "BEHEMOTH"）
+		const UITextItem* titleItem = textMgr ? textMgr->GetTextItem("BossTitle", "GAMEPLAY") : nullptr;
+		const char* bossTitle = (titleItem && !titleItem->text.empty()) ? titleItem->text.c_str() : "BOSS: ARMORED TRAIN \"BEHEMOTH\"";
+		float bossTitleFontSize = (titleItem ? titleItem->fontSize : 20.0f) * scale;
+		ImFont* titleFont = (titleItem && imguiManager) ? imguiManager->GetFont(titleItem->fontType) : fontMplus;
+		if (!titleFont) titleFont = fontMplus;
+
+		ImVec2 bossTitlePos(barX, barY - 26.0f * scale);
+		if (titleItem)
+		{
+			bossTitlePos.x = viewPos.x + titleItem->position.x * (screenW / 1280.0f);
+			bossTitlePos.y = viewPos.y + titleItem->position.y * (screenH / 720.0f);
+		}
+
 		// 黒アウトライン
-		drawList->AddText(fontMplus, bossTitleFontSize, ImVec2(bossTitlePos.x + 1.5f, bossTitlePos.y + 1.5f), IM_COL32(0, 0, 0, 255), bossTitle);
-		drawList->AddText(fontMplus, bossTitleFontSize, ImVec2(bossTitlePos.x - 1.5f, bossTitlePos.y - 1.5f), IM_COL32(0, 0, 0, 255), bossTitle);
-		drawList->AddText(fontMplus, bossTitleFontSize, bossTitlePos, IM_COL32(255, 90, 80, 255), bossTitle);
+		drawList->AddText(titleFont, bossTitleFontSize, ImVec2(bossTitlePos.x + 1.5f, bossTitlePos.y + 1.5f), IM_COL32(0, 0, 0, 255), bossTitle);
+		drawList->AddText(titleFont, bossTitleFontSize, ImVec2(bossTitlePos.x - 1.5f, bossTitlePos.y - 1.5f), IM_COL32(0, 0, 0, 255), bossTitle);
+		ImU32 titleCol = titleItem ? (ImU32)ImColor(titleItem->color.x, titleItem->color.y, titleItem->color.z, titleItem->color.w) : IM_COL32(255, 90, 80, 255);
+		drawList->AddText(titleFont, bossTitleFontSize, bossTitlePos, titleCol, bossTitle);
 
 		// HPパーセント表示（右揃え）
 		char hpPercentBuf[32];
 		snprintf(hpPercentBuf, sizeof(hpPercentBuf), "HP %3.0f%%", realHpRate * 100.0f);
-		ImVec2 hpTxtSize = fontMplus->CalcTextSizeA(bossTitleFontSize, FLT_MAX, -1.0f, hpPercentBuf);
-		ImVec2 hpTxtPos(barX + barW - hpTxtSize.x, barY - 24.0f * scale);
-		drawList->AddText(fontMplus, bossTitleFontSize, ImVec2(hpTxtPos.x + 1.5f, hpTxtPos.y + 1.5f), IM_COL32(0, 0, 0, 255), hpPercentBuf);
-		drawList->AddText(fontMplus, bossTitleFontSize, hpTxtPos, IM_COL32(255, 230, 200, 255), hpPercentBuf);
+		ImVec2 hpTxtSize = titleFont->CalcTextSizeA(bossTitleFontSize, FLT_MAX, -1.0f, hpPercentBuf);
+		ImVec2 hpTxtPos(barX + barW - hpTxtSize.x, barY - 26.0f * scale);
+		drawList->AddText(titleFont, bossTitleFontSize, ImVec2(hpTxtPos.x + 1.5f, hpTxtPos.y + 1.5f), IM_COL32(0, 0, 0, 255), hpPercentBuf);
+		drawList->AddText(titleFont, bossTitleFontSize, hpTxtPos, IM_COL32(255, 230, 200, 255), hpPercentBuf);
 
 		// 外枠シャドウ
 		drawList->AddRectFilled(ImVec2(barX - 3.0f, barY - 3.0f), ImVec2(barX + barW + 3.0f, barY + barH + 3.0f), IM_COL32(0, 0, 0, 200), 3.0f);
@@ -6746,28 +7171,167 @@ void GamePlayScene::DrawBossUI()
 			}
 		}
 
-		// 撃破演出中の「TARGET DESTROYED」テキスト表示
-		if (bossBattleStep_ == BossBattleStep::DEFEATED_SEQUENCE)
+		// 4. ボス戦制限時間タイマー表示（戦闘中・タイムオーバー時：JSON設定連動 ＆ 超大型ハイビジビリティ表示！）
+		if (bossBattleStep_ == BossBattleStep::BATTLE || bossBattleStep_ == BossBattleStep::TIME_OVER_ATTACK)
 		{
-			const char* clearText = "TARGET DESTROYED";
-			float dFontSize = 46.0f * scale;
-			ImVec2 dSize = fontMplus->CalcTextSizeA(dFontSize, FLT_MAX, -1.0f, clearText);
-			ImVec2 dPos(viewPos.x + (screenW - dSize.x) * 0.5f, viewPos.y + screenH * 0.42f);
+			const UITextItem* timerItem = textMgr ? textMgr->GetTextItem("BossTimer", "GAMEPLAY") : nullptr;
+
+			int minutes = static_cast<int>(bossRemainingTime_) / 60;
+			float seconds = std::fmod(bossRemainingTime_, 60.0f);
+			if (seconds < 0.0f) seconds = 0.0f;
+
+			char timerDigits[32];
+			snprintf(timerDigits, sizeof(timerDigits), "%02d:%04.1f", minutes, seconds);
+
+			std::string label = (timerItem && !timerItem->text.empty()) ? timerItem->text : "TIME LIMIT";
+			std::string fullTimerStr = label + "  " + timerDigits;
+
+			// フォントサイズは設定ファイルから取得（デフォルト 28px で大きく見やすい！）
+			float tFontSize = (timerItem ? timerItem->fontSize : 28.0f) * scale;
+			ImFont* timerFont = (timerItem && imguiManager) ? imguiManager->GetFont(timerItem->fontType) : (imguiManager ? imguiManager->GetFont(ImGuiManager::FontType::English_FiraMono) : fontMplus);
+			if (!timerFont) timerFont = fontMplus;
+
+			ImVec2 tSize = timerFont->CalcTextSizeA(tFontSize, FLT_MAX, -1.0f, fullTimerStr.c_str());
+
+			float timeY = barY + barH + 34.0f * scale;
+			float timeX = barX + (barW - tSize.x) * 0.5f;
+			if (timerItem)
+			{
+				timeX = viewPos.x + timerItem->position.x * (screenW / 1280.0f) - tSize.x * 0.5f;
+				timeY = viewPos.y + timerItem->position.y * (screenH / 720.0f);
+			}
+			ImVec2 tPos(timeX, timeY);
+
+			// 色の決定（通常: 設定ファイル色 or シアン、20秒以下: オレンジ、10秒以下: 赤点滅パルス）
+			ImU32 timerCol = timerItem ? (ImU32)ImColor(timerItem->color.x, timerItem->color.y, timerItem->color.z, timerItem->color.w) : IM_COL32(0, 235, 215, 240);
+			if (bossRemainingTime_ <= 10.0f)
+			{
+				float pulse = 0.5f + 0.5f * std::sin(bossTimeOverTimer_ * 16.0f + bossRemainingTime_ * 12.0f);
+				timerCol = (pulse > 0.4f) ? IM_COL32(255, 30, 30, 255) : IM_COL32(255, 200, 40, 200);
+			}
+			else if (bossRemainingTime_ <= 20.0f)
+			{
+				timerCol = IM_COL32(255, 160, 40, 255);
+			}
+
+			// タイマー背景ピル枠（フォント拡大に合わせてパディングも大きく）
+			float pillPadX = 22.0f * scale;
+			float pillPadY = 6.0f * scale;
+			drawList->AddRectFilled(
+				ImVec2(tPos.x - pillPadX, tPos.y - pillPadY),
+				ImVec2(tPos.x + tSize.x + pillPadX, tPos.y + tSize.y + pillPadY),
+				IM_COL32(10, 16, 22, 225), 6.0f * scale
+			);
+			drawList->AddRect(
+				ImVec2(tPos.x - pillPadX, tPos.y - pillPadY),
+				ImVec2(tPos.x + tSize.x + pillPadX, tPos.y + tSize.y + pillPadY),
+				timerCol, 6.0f * scale, 0, 1.8f * scale
+			);
+
+			// タイマーアウトライン（黒極太で高コントラスト）
+			float thick = 2.4f * scale;
+			for (float ox = -thick; ox <= thick; ox += thick)
+			{
+				for (float oy = -thick; oy <= thick; oy += thick)
+				{
+					drawList->AddText(timerFont, tFontSize, ImVec2(tPos.x + ox, tPos.y + oy), IM_COL32(0, 0, 0, 255), fullTimerStr.c_str());
+				}
+			}
+			drawList->AddText(timerFont, tFontSize, tPos, timerCol, fullTimerStr.c_str());
+		}
+
+		// 5. タイムオーバー即死攻撃時の全画面警告アナウンス（JSON設定連動）
+		if (bossBattleStep_ == BossBattleStep::TIME_OVER_ATTACK)
+		{
+			float pulse = 0.5f + 0.5f * std::sin(bossTimeOverTimer_ * 18.0f);
+			int flashA = static_cast<int>(40.0f + 50.0f * pulse);
+			drawList->AddRectFilled(viewPos, ImVec2(viewPos.x + screenW, viewPos.y + screenH), IM_COL32(255, 10, 10, flashA));
+
+			const UITextItem* toTitleItem = textMgr ? textMgr->GetTextItem("BossTimeOverTitle", "GAMEPLAY") : nullptr;
+			const char* toTitle = (toTitleItem && !toTitleItem->text.empty()) ? toTitleItem->text.c_str() : "TIME OVER";
+			float toFontSize = (toTitleItem ? toTitleItem->fontSize : 68.0f) * scale;
+			ImFont* toTitleFont = (toTitleItem && imguiManager) ? imguiManager->GetFont(toTitleItem->fontType) : fontMplus;
+			if (!toTitleFont) toTitleFont = fontMplus;
+
+			ImVec2 toSize = toTitleFont->CalcTextSizeA(toFontSize, FLT_MAX, -1.0f, toTitle);
+			float toX = viewPos.x + (screenW - toSize.x) * 0.5f;
+			float toY = viewPos.y + screenH * 0.38f - toSize.y * 0.5f;
+			if (toTitleItem)
+			{
+				toX = viewPos.x + toTitleItem->position.x * (screenW / 1280.0f) - toSize.x * 0.5f;
+				toY = viewPos.y + toTitleItem->position.y * (screenH / 720.0f) - toSize.y * 0.5f;
+			}
+			ImVec2 toPos(toX, toY);
 
 			for (float ox = -3.0f; ox <= 3.0f; ox += 3.0f)
 			{
 				for (float oy = -3.0f; oy <= 3.0f; oy += 3.0f)
 				{
-					drawList->AddText(fontMplus, dFontSize, ImVec2(dPos.x + ox, dPos.y + oy), IM_COL32(0, 0, 0, 255), clearText);
+					drawList->AddText(toTitleFont, toFontSize, ImVec2(toPos.x + ox, toPos.y + oy), IM_COL32(0, 0, 0, 255), toTitle);
 				}
 			}
-			drawList->AddText(fontMplus, dFontSize, dPos, IM_COL32(255, 215, 0, 255), clearText);
+			ImU32 toTitleCol = toTitleItem ? (ImU32)ImColor(toTitleItem->color.x, toTitleItem->color.y, toTitleItem->color.z, toTitleItem->color.w) : IM_COL32(255, 30, 30, 255);
+			drawList->AddText(toTitleFont, toFontSize, toPos, toTitleCol, toTitle);
+
+			const UITextItem* toSubItem = textMgr ? textMgr->GetTextItem("BossTimeOverSub", "GAMEPLAY") : nullptr;
+			const char* toSub = (toSubItem && !toSubItem->text.empty()) ? toSubItem->text.c_str() : "CRITICAL ANNIHILATION ATTACK INCOMING";
+			float toSubSize = (toSubItem ? toSubItem->fontSize : 22.0f) * scale;
+			ImFont* toSubFont = (toSubItem && imguiManager) ? imguiManager->GetFont(toSubItem->fontType) : fontMplus;
+			if (!toSubFont) toSubFont = fontMplus;
+
+			ImVec2 toSubS = toSubFont->CalcTextSizeA(toSubSize, FLT_MAX, -1.0f, toSub);
+			float toSubX = viewPos.x + (screenW - toSubS.x) * 0.5f;
+			float toSubY = toPos.y + toSize.y + 10.0f * scale;
+			if (toSubItem)
+			{
+				toSubX = viewPos.x + toSubItem->position.x * (screenW / 1280.0f) - toSubS.x * 0.5f;
+				toSubY = viewPos.y + toSubItem->position.y * (screenH / 720.0f);
+			}
+			ImVec2 toSubPos(toSubX, toSubY);
+
+			drawList->AddText(toSubFont, toSubSize, ImVec2(toSubPos.x + 1.5f, toSubPos.y + 1.5f), IM_COL32(0, 0, 0, 255), toSub);
+			ImU32 toSubCol = toSubItem ? (ImU32)ImColor(toSubItem->color.x, toSubItem->color.y, toSubItem->color.z, toSubItem->color.w) : IM_COL32(255, 220, 50, 255);
+			drawList->AddText(toSubFont, toSubSize, toSubPos, toSubCol, toSub);
+		}
+
+		// 6. 撃破演出中の「TARGET DESTROYED」テキスト表示（JSON設定連動）
+		if (bossBattleStep_ == BossBattleStep::DEFEATED_SEQUENCE)
+		{
+			const UITextItem* defItem = textMgr ? textMgr->GetTextItem("BossDefeatedTitle", "GAMEPLAY") : nullptr;
+			const char* clearText = (defItem && !defItem->text.empty()) ? defItem->text.c_str() : "TARGET DESTROYED";
+			float dFontSize = (defItem ? defItem->fontSize : 48.0f) * scale;
+			ImFont* defFont = (defItem && imguiManager) ? imguiManager->GetFont(defItem->fontType) : fontMplus;
+			if (!defFont) defFont = fontMplus;
+
+			ImVec2 dSize = defFont->CalcTextSizeA(dFontSize, FLT_MAX, -1.0f, clearText);
+			float dX = viewPos.x + (screenW - dSize.x) * 0.5f;
+			float dY = viewPos.y + screenH * 0.42f;
+			if (defItem)
+			{
+				dX = viewPos.x + defItem->position.x * (screenW / 1280.0f) - dSize.x * 0.5f;
+				dY = viewPos.y + defItem->position.y * (screenH / 720.0f);
+			}
+			ImVec2 dPos(dX, dY);
+
+			for (float ox = -3.0f; ox <= 3.0f; ox += 3.0f)
+			{
+				for (float oy = -3.0f; oy <= 3.0f; oy += 3.0f)
+				{
+					drawList->AddText(defFont, dFontSize, ImVec2(dPos.x + ox, dPos.y + oy), IM_COL32(0, 0, 0, 255), clearText);
+				}
+			}
+			ImU32 defCol = defItem ? (ImU32)ImColor(defItem->color.x, defItem->color.y, defItem->color.z, defItem->color.w) : IM_COL32(255, 215, 0, 255);
+			drawList->AddText(defFont, dFontSize, dPos, defCol, clearText);
 		}
 	}
 
 	drawList->PopClipRect();
 #endif
 }
+
+
+
+
 
 void GamePlayScene::LoadBossSettings()
 {
@@ -7035,4 +7599,12 @@ void GamePlayScene::DrawPauseUI()
 
 	drawList->PopClipRect();
 #endif
+}
+
+void GamePlayScene::SpawnMemoryItem(const Vector3& pos, MemoryType type)
+{
+	auto object3dCommon = EngineServices::GetInstance()->GetObject3dCommon();
+	auto item = std::make_unique<MemoryItem>();
+	item->Initialize(object3dCommon, pos, type);
+	memoryItems_.push_back(std::move(item));
 }
