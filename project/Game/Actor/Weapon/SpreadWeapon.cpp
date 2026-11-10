@@ -9,8 +9,8 @@
 void SpreadWeapon::Initialize(Player* owner, Object3dCommon* object3dCommon) {
     owner_ = owner;
     object3dCommon_ = object3dCommon;
-    ammo_ = 30;
-    maxAmmo_ = 30;
+    ammo_ = 10;
+    maxAmmo_ = 10;
     attackTimer_ = 0.0f;
     attackInterval_ = 10.0f; // 小気味よい連射テンポ（秒間6射）
     bulletSpeed_ = 9.5f;

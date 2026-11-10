@@ -27,13 +27,15 @@ public:
         return maxAmmo_ > 0 ? (static_cast<float>(ammo_) / static_cast<float>(maxAmmo_)) : 0.0f;
     }
     std::string GetAmmoText() const override;
+    int GetAmmo() const override { return ammo_; }
+    int GetMaxAmmo() const override { return maxAmmo_; }
 
 private:
     Player* owner_ = nullptr;
     Object3dCommon* object3dCommon_ = nullptr;
 
-    int ammo_ = 30;
-    int maxAmmo_ = 30;
+    int ammo_ = 10;
+    int maxAmmo_ = 10;
     float attackTimer_ = 0.0f;
     float attackInterval_ = 14.0f;
     float bulletSpeed_ = 8.5f;

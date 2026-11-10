@@ -43,6 +43,8 @@ public:
         return maxAmmo_ > 0 ? (static_cast<float>(ammo_) / static_cast<float>(maxAmmo_)) : 0.0f;
     }
     std::string GetAmmoText() const override;
+    int GetAmmo() const override { return ammo_; }
+    int GetMaxAmmo() const override { return maxAmmo_; }
 
     // 現在爆発中のボムがあるか判定
     bool HasActiveExplosion(Vector3* outPos = nullptr, float* outRadius = nullptr) const;

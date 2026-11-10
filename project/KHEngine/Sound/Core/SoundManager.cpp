@@ -48,13 +48,6 @@ void SoundManager::Finalize()
 
 	StopBGM();
 	StopAllSE();
-	soundCache_.clear();
-
-	HRESULT result;
-
-	// Media Foundationの終了処理
-	result = MFShutdown();
-	assert(SUCCEEDED(result));
 
 	// マスターボイスの破棄（xAudio2が有効な場合のみ）
 	if (masteringVoice && xAudio2)
@@ -68,6 +61,13 @@ void SoundManager::Finalize()
 		xAudio2->CommitChanges(0); // 0は全ての変更を即時反映
 		xAudio2->StopEngine();     // エンジン停止で内部スレッド終了を待つ
 	}
+
+	// オーディオエンジンの完全停止後にサウンドバッファを安全に解放
+	soundCache_.clear();
+
+	// Media Foundationの終了処理
+	HRESULT result = MFShutdown();
+	assert(SUCCEEDED(result));
 
 	// XAudio2の解放
 	xAudio2.Reset();

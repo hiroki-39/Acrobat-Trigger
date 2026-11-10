@@ -150,6 +150,9 @@ public:
     const WeaponManager* GetWeaponManager() const { return &weaponManager_; }
     void EquipMemory(MemoryType type) { weaponManager_.EquipWeapon(type); }
     void PurgeMemory() { weaponManager_.PurgeMemory(); }
+    MemoryType GetEquippedMemoryType() const { return weaponManager_.GetCurrentType(); }
+    int GetWeaponAmmo() const { return weaponManager_.GetAmmo(); }
+    int GetWeaponMaxAmmo() const { return weaponManager_.GetMaxAmmo(); }
 
     void SetLockOn(bool isLockOn, const Vector3& targetPos = { 0, 0, 0 }, Enemy* targetEnemy = nullptr) {
         isLockOn_ = isLockOn;

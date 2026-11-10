@@ -179,7 +179,7 @@ private:
 
 	// 外部からインスタンス生成させない
 	SoundManager() = default;
-	~SoundManager() = default;
+	~SoundManager() { Finalize(); }
 	SoundManager(const SoundManager&) = delete;
 	SoundManager& operator=(const SoundManager&) = delete;
 

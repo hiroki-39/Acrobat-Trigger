@@ -82,15 +82,15 @@ public:
     }
     std::string GetAmmoText() const override;
 
-    int GetAmmo() const { return ammo_; }
-    int GetMaxAmmo() const { return maxAmmo_; }
+    int GetAmmo() const override { return ammo_; }
+    int GetMaxAmmo() const override { return maxAmmo_; }
 
 private:
     Player* owner_ = nullptr;
     Object3dCommon* object3dCommon_ = nullptr;
 
-    int ammo_ = 24;            // 残弾数
-    int maxAmmo_ = 24;         // 最大弾数
+    int ammo_ = 12;            // 残弾数
+    int maxAmmo_ = 12;         // 最大弾数
     int maxSimultaneous_ = 4;  // 同時ロックオン可能数（4基のファンネル）
 
     std::array<BitUnit, BIT_COUNT> bits_;

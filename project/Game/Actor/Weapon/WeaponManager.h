@@ -49,6 +49,8 @@ public:
 
     float GetRemainingRatio() const;
     std::string GetAmmoText() const;
+    int GetAmmo() const { return currentWeapon_ ? currentWeapon_->GetAmmo() : 0; }
+    int GetMaxAmmo() const { return currentWeapon_ ? currentWeapon_->GetMaxAmmo() : 0; }
 
 private:
     Player* owner_ = nullptr;

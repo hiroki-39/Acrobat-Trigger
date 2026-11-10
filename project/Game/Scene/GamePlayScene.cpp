@@ -1,4 +1,4 @@
-﻿#define NOMINMAX
+#define NOMINMAX
 #include "GamePlayScene.h"
 #include "KHEngine/Core/Services/EngineServices.h"
 #include "KHEngine/Core/Utility/Log/Logger.h"
@@ -2408,9 +2408,46 @@ void GamePlayScene::Update()
 			snprintf(scoreStr, sizeof(scoreStr), "SCORE: %06d", score_);
 			UITextManager::GetInstance()->SetText("Score", scoreStr);
 
-			char lockOnStr[64];
-			snprintf(lockOnStr, sizeof(lockOnStr), "LOCK ON: %zu / %d", player_->GetLockedEnemyCount(), player_->GetMaxMissiles());
-			UITextManager::GetInstance()->SetText("LockOn", lockOnStr);
+			// 武器形態（メモリタイプ）に応じた残弾テキストおよびカラー表示
+			char weaponStr[64] = "";
+			Vector4 weaponColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+			MemoryType memType = player_->GetEquippedMemoryType();
+			int currentAmmo = player_->GetWeaponAmmo();
+			int maxAmmo = player_->GetWeaponMaxAmmo();
+
+			switch (memType)
+			{
+			case MemoryType::BOMB:
+				snprintf(weaponStr, sizeof(weaponStr), "ボム: %d/%d", currentAmmo, maxAmmo);
+				weaponColor = { 1.0f, 0.2f, 0.2f, 1.0f }; // ネオンレッド
+				break;
+			case MemoryType::CYBER_BIT:
+			case MemoryType::FUNNEL:
+				snprintf(weaponStr, sizeof(weaponStr), "ファンネル: %d/%d", currentAmmo, maxAmmo);
+				weaponColor = { 1.0f, 0.65f, 0.12f, 1.0f }; // エレクトリックオレンジ/ゴールド
+				break;
+			case MemoryType::SPREAD:
+				snprintf(weaponStr, sizeof(weaponStr), "拡散弾: %d/%d", currentAmmo, maxAmmo);
+				weaponColor = { 0.2f, 1.0f, 0.35f, 1.0f }; // ネオングリーン
+				break;
+			case MemoryType::CHARGE_SHOT:
+				snprintf(weaponStr, sizeof(weaponStr), "チャージ: %d/%d", currentAmmo, maxAmmo);
+				weaponColor = { 1.0f, 0.95f, 0.15f, 1.0f }; // ネオンイエロー
+				break;
+			case MemoryType::LASER_BEAM:
+				snprintf(weaponStr, sizeof(weaponStr), "レーザー: %d/%d", currentAmmo, maxAmmo);
+				weaponColor = { 0.2f, 0.6f, 1.0f, 1.0f }; // ディープブルー
+				break;
+			case MemoryType::NONE:
+			default:
+				snprintf(weaponStr, sizeof(weaponStr), "通常弾: ∞/∞");
+				weaponColor = { 0.4f, 0.9f, 1.0f, 1.0f }; // ネオンシアン
+				break;
+			}
+
+			UITextManager::GetInstance()->SetText("LockOn", weaponStr);
+			UITextManager::GetInstance()->SetColor("LockOn", weaponColor, "GAMEPLAY");
 
 			char hpStr[64];
 			snprintf(hpStr, sizeof(hpStr), "HP: %d / %d", player_->GetHp(), player_->GetMaxHp());

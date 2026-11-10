@@ -11,8 +11,8 @@
 void CyberBitWeapon::Initialize(Player* owner, Object3dCommon* object3dCommon) {
     owner_ = owner;
     object3dCommon_ = object3dCommon;
-    ammo_ = 24;
-    maxAmmo_ = 24;
+    ammo_ = 12;
+    maxAmmo_ = 12;
     maxSimultaneous_ = 4;
     reloadTimer_ = 0.0f;
     lockOnAnimTimer_ = 0.0f;

@@ -76,4 +76,14 @@ public:
     /// 残弾テキスト取得（UI表示用）
     /// </summary>
     virtual std::string GetAmmoText() const { return ""; }
+
+    /// <summary>
+    /// 現在弾数取得
+    /// </summary>
+    virtual int GetAmmo() const { return 0; }
+
+    /// <summary>
+    /// 最大弾数取得
+    /// </summary>
+    virtual int GetMaxAmmo() const { return 0; }
 };
