@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "KHEngine/Graphics/2d/Sprite.h"
 #include "KHEngine/Graphics/3d/Object/Object3d.h"
 #include "KHEngine/Sound/Core/Sound.h"
@@ -22,6 +22,7 @@
 #include "Game/Actor/Enemy/ArmoredTrainBoss.h"
 #include "Game/Actor/Obstacle/Obstacle.h"
 #include "Game/Actor/Item/EnhanceRing.h"
+#include "Game/Actor/Item/MemoryItem.h"
 #include "Game/System/CollisionManager.h"
 #include <vector>
 #include <list>
@@ -155,6 +156,7 @@ private:
         WARNING_ALERT,     // WARNING警告演出中
         BATTLE,            // ボス戦闘中
         DEFEATED_SEQUENCE, // 撃破演出中（連続大爆発・スロー）
+        TIME_OVER_ATTACK,  // タイムオーバー即死攻撃中
         FINISHED           // 撃破完了
     };
     BossBattleStep bossBattleStep_ = BossBattleStep::NOT_ACTIVE;
@@ -165,6 +167,13 @@ private:
     const float kBossDefeatDuration = 3.5f;
     float bossDisplayedHpRate_ = 1.0f; // 遅延追従HPバー用
     float bossWarningSirenTimer_ = 0.0f;
+
+    // ボス戦制限時間 & タイムオーバー即死攻撃用
+    float bossTimeLimit_ = 90.0f;       // ボス戦制限時間（秒）
+    float bossRemainingTime_ = 90.0f;   // ボス戦残り時間（秒）
+    float bossTimeOverTimer_ = 0.0f;    // 即死攻撃シークエンス用タイマー
+    const float kBossTimeOverDuration = 3.5f; // 即死攻撃シークエンス時間
+    bool isBossTimeOverFired_ = false;  // 即死攻撃発射フラグ
 
     // ボス戦専用UIスプライト
     std::unique_ptr<Sprite> bossHpBarBgSprite_;
@@ -185,6 +194,9 @@ private:
     std::unique_ptr<CollisionManager> collisionManager_;
     std::list<std::unique_ptr<Obstacle>> obstacles_;
     std::list<std::unique_ptr<EnhanceRing>> enhanceRings_;
+    std::list<std::unique_ptr<MemoryItem>> memoryItems_;
+
+    void SpawnMemoryItem(const Vector3& pos, MemoryType type = MemoryType::CYBER_BIT);
 
     
 #ifdef USE_IMGUI

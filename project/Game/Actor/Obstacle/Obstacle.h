@@ -21,7 +21,7 @@ public:
     
     void Draw();
     void DrawCollider(); 
-    void OnCollision(); 
+    void OnCollision(float damage = 1.0f); 
     void Kill(); 
     void StartShrink(); // リング用の縮小アニメーション開始
 

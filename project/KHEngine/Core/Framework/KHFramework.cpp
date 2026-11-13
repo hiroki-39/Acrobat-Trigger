@@ -1,4 +1,4 @@
-﻿#include "KHFramework.h"
+#include "KHFramework.h"
 #include <combaseapi.h>
 #include "KHEngine/Core/Graphics/D3DResourceLeakChecker.h"
 #include "KHEngine/Core/Utility/Log/Logger.h"
@@ -38,6 +38,10 @@ void KHFramework::Run()
 		EngineServices::GetInstance()->SetDeltaTime(deltaTime);
 
 		FrameworkUpdate(deltaTime);
+		if (endRequest_)
+		{
+			break;
+		}
 		Update();
 
 		FrameworkDrawBegin();
@@ -318,9 +322,11 @@ void KHFramework::FrameworkDrawEnd()
 	{
 		imguiManager_->End();
 		// エディターモードON、またはエディターモードOFF時のUIテキスト描画を反映
-		imguiManager_->Draw();
+		imguiManager_->Draw();
 
-		}
+
+		}
+
 	// 最前面トランジション描画（スプライト・ImGui・UIすべての手前に描画）
 	DrawTransition();
 
@@ -333,42 +339,42 @@ void KHFramework::FrameworkDrawEnd()
 
 void KHFramework::FrameworkFinalize()
 {
-	
-	FinalizeEngineSubsystems();
-
-	
+	// 1. ImGuiの終了処理（SRVやDXリソースが有効なうちに最優先で完了させる）
 	if (imguiManager_)
 	{
 		imguiManager_->Finalize();
 		imguiManager_.reset();
 	}
 
-	
+	// 2. エンジンサブシステムの終了処理（Sound, Model, Texture, SpriteCommon, Object3dCommonなど）
+	FinalizeEngineSubsystems();
+
+	// 3. 入力システムの終了処理
 	if (input_)
 	{
 		input_.reset();
 	}
 
-	
+	// 4. DirectXの終了処理
 	if (dxCommon_)
 	{
 		dxCommon_.reset();
 	}
 
-	
+	// 5. WindowsAPIの終了処理
 	if (winApp_)
 	{
 		winApp_->Finalize();
 		winApp_.reset();
 	}
 
-	
+	// クラッシュダンプハンドラーのアンインストール
 	KHEngine::Core::Utility::Crash::CrashDump::Uninstall();
 
-	
+	// ロガーのシャットダウン
 	Logger::Shutdown();
 
-	
+	// COMの終了処理
 	CoUninitialize();
 }
 
@@ -428,13 +434,13 @@ void KHFramework::InitializeEngineSubsystems()
 
 void KHFramework::FinalizeEngineSubsystems()
 {
-	
+	// サウンドシステムを最優先で停止（バックグラウンドスレッドの処理とバッファを安全に終了）
+	SoundManager::GetInstance()->Finalize();
+
 	ModelManager::GetInstance()->Finalize();
 
-	
 	TextureManager::GetInstance()->Finalize();
 
-	
 	if (spriteCommon_)
 	{
 		spriteCommon_.reset();
@@ -450,15 +456,11 @@ void KHFramework::FinalizeEngineSubsystems()
 		postProcess_.reset();
 	}
 
-	
 	if (srvManager_)
 	{
 		srvManager_->Finalize();
 		srvManager_ = nullptr;
 	}
-
-	
-	SoundManager::GetInstance()->Finalize();
 }
 
 void KHFramework::BeginFrameCommon()

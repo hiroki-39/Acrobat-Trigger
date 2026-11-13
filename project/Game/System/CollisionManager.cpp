@@ -67,7 +67,7 @@ void CollisionManager::CheckPlayerAttacksVsEnemies(CollisionContext& ctx)
             if (isHit)
             {
                 bullet->OnCollision();
-                (*it)->OnCollision();
+                (*it)->OnCollision(bullet->GetDamage());
 
                 if (ctx.hitEffect)
                 {
@@ -415,7 +415,7 @@ void CollisionManager::CheckPlayerAttacksVsObstacles(CollisionContext& ctx)
             if (isHit)
             {
                 bullet->OnCollision();
-                (*it)->OnCollision();
+                (*it)->OnCollision(bullet->GetDamage());
 
                 if (ctx.hitEffect)
                 {

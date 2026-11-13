@@ -1,0 +1,822 @@
+{
+    "scenes": {
+        "GAMECLEAR": [
+            {
+                "align": 1,
+                "color": [
+                    1.0,
+                    0.8500000238418579,
+                    0.20000000298023224,
+                    1.0
+                ],
+                "fontSize": 52.0,
+                "fontType": 2,
+                "hasOutline": true,
+                "hasShadow": true,
+                "hasUnderline": false,
+                "id": "ClearTitle",
+                "isVisible": true,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 2.5,
+                "posX": 640.0,
+                "posY": 240.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.699999988079071
+                ],
+                "shadowOffset": [
+                    3.0,
+                    3.0
+                ],
+                "text": "MISSION COMPLETE",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
+            },
+            {
+                "align": 1,
+                "color": [
+                    1.0,
+                    1.0,
+                    1.0,
+                    1.0
+                ],
+                "fontSize": 24.0,
+                "fontType": 3,
+                "hasOutline": true,
+                "hasShadow": false,
+                "hasUnderline": false,
+                "id": "ClearReturn",
+                "isVisible": true,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 2.0,
+                "posX": 640.0,
+                "posY": 520.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.699999988079071
+                ],
+                "shadowOffset": [
+                    2.0,
+                    2.0
+                ],
+                "text": "PRESS SPACE TO RETURN TO TITLE",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
+            }
+        ],
+        "GAMEOVER": [
+            {
+                "align": 1,
+                "color": [
+                    1.0,
+                    0.20000000298023224,
+                    0.20000000298023224,
+                    1.0
+                ],
+                "fontSize": 56.0,
+                "fontType": 2,
+                "hasOutline": true,
+                "hasShadow": true,
+                "hasUnderline": true,
+                "id": "GameOverTitle",
+                "isVisible": true,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 2.5,
+                "posX": 640.0,
+                "posY": 240.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.699999988079071
+                ],
+                "shadowOffset": [
+                    3.0,
+                    3.0
+                ],
+                "text": "GAME OVER",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
+            },
+            {
+                "align": 1,
+                "color": [
+                    1.0,
+                    1.0,
+                    1.0,
+                    1.0
+                ],
+                "fontSize": 24.0,
+                "fontType": 3,
+                "hasOutline": true,
+                "hasShadow": false,
+                "hasUnderline": false,
+                "id": "GameOverRetry",
+                "isVisible": true,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 2.0,
+                "posX": 640.0,
+                "posY": 520.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.699999988079071
+                ],
+                "shadowOffset": [
+                    2.0,
+                    2.0
+                ],
+                "text": "PRESS SPACE TO RETRY",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
+            }
+        ],
+        "GAMEPLAY": [
+            {
+                "align": 0,
+                "color": [
+                    1.0,
+                    1.0,
+                    1.0,
+                    1.0
+                ],
+                "fontSize": 28.0,
+                "fontType": 3,
+                "hasOutline": true,
+                "hasShadow": true,
+                "hasUnderline": false,
+                "id": "Score",
+                "isVisible": true,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 2.0,
+                "posX": 40.0,
+                "posY": 30.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.6000000238418579
+                ],
+                "shadowOffset": [
+                    2.0,
+                    2.0
+                ],
+                "text": "SCORE: 001700",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
+            },
+            {
+                "align": 0,
+                "color": [
+                    0.20000000298023224,
+                    0.8999999761581421,
+                    1.0,
+                    1.0
+                ],
+                "fontSize": 22.0,
+                "fontType": 3,
+                "hasOutline": true,
+                "hasShadow": false,
+                "hasUnderline": false,
+                "id": "LockOn",
+                "isVisible": true,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 2.0,
+                "posX": 40.0,
+                "posY": 65.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.699999988079071
+                ],
+                "shadowOffset": [
+                    2.0,
+                    2.0
+                ],
+                "text": "LOCK ON: 0 / 4",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
+            },
+            {
+                "align": 0,
+                "color": [
+                    0.30000001192092896,
+                    1.0,
+                    0.5,
+                    1.0
+                ],
+                "fontSize": 38.20000076293945,
+                "fontType": 1,
+                "hasOutline": true,
+                "hasShadow": false,
+                "hasUnderline": false,
+                "id": "PlayerHP",
+                "isVisible": true,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 1.5,
+                "posX": 20.0,
+                "posY": 635.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.699999988079071
+                ],
+                "shadowOffset": [
+                    2.0,
+                    2.0
+                ],
+                "text": "HP: 1000 / 10000",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
+            },
+            {
+                "align": 1,
+                "color": [
+                    1.0,
+                    0.8500000238418579,
+                    0.20000000298023224,
+                    1.0
+                ],
+                "fontSize": 32.0,
+                "fontType": 2,
+                "hasOutline": true,
+                "hasShadow": true,
+                "hasUnderline": false,
+                "id": "MissionAlert",
+                "isVisible": false,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 2.5,
+                "posX": 640.0,
+                "posY": 100.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.699999988079071
+                ],
+                "shadowOffset": [
+                    3.0,
+                    3.0
+                ],
+                "text": "敵部隊ヲ殲滅セヨ",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
+            },
+            {
+                "align": 1,
+                "color": [
+                    1.0,
+                    0.8999999761581421,
+                    0.30000001192092896,
+                    1.0
+                ],
+                "fontSize": 42.0,
+                "fontType": 4,
+                "hasOutline": true,
+                "hasShadow": true,
+                "hasUnderline": false,
+                "id": "CutsceneReady",
+                "isVisible": false,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 2.5,
+                "posX": 640.0,
+                "posY": 280.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.699999988079071
+                ],
+                "shadowOffset": [
+                    2.0,
+                    2.0
+                ],
+                "text": "READY...",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
+            },
+            {
+                "align": 1,
+                "color": [
+                    0.23999999463558197,
+                    1.0,
+                    0.550000011920929,
+                    1.0
+                ],
+                "fontSize": 56.0,
+                "fontType": 4,
+                "hasOutline": true,
+                "hasShadow": true,
+                "hasUnderline": false,
+                "id": "CutsceneMissionStart",
+                "isVisible": false,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 3.0,
+                "posX": 640.0,
+                "posY": 270.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.699999988079071
+                ],
+                "shadowOffset": [
+                    3.0,
+                    3.0
+                ],
+                "text": "MISSION START!",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
+            },
+            {
+                "align": 1,
+                "color": [
+                    0.20000000298023224,
+                    0.9800000190734863,
+                    1.0,
+                    1.0
+                ],
+                "fontSize": 64.0,
+                "fontType": 4,
+                "hasOutline": true,
+                "hasShadow": true,
+                "hasUnderline": true,
+                "id": "GameOverTitle",
+                "isVisible": false,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 3.0,
+                "posX": 640.0,
+                "posY": 275.0,
+                "shadowColor": [
+                    0.019999999552965164,
+                    0.20000000298023224,
+                    0.3499999940395355,
+                    0.8500000238418579
+                ],
+                "shadowOffset": [
+                    3.0,
+                    3.0
+                ],
+                "text": "GAME OVER",
+                "underlineColor": [
+                    0.25,
+                    0.9800000190734863,
+                    1.0,
+                    0.8999999761581421
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
+            },
+            {
+                "align": 1,
+                "color": [
+                    1.0,
+                    0.8999999761581421,
+                    0.6000000238418579,
+                    1.0
+                ],
+                "fontSize": 28.0,
+                "fontType": 3,
+                "hasOutline": true,
+                "hasShadow": true,
+                "hasUnderline": false,
+                "id": "GameOverRetry",
+                "isVisible": false,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 2.0,
+                "posX": 640.0,
+                "posY": 420.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.699999988079071
+                ],
+                "shadowOffset": [
+                    2.0,
+                    2.0
+                ],
+                "text": "RETRY MISSION",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
+            },
+            {
+                "align": 1,
+                "color": [
+                    0.699999988079071,
+                    0.75,
+                    0.800000011920929,
+                    1.0
+                ],
+                "fontSize": 24.0,
+                "fontType": 3,
+                "hasOutline": true,
+                "hasShadow": true,
+                "hasUnderline": false,
+                "id": "GameOverTitleNav",
+                "isVisible": false,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 2.0,
+                "posX": 640.0,
+                "posY": 470.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.699999988079071
+                ],
+                "shadowOffset": [
+                    2.0,
+                    2.0
+                ],
+                "text": "RETURN TO TITLE",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
+            },
+            {
+                "align": 1,
+                "color": [
+                    1.0,
+                    0.8500000238418579,
+                    0.20000000298023224,
+                    1.0
+                ],
+                "fontSize": 54.0,
+                "fontType": 4,
+                "hasOutline": true,
+                "hasShadow": true,
+                "hasUnderline": false,
+                "id": "ClearTitle",
+                "isVisible": false,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 3.0,
+                "posX": 640.0,
+                "posY": 260.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.800000011920929
+                ],
+                "shadowOffset": [
+                    3.0,
+                    3.0
+                ],
+                "text": "MISSION COMPLETE",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
+            },
+            {
+                "align": 1,
+                "color": [
+                    1.0,
+                    1.0,
+                    1.0,
+                    1.0
+                ],
+                "fontSize": 32.0,
+                "fontType": 3,
+                "hasOutline": true,
+                "hasShadow": true,
+                "hasUnderline": false,
+                "id": "ClearScore",
+                "isVisible": false,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 2.0,
+                "posX": 640.0,
+                "posY": 360.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.699999988079071
+                ],
+                "shadowOffset": [
+                    2.0,
+                    2.0
+                ],
+                "text": "SCORE: 000000",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
+            },
+            {
+                "align": 1,
+                "color": [
+                    0.8500000238418579,
+                    0.8999999761581421,
+                    0.949999988079071,
+                    1.0
+                ],
+                "fontSize": 24.0,
+                "fontType": 3,
+                "hasOutline": true,
+                "hasShadow": true,
+                "hasUnderline": false,
+                "id": "ClearReturn",
+                "isVisible": false,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 2.0,
+                "posX": 640.0,
+                "posY": 520.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.699999988079071
+                ],
+                "shadowOffset": [
+                    2.0,
+                    2.0
+                ],
+                "text": "PRESS SPACE TO RETURN TO TITLE",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
+            }
+        ],
+        "TITLE": [
+            {
+                "align": 1,
+                "color": [
+                    1.0,
+                    1.0,
+                    1.0,
+                    1.0
+                ],
+                "fontSize": 52.0,
+                "fontType": 2,
+                "hasOutline": true,
+                "hasShadow": true,
+                "hasUnderline": false,
+                "id": "TitleMain",
+                "isVisible": true,
+                "outlineColor": [
+                    0.0,
+                    0.20000000298023224,
+                    0.4000000059604645,
+                    1.0
+                ],
+                "outlineThickness": 2.5,
+                "posX": 640.0,
+                "posY": 220.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.699999988079071
+                ],
+                "shadowOffset": [
+                    3.0,
+                    3.0
+                ],
+                "text": "RAIL SHOOTER",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
+            },
+            {
+                "align": 1,
+                "color": [
+                    0.22115519642829895,
+                    0.5560473799705505,
+                    0.6318719983100891,
+                    0.1901184320449829
+                ],
+                "fontSize": 56.099998474121094,
+                "fontType": 3,
+                "hasOutline": true,
+                "hasShadow": false,
+                "hasUnderline": false,
+                "id": "StartPrompt",
+                "isVisible": false,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 2.0,
+                "posX": 640.0,
+                "posY": 520.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.699999988079071
+                ],
+                "shadowOffset": [
+                    2.0,
+                    2.0
+                ],
+                "text": "PRESS SPACE TO START",
+                "underlineColor": [
+                    0.9200000166893005,
+                    0.11999999731779099,
+                    0.18000000715255737,
+                    0.8600000143051147
+                ],
+                "underlineOffsetY": 42.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 320.0
+            }
+        ]
+    }
+}

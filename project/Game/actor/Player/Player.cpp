@@ -157,6 +157,9 @@ void Player::Initialize(Object3dCommon* object3dCommon, uint32_t skyboxTexIndex)
 
     SetPowerUpLevel(0);
     ResetBoost();
+
+    // 武器管理システム（メモリシステム）の初期化
+    weaponManager_.Initialize(this, object3dCommon);
 }
 
 // プレイヤー被弾時の処理
@@ -380,6 +383,7 @@ void Player::Update(std::list<std::unique_ptr<PlayerBullet>>& bullets, std::list
     prevLogicalPosition_ = logicalPosition_;
     Move(gameSpeed);
     UpdateReticleAndAimAssist(enemies, boss, gameSpeed);
+    weaponManager_.Update(gameSpeed, enemies, boss, parentCamera);
     Attack(bullets, missiles, enemies, parentCamera, gameSpeed, boss);
 
     if (invincibilityTimer_ > 0.0f) {
@@ -443,6 +447,7 @@ void Player::Draw() {
         if (object_) {
             object_->Draw();
         }
+        weaponManager_.Draw();
         if (accessory_) {
             accessory_->Draw();
         }
@@ -476,7 +481,7 @@ void Player::Draw() {
     }
 
     for (int i = 0; i < MAX_MISSILES; ++i) {
-        if (lockOnReticles_[i]) lockOnReticles_[i]->Draw();
+        // if (lockOnReticles_[i]) lockOnReticles_[i]->Draw();
     }
 }
 
@@ -640,23 +645,29 @@ Vector3 Player::GetReticleWorldPosition() const {
 }
 
 Vector3 Player::GetFrontReticleWorldPosition() const {
-    if (!object_) return {0,0,0};
-    const Matrix4x4& mat = object_->GetmatWorld();
-    // 自機の前方方向ベクトル（Z軸）
-    Vector3 forward = { mat.m[2][0], mat.m[2][1], mat.m[2][2] };
-    float len = std::sqrt(forward.x * forward.x + forward.y * forward.y + forward.z * forward.z);
-    if (len > 0.0001f) {
-        forward.x /= len;
-        forward.y /= len;
-        forward.z /= len;
+    if (!object_) return { 0, 0, 0 };
+    const Matrix4x4& wMat = object_->GetmatWorld();
+    Vector3 shipPos = { wMat.m[3][0], wMat.m[3][1], wMat.m[3][2] };
+
+    // Parent (camera) forward vector without ship aim skew
+    Vector3 forward = { 0.0f, 0.0f, 1.0f };
+    if (object_->GetParent()) {
+        const Matrix4x4& pMat = object_->GetParent()->GetmatWorld();
+        forward = { pMat.m[2][0], pMat.m[2][1], pMat.m[2][2] };
+        float len = std::sqrt(forward.x * forward.x + forward.y * forward.y + forward.z * forward.z);
+        if (len > 0.0001f) {
+            forward.x /= len;
+            forward.y /= len;
+            forward.z /= len;
+        }
     }
-    // 手前照準の3D座標 = 自機の座標 + (自機の正面方向ベクトル × 手前距離 D1)
-    // 自機機首前方14mに配置（自機移動・ピッチ・ロール・首振りに完全同期）
-    float frontDist = 14.0f;
+
+    // Position front reticle forward (Z+9m) from ship
+    float frontDist = 9.0f;
     return Vector3{
-        mat.m[3][0] + forward.x * frontDist,
-        mat.m[3][1] + forward.y * frontDist,
-        mat.m[3][2] + forward.z * frontDist
+        shipPos.x + forward.x * frontDist,
+        shipPos.y + forward.y * frontDist + 0.35f,
+        shipPos.z + forward.z * frontDist
     };
 }
 
@@ -1052,257 +1063,8 @@ void Player::Move(float gameSpeed) {
 void Player::Attack(std::list<std::unique_ptr<PlayerBullet>>& bullets, std::list<std::unique_ptr<PlayerMissile>>& missiles, const std::list<std::unique_ptr<Enemy>>& enemies, Object3d* parentCamera, float gameSpeed, ArmoredTrainBoss* boss) {
     if (!input_) return;
 
-    
-    if (input_->TriggerKey(DIK_R)) {
-        currentWeapon_ = (currentWeapon_ == WeaponType::NORMAL) ? WeaponType::MISSILE : WeaponType::NORMAL;
-    }
-
-    
-    if (missileReloadTimer_ > 0.0f) {
-        missileReloadTimer_ -= gameSpeed;
-    }
-
-    if (attackTimer_ > 0.0f) {
-        attackTimer_ -= gameSpeed;
-    }
-
-    
-    if (currentWeapon_ == WeaponType::MISSILE) {
-        lockOnAnimTimer_ += 0.1f * gameSpeed; 
-        if (lockOnDelayTimer_ > 0.0f) {
-            lockOnDelayTimer_ -= gameSpeed;
-        }
-
-        if (input_->PushKey(DIK_SPACE) && missileReloadTimer_ <= 0.0f) {
-            const Matrix4x4& mat = object_->GetmatWorld();
-            Vector3 playerPos = { mat.m[3][0], mat.m[3][1], mat.m[3][2] };
-            
-            // 1. 通常敵のロックオン探索
-            for (const auto& enemy : enemies) {
-                if (enemy->IsDead()) continue;
-                
-                auto it = std::find_if(multiLockedEnemies_.begin(), multiLockedEnemies_.end(),
-                    [&](const LockOnTarget& target) { return target.enemy == enemy.get(); });
-                if (it != multiLockedEnemies_.end()) {
-                    continue;
-                }
-
-                if (multiLockedEnemies_.size() >= static_cast<size_t>(maxMissiles_)) {
-                    break;
-                }
-
-                Vector3 ePos = enemy->GetColliderCenter();
-                float distSq = (ePos.x - playerPos.x) * (ePos.x - playerPos.x) + 
-                               (ePos.y - playerPos.y) * (ePos.y - playerPos.y) + 
-                               (ePos.z - playerPos.z) * (ePos.z - playerPos.z);
-                
-                if (distSq < (lockOnMaxDistance_ * lockOnMaxDistance_) && ePos.z > playerPos.z) { 
-                    if (lockOnDelayTimer_ <= 0.0f) {
-                        multiLockedEnemies_.push_back({ enemy.get(), nullptr, -1, 0.0f });
-                        lockOnDelayTimer_ = lockOnInterval_; 
-                        break; 
-                    }
-                }
-            }
-
-            // 2. 装甲列車ボスの部位（各車両）のロックオン探索
-            if (boss && boss->IsActive() && !boss->IsDefeated()) {
-                const auto& carriages = boss->GetCarriages();
-                for (int i = 0; i < static_cast<int>(carriages.size()); ++i) {
-                    if (boss->IsCarriageDestroyed(i)) continue;
-
-                    // 既にこの車両部位をロックオン済みかチェック
-                    auto it = std::find_if(multiLockedEnemies_.begin(), multiLockedEnemies_.end(),
-                        [&](const LockOnTarget& target) { return target.boss == boss && target.carriageIndex == i; });
-                    if (it != multiLockedEnemies_.end()) {
-                        continue;
-                    }
-
-                    if (multiLockedEnemies_.size() >= static_cast<size_t>(maxMissiles_)) {
-                        break;
-                    }
-
-                    Vector3 carPos = boss->GetCarriagePosition(i);
-                    float distSq = (carPos.x - playerPos.x) * (carPos.x - playerPos.x) + 
-                                   (carPos.y - playerPos.y) * (carPos.y - playerPos.y) + 
-                                   (carPos.z - playerPos.z) * (carPos.z - playerPos.z);
-
-                    // 射程内、かつ自機の前方にある車両をロック
-                    if (distSq < (lockOnMaxDistance_ * lockOnMaxDistance_) && carPos.z > (playerPos.z - 20.0f)) {
-                        if (lockOnDelayTimer_ <= 0.0f) {
-                            multiLockedEnemies_.push_back({ nullptr, boss, i, 0.0f });
-                            lockOnDelayTimer_ = lockOnInterval_;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        
-        for (int i = 0; i < MAX_MISSILES; ++i) {
-            bool isValidTarget = false;
-            Vector3 targetPos = { 0, 0, 0 };
-            if (i < static_cast<int>(multiLockedEnemies_.size())) {
-                const auto& t = multiLockedEnemies_[i];
-                if (t.boss) {
-                    if (!t.boss->IsDefeated() && !t.boss->IsCarriageDestroyed(t.carriageIndex)) {
-                        isValidTarget = true;
-                        targetPos = t.boss->GetCarriagePosition(t.carriageIndex);
-                    }
-                } else if (t.enemy) {
-                    if (!t.enemy->IsDead()) {
-                        isValidTarget = true;
-                        targetPos = t.enemy->GetColliderCenter();
-                    }
-                }
-            }
-
-            if (isValidTarget) {
-                multiLockedEnemies_[i].lockedTime += gameSpeed;
-                float lockTime = multiLockedEnemies_[i].lockedTime;
-                bool isLockCompleted = lockTime >= lockOnCompleteTime_; 
-
-                const Matrix4x4& mat = object_->GetmatWorld();
-                Vector3 pPos = { mat.m[3][0], mat.m[3][1], mat.m[3][2] };
-                float dz = targetPos.z - pPos.z;
-                float baseScale = 2.0f + (std::max)(0.0f, dz) * 0.02f;
-                float scale = baseScale + (baseScale * 0.15f) * std::sinf(lockOnAnimTimer_ * 2.0f);
-                lockOnReticles_[i]->SetScale({scale, scale, scale});
-                lockOnReticles_[i]->SetTranslate(targetPos);
-                
-                if (!isLockCompleted) {
-                    float duration = (std::max)(1.0f, lockOnCompleteTime_);
-                    float rotationAngle = (lockTime / duration) * 6.2831853f; 
-                    lockOnReticles_[i]->SetRotation({0.0f, 0.0f, rotationAngle});
-                } else {
-                    lockOnReticles_[i]->SetRotation({0.0f, 0.0f, 0.0f}); 
-                }
-            } else {
-                lockOnReticles_[i]->SetScale({0.001f, 0.001f, 0.001f});
-            }
-        }
-
-        
-        if (!input_->PushKey(DIK_SPACE) && !multiLockedEnemies_.empty() && missileReloadTimer_ <= 0.0f) {
-            bool hasLaunched = false;
-            for (size_t i = 0; i < multiLockedEnemies_.size(); ++i) {
-                const auto& t = multiLockedEnemies_[i];
-                bool isDead = false;
-                if (t.boss) {
-                    isDead = t.boss->IsDefeated() || t.boss->IsCarriageDestroyed(t.carriageIndex);
-                } else if (t.enemy) {
-                    isDead = t.enemy->IsDead();
-                } else {
-                    isDead = true;
-                }
-                if (isDead) continue;
-                
-                const Matrix4x4& mountedMat = mountedMissiles_[i]->GetmatWorld();
-                Vector3 spawnPos = { mountedMat.m[3][0], mountedMat.m[3][1], mountedMat.m[3][2] };
-                Vector3 spawnRot = object_->GetRotation(); 
-                
-                auto newMissile = std::make_unique<PlayerMissile>();
-                newMissile->Initialize(object3dCommon_, spawnPos, spawnRot, {0,0,0}, parentCamera, t.enemy, t.boss, t.carriageIndex);
-                missiles.push_back(std::move(newMissile));
-                hasLaunched = true;
-
-                lockOnReticles_[i]->SetScale({0.001f, 0.001f, 0.001f});
-            }
-
-            if (hasLaunched) {
-                SoundManager::GetInstance()->PlaySE("launcher.mp3", 0.9f);
-            }
-            
-            multiLockedEnemies_.clear();
-            missileReloadTimer_ = missileReloadTime_;
-            attackTimer_ = attackInterval_;
-        }
-        
-        multiLockedEnemies_.erase(
-            std::remove_if(multiLockedEnemies_.begin(), multiLockedEnemies_.end(),
-                [](const LockOnTarget& t) {
-                    if (t.boss) {
-                        return t.boss->IsDefeated() || t.boss->IsCarriageDestroyed(t.carriageIndex);
-                    }
-                    return t.enemy ? t.enemy->IsDead() : true;
-                }),
-            multiLockedEnemies_.end()
-        );
-    } 
-    
-    else if (attackTimer_ <= 0.0f && (input_->PushKey(DIK_SPACE))) {
-        attackTimer_ = attackInterval_; 
-        
-        const Matrix4x4& mat = object_->GetmatWorld();
-        Vector3 playerPos = { mat.m[3][0], mat.m[3][1], mat.m[3][2] };
-        
-        // 自機正面ベクトル
-        Vector3 forwardVec = { mat.m[2][0], mat.m[2][1], mat.m[2][2] };
-        float fLen = std::sqrt(forwardVec.x * forwardVec.x + forwardVec.y * forwardVec.y + forwardVec.z * forwardVec.z);
-        if (fLen > 0.0001f) { forwardVec.x /= fLen; forwardVec.y /= fLen; forwardVec.z /= fLen; }
-
-        Vector3 targetPos = GetReticleWorldPosition();
-        
-        // エイムアシスト（プレイヤー自力でのエイミング感を最優先するため、ごく微弱な25%の引き寄せのみ）
-        if (isTargetInReticle_) {
-            targetPos.x += (reticleHoverTargetPos_.x - targetPos.x) * 0.25f;
-            targetPos.y += (reticleHoverTargetPos_.y - targetPos.y) * 0.25f;
-            targetPos.z += (reticleHoverTargetPos_.z - targetPos.z) * 0.25f;
-        }
-
-        if (isDoubleShot_) {
-            // 2連装: 左右の銃口から目標座標（奥照準）へ向けて正確に集束射出（コンバージェンス射撃）
-            Vector3 rightDir = { mat.m[0][0], mat.m[0][1], mat.m[0][2] };
-            float offsetAmount = 2.0f;
-            Vector3 rightOffset = { playerPos.x + rightDir.x * offsetAmount + forwardVec.x * 1.5f, playerPos.y + rightDir.y * offsetAmount + forwardVec.y * 1.5f, playerPos.z + rightDir.z * offsetAmount + forwardVec.z * 1.5f };
-            Vector3 leftOffset = { playerPos.x - rightDir.x * offsetAmount + forwardVec.x * 1.5f, playerPos.y - rightDir.y * offsetAmount + forwardVec.y * 1.5f, playerPos.z - rightDir.z * offsetAmount + forwardVec.z * 1.5f };
-
-            Vector3 rightDirToTarget = { targetPos.x - rightOffset.x, targetPos.y - rightOffset.y, targetPos.z - rightOffset.z };
-            float rLen = std::sqrtf(rightDirToTarget.x * rightDirToTarget.x + rightDirToTarget.y * rightDirToTarget.y + rightDirToTarget.z * rightDirToTarget.z);
-            if (rLen > 0.0001f) { rightDirToTarget.x /= rLen; rightDirToTarget.y /= rLen; rightDirToTarget.z /= rLen; }
-            Vector3 rightVelocity = { rightDirToTarget.x * bulletSpeed_, rightDirToTarget.y * bulletSpeed_, rightDirToTarget.z * bulletSpeed_ };
-
-            Vector3 leftDirToTarget = { targetPos.x - leftOffset.x, targetPos.y - leftOffset.y, targetPos.z - leftOffset.z };
-            float lLen = std::sqrtf(leftDirToTarget.x * leftDirToTarget.x + leftDirToTarget.y * leftDirToTarget.y + leftDirToTarget.z * leftDirToTarget.z);
-            if (lLen > 0.0001f) { leftDirToTarget.x /= lLen; leftDirToTarget.y /= lLen; leftDirToTarget.z /= lLen; }
-            Vector3 leftVelocity = { leftDirToTarget.x * bulletSpeed_, leftDirToTarget.y * bulletSpeed_, leftDirToTarget.z * bulletSpeed_ };
-
-            std::unique_ptr<PlayerBullet> rightBullet = std::make_unique<PlayerBullet>();
-            rightBullet->Initialize(object3dCommon_, rightOffset, rightVelocity, parentCamera, reticleHoverEnemy_);
-            bullets.push_back(std::move(rightBullet));
-
-            std::unique_ptr<PlayerBullet> leftBullet = std::make_unique<PlayerBullet>();
-            leftBullet->Initialize(object3dCommon_, leftOffset, leftVelocity, parentCamera, reticleHoverEnemy_);
-            bullets.push_back(std::move(leftBullet));
-        } else {
-            // 通常の1発発射: 機首銃口から奥照準の中心へ向けて射出
-            Vector3 muzzlePos = { playerPos.x + forwardVec.x * 2.2f, playerPos.y + forwardVec.y * 2.2f, playerPos.z + forwardVec.z * 2.2f };
-            Vector3 direction = {
-                targetPos.x - muzzlePos.x,
-                targetPos.y - muzzlePos.y,
-                targetPos.z - muzzlePos.z
-            };
-            float length = std::sqrtf(direction.x * direction.x + direction.y * direction.y + direction.z * direction.z);
-            if (length > 0.0f) {
-                direction.x /= length;
-                direction.y /= length;
-                direction.z /= length;
-            }
-            Vector3 velocity = {
-                direction.x * bulletSpeed_,
-                direction.y * bulletSpeed_,
-                direction.z * bulletSpeed_
-            };
-
-            std::unique_ptr<PlayerBullet> newBullet = std::make_unique<PlayerBullet>();
-            newBullet->Initialize(object3dCommon_, muzzlePos, velocity, parentCamera, reticleHoverEnemy_);
-            bullets.push_back(std::move(newBullet));
-        }
-
-        // 通常ショットSE再生
-        SoundManager::GetInstance()->PlaySE("player_shot.mp3", 0.7f);
-    }
+    // 武器管理システム（メモリシステム）に攻撃処理を委譲
+    weaponManager_.Attack(input_, bullets, missiles, enemies, boss, parentCamera, gameSpeed);
 }
 
 void Player::LoadSettings(const std::string& filepath) {
@@ -1416,6 +1178,7 @@ void Player::SaveSettings(const std::string& filepath) {
 
 // プレイヤー関連のUI描画処理
 void Player::DrawUI() {
+    weaponManager_.DrawUI();
 #ifdef USE_IMGUI
     ImGui::Begin("Player Editor");
     DrawImGuiContent();
@@ -1442,6 +1205,31 @@ void Player::DrawImGuiContent() {
         ImGui::DragInt("HP", &hp_, 10, 0, 10000);
         ImGui::DragInt("Max HP", &maxHp_, 10, 1, 10000);
         ImGui::Checkbox("ダブルショット (Double Shot)", &isDoubleShot_);
+
+        ImGui::Separator();
+        ImGui::Text("【メモリ武器システム (Memory System)】");
+        const char* memNames[] = { "通常弾 (NONE)", "チャージ", "ボム", "拡散弾", "ファンネル", "サイバービット", "レーザー" };
+        int currentTypeIdx = static_cast<int>(weaponManager_.GetCurrentType());
+        if (currentTypeIdx >= 0 && currentTypeIdx < 7) {
+            ImGui::Text("現在の形態: %s", memNames[currentTypeIdx]);
+        }
+        ImGui::Text("残弾 / 状態: %s", weaponManager_.GetAmmoText().c_str());
+
+        if (ImGui::Button("通常弾に戻す (Purge)")) {
+            weaponManager_.PurgeMemory();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("ボム (BOMB)")) {
+            weaponManager_.EquipWeapon(MemoryType::BOMB);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("拡散弾 (SPREAD)")) {
+            weaponManager_.EquipWeapon(MemoryType::SPREAD);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("サイバービット (CYBER_BIT)")) {
+            weaponManager_.EquipWeapon(MemoryType::CYBER_BIT);
+        }
     }
 
     // 移動・可動域設定

@@ -1,8 +1,10 @@
 {
     "boss_scale": 1.0,
-    "boss_spawn_progress": 0.5,
+    "boss_spawn_progress": 0.4000000059604645,
     "desired_lead_distance": 120.0,
+    "ground_snap_offset": 0.0,
     "is_follow_player": true,
+    "is_ground_snap_enabled": true,
     "is_random_lead_enabled": true,
     "rush_speed_bonus": 45.0
 }

@@ -3,6 +3,7 @@
 #include "KHEngine/Input/Input.h"
 #include "Game/Actor/Bullet/PlayerBullet.h"
 #include "Game/Actor/Bullet/PlayerMissile.h"
+#include "Game/Actor/Weapon/WeaponManager.h"
 #include <memory>
 #include <list>
 #include <vector>
@@ -30,6 +31,9 @@ public:
     void DrawImGuiContent();
 
     bool IsGodMode() const { return isGodMode_; }
+    bool HasActiveBombExplosion(Vector3* outPos = nullptr, float* outRadius = nullptr) const {
+        return weaponManager_.HasActiveBombExplosion(outPos, outRadius);
+    }
     void SetGodMode(bool god) { isGodMode_ = god; }
 
     
@@ -137,6 +141,22 @@ public:
     Vector3 GetReticleWorldPosition() const;
     Vector3 GetFrontReticleWorldPosition() const;
     bool IsTargetInReticle() const { return isTargetInReticle_; }
+    const Vector3& GetReticleHoverTargetPos() const { return reticleHoverTargetPos_; }
+    Enemy* GetReticleHoverEnemy() const { return reticleHoverEnemy_; }
+    bool IsDoubleShot() const { return isDoubleShot_; }
+    float GetBulletSpeed() const { return bulletSpeed_; }
+
+    WeaponManager* GetWeaponManager() { return &weaponManager_; }
+    const WeaponManager* GetWeaponManager() const { return &weaponManager_; }
+    void EquipMemory(MemoryType type) { weaponManager_.EquipWeapon(type); }
+    void PurgeMemory() { weaponManager_.PurgeMemory(); }
+    MemoryType GetEquippedMemoryType() const { return weaponManager_.GetCurrentType(); }
+    int GetWeaponAmmo() const { return weaponManager_.GetAmmo(); }
+    int GetWeaponMaxAmmo() const { return weaponManager_.GetMaxAmmo(); }
+    std::vector<LockOnTargetHUD> GetLockOnTargets() const { return weaponManager_.GetLockOnTargets(); }
+    bool IsLockOn() const { return isLockOn_; }
+    const Vector3& GetLockOnTargetPos() const { return lockOnTargetPos_; }
+    Enemy* GetLockOnTargetEnemy() const { return lockOnTargetEnemy_; }
 
     void SetLockOn(bool isLockOn, const Vector3& targetPos = { 0, 0, 0 }, Enemy* targetEnemy = nullptr) {
         isLockOn_ = isLockOn;
@@ -362,6 +382,8 @@ private:
     bool isBoostOverheated_ = false;         // エネルギー枯渇時のオーバーヒート状態
 
     
+    WeaponManager weaponManager_;
+
     WeaponType currentWeapon_ = WeaponType::NORMAL;
     static const int MAX_MISSILES = 8;
     int maxMissiles_ = 4;                  // 現在の最大同時ロックオン可能数（初期4、2個目の強化リングで8）

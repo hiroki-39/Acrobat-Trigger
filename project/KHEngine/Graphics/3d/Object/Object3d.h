@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "KHEngine/Graphics/3d/Object/Object3dCommon.h"
 #include "KHEngine/Math/MathCommon.h"
 #include "KHEngine/Math/CollisionMath.h"
@@ -107,6 +107,7 @@ public://メンバ関数
 	void SetDirectionalLightIntensity(float intensity);
 	
 	void SetParent(const Object3d* parent) { parent_ = parent; }
+	const Object3d* GetParent() const { return parent_; }
 
 	// PointLight setters
 	void SetPointLightColor(const Vector4& color);

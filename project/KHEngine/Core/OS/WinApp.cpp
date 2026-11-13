@@ -21,6 +21,10 @@ LRESULT WinApp::WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparm)
 	//メッセージに応じてゲーム固有の処理を行う
 	switch (msg)
 	{
+	case WM_CLOSE:
+		PostQuitMessage(0);
+		return 0;
+
 		//ウィンドウが壊された
 	case WM_DESTROY:
 
