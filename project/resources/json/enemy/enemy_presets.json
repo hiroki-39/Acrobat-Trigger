@@ -218,13 +218,13 @@
                 0.0,
                 0.0
             ],
-            "colliderRadius": 2.4000000953674316,
+            "colliderRadius": 3.0,
             "colliderSize": [
                 2.0,
                 2.0,
                 2.0
             ],
-            "colliderType": "BOX",
+            "colliderType": "SPHERE",
             "color": [
                 0.4000000059604645,
                 1.0,

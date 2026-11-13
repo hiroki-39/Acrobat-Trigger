@@ -481,7 +481,7 @@ void Player::Draw() {
     }
 
     for (int i = 0; i < MAX_MISSILES; ++i) {
-        if (lockOnReticles_[i]) lockOnReticles_[i]->Draw();
+        // if (lockOnReticles_[i]) lockOnReticles_[i]->Draw();
     }
 }
 
@@ -645,23 +645,29 @@ Vector3 Player::GetReticleWorldPosition() const {
 }
 
 Vector3 Player::GetFrontReticleWorldPosition() const {
-    if (!object_) return {0,0,0};
-    const Matrix4x4& mat = object_->GetmatWorld();
-    // 自機の前方方向ベクトル（Z軸）
-    Vector3 forward = { mat.m[2][0], mat.m[2][1], mat.m[2][2] };
-    float len = std::sqrt(forward.x * forward.x + forward.y * forward.y + forward.z * forward.z);
-    if (len > 0.0001f) {
-        forward.x /= len;
-        forward.y /= len;
-        forward.z /= len;
+    if (!object_) return { 0, 0, 0 };
+    const Matrix4x4& wMat = object_->GetmatWorld();
+    Vector3 shipPos = { wMat.m[3][0], wMat.m[3][1], wMat.m[3][2] };
+
+    // Parent (camera) forward vector without ship aim skew
+    Vector3 forward = { 0.0f, 0.0f, 1.0f };
+    if (object_->GetParent()) {
+        const Matrix4x4& pMat = object_->GetParent()->GetmatWorld();
+        forward = { pMat.m[2][0], pMat.m[2][1], pMat.m[2][2] };
+        float len = std::sqrt(forward.x * forward.x + forward.y * forward.y + forward.z * forward.z);
+        if (len > 0.0001f) {
+            forward.x /= len;
+            forward.y /= len;
+            forward.z /= len;
+        }
     }
-    // 手前照準の3D座標 = 自機の座標 + (自機の正面方向ベクトル × 手前距離 D1)
-    // 自機機首前方14mに配置（自機移動・ピッチ・ロール・首振りに完全同期）
-    float frontDist = 14.0f;
+
+    // Position front reticle forward (Z+9m) from ship
+    float frontDist = 9.0f;
     return Vector3{
-        mat.m[3][0] + forward.x * frontDist,
-        mat.m[3][1] + forward.y * frontDist,
-        mat.m[3][2] + forward.z * frontDist
+        shipPos.x + forward.x * frontDist,
+        shipPos.y + forward.y * frontDist + 0.35f,
+        shipPos.z + forward.z * frontDist
     };
 }
 

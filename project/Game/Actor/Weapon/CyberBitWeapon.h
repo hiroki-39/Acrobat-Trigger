@@ -85,6 +85,8 @@ public:
     int GetAmmo() const override { return ammo_; }
     int GetMaxAmmo() const override { return maxAmmo_; }
 
+    std::vector<LockOnTargetHUD> GetLockOnTargets() const override;
+
 private:
     Player* owner_ = nullptr;
     Object3dCommon* object3dCommon_ = nullptr;

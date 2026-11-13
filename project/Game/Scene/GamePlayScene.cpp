@@ -1,4 +1,4 @@
-#define NOMINMAX
+﻿#define NOMINMAX
 #include "GamePlayScene.h"
 #include "KHEngine/Core/Services/EngineServices.h"
 #include "KHEngine/Core/Utility/Log/Logger.h"
@@ -4863,6 +4863,8 @@ void GamePlayScene::DrawCutsceneUI()
 
 		auto [okStart, ptStart] = WorldToScreen(pStart);
 		auto [okEnd, ptEnd] = WorldToScreen(pEnd);
+		Vector3 pShip = player_->GetWorldPosition();
+		auto [okShip, ptShip] = WorldToScreen(pShip);
 
 		Vector3 pLeftWing = player_->GetLeftWingPosition();
 		Vector3 pRightWing = player_->GetRightWingPosition();
@@ -4905,7 +4907,7 @@ void GamePlayScene::DrawCutsceneUI()
 		// 2. ダブルレティクル【スターフォックス風デュアル・スクエア・レティクル】
 		// ① 手前照準（インナー四角フレーム / 自機銃口HUD）
 		// 自機機首の正面方向に完全同期し、自機の主翼ロール角に合わせてフレームがリアルタイムに傾く！
-		if (okStart)
+		if (okShip || okStart)
 		{
 			// 自機のZ軸回転（ロール角・主翼傾き）を画面上の角度として直接算出！
 			// 自機が右に30度傾いたら（右バンク）、右翼が下がり左翼が上がるため dy > 0 となり、手前レティクルも右に30度傾く！
@@ -4937,7 +4939,8 @@ void GamePlayScene::DrawCutsceneUI()
 			ImU32 innerColor = isLocked ? IM_COL32(255, 230, 45, 255) : IM_COL32(255, 255, 255, 255);
 			ImU32 shadowColor = IM_COL32(0, 0, 0, 230);
 
-			ImVec2 c = ptStart;
+			// Position front reticle firmly in front of ship in 3D space (Z+14m)
+			ImVec2 c = okStart ? ptStart : (okShip ? ptShip : ptEnd);
 
 			// コーナーブラケット描画ヘルパーラムダ（回転対応）
 			auto DrawRotatedCorner = [&](float uDist, float vDist, float du, float dv, ImU32 col, float th) {
@@ -5041,6 +5044,120 @@ void GamePlayScene::DrawCutsceneUI()
 			{
 				float ringRadius = halfW * 1.35f;
 				drawList->AddCircle(c, ringRadius, IM_COL32(255, 210, 35, 120), 24, 1.8f * scale);
+			}
+		}
+
+		// =========================================================================
+		// 【2D ロックオン HUD レティクル】
+		// 3Dオブジェクトから2D最前面HUD描画へ完全移行。
+		// 地形潜り込み・Z遮蔽・解像度低下を根絶し、常に鮮明に敵の上に追従表示。
+		// =========================================================================
+		std::vector<LockOnTargetHUD> hudLockTargets = player_->GetLockOnTargets();
+
+		// 通常照準での単体ロックオン時（マルチロックオン武器非装備時、または単体ロックオン中）
+		if (hudLockTargets.empty() && player_->IsLockOn())
+		{
+			LockOnTargetHUD singleLock;
+			singleLock.targetPos = player_->GetLockOnTargetPos();
+			singleLock.lockedTime = 20.0f;
+			singleLock.completeTime = 20.0f;
+			singleLock.isCompleted = true;
+			singleLock.lockIndex = 1;
+			hudLockTargets.push_back(singleLock);
+		}
+
+		for (const auto& lt : hudLockTargets)
+		{
+			auto [okLock, ptLock] = WorldToScreen(lt.targetPos);
+			if (!okLock) continue;
+
+			// 画面境界クリッピング（画面外ならスキップ）
+			if (ptLock.x < viewPos.x - 50.0f || ptLock.x > viewPos.x + screenW + 50.0f ||
+				ptLock.y < viewPos.y - 50.0f || ptLock.y > viewPos.y + screenH + 50.0f)
+			{
+				continue;
+			}
+
+			float progress = std::clamp(lt.lockedTime / (std::max)(1.0f, lt.completeTime), 0.0f, 1.0f);
+			bool isDone = lt.isCompleted || (progress >= 1.0f);
+
+			float baseSize = 22.0f * scale;
+			float curSize = isDone ? baseSize : (baseSize * (1.6f - 0.6f * progress));
+			float cornerL = 7.0f * scale;
+			float strokeW = 2.0f * scale;
+			float shadowW = strokeW + 2.2f;
+
+			// ロック完了時はゴールド/オレンジパルス、進行中はサイバーシアン
+			static float lockPulseTimer = 0.0f;
+			lockPulseTimer += 0.05f;
+			float pulse = 0.5f + 0.5f * std::sin(lockPulseTimer * 10.0f);
+
+			ImU32 markColor = isDone ?
+				IM_COL32(255, (int)(180 + 55 * pulse), 30, 255) :
+				IM_COL32(0, 220, 255, (int)(180 + 70 * progress));
+			ImU32 shadowColor = IM_COL32(0, 0, 0, 220);
+
+			// コーナーブラケット [ ] 描画
+			auto DrawLockCorner = [&](float x, float y, float dx, float dy, ImU32 col, float th) {
+				drawList->AddLine(ImVec2(x, y), ImVec2(x + dx, y), col, th);
+				drawList->AddLine(ImVec2(x, y), ImVec2(x, y + dy), col, th);
+			};
+
+			float hx = curSize;
+			float hy = curSize;
+
+			for (int pass = 0; pass < 2; ++pass)
+			{
+				ImU32 c = (pass == 0) ? shadowColor : markColor;
+				float th = (pass == 0) ? shadowW : strokeW;
+
+				// 左上
+				DrawLockCorner(ptLock.x - hx, ptLock.y - hy, cornerL, cornerL, c, th);
+				// 右上
+				DrawLockCorner(ptLock.x + hx, ptLock.y - hy, -cornerL, cornerL, c, th);
+				// 左下
+				DrawLockCorner(ptLock.x - hx, ptLock.y + hy, cornerL, -cornerL, c, th);
+				// 右下
+				DrawLockCorner(ptLock.x + hx, ptLock.y + hy, -cornerL, -cornerL, c, th);
+			}
+
+			// 中心ターゲットドット（完了時）または進行度円弧ゲージ（チャージ中）
+			if (isDone)
+			{
+				drawList->AddCircleFilled(ptLock, 3.0f * scale, shadowColor);
+				drawList->AddCircleFilled(ptLock, 1.8f * scale, markColor);
+
+				// 四隅の突起ライン
+				float crossArm = 3.5f * scale;
+				drawList->AddLine(ImVec2(ptLock.x - hx - crossArm, ptLock.y), ImVec2(ptLock.x - hx, ptLock.y), markColor, strokeW);
+				drawList->AddLine(ImVec2(ptLock.x + hx, ptLock.y), ImVec2(ptLock.x + hx + crossArm, ptLock.y), markColor, strokeW);
+				drawList->AddLine(ImVec2(ptLock.x, ptLock.y - hy - crossArm), ImVec2(ptLock.x, ptLock.y - hy), markColor, strokeW);
+				drawList->AddLine(ImVec2(ptLock.x, ptLock.y + hy), ImVec2(ptLock.x, ptLock.y + hy + crossArm), markColor, strokeW);
+			}
+			else
+			{
+				// ロックオンチャージ中の円弧ゲージ（0〜360度）
+				float gaugeRadius = curSize * 1.25f;
+				int segments = 24;
+				drawList->PathClear();
+				drawList->PathArcTo(ptLock, gaugeRadius, -1.57079f, -1.57079f + 6.28318f * progress, segments);
+				drawList->PathStroke(shadowColor, 0, strokeW + 2.0f);
+				drawList->PathClear();
+				drawList->PathArcTo(ptLock, gaugeRadius, -1.57079f, -1.57079f + 6.28318f * progress, segments);
+				drawList->PathStroke(markColor, 0, strokeW);
+			}
+
+			// ロックオン番号ラベル（L1, L2 ...）
+			if (lt.lockIndex > 0)
+			{
+				char idxBuf[16];
+				snprintf(idxBuf, sizeof(idxBuf), "L%d", lt.lockIndex);
+				float fontS = 13.0f * scale;
+				ImFont* f = ImGui::GetFont();
+				ImVec2 sz = f->CalcTextSizeA(fontS, FLT_MAX, 0.0f, idxBuf);
+				ImVec2 lblPos(ptLock.x + hx + 3.0f * scale, ptLock.y - hy - 2.0f * scale);
+				drawList->AddText(f, fontS, ImVec2(lblPos.x + 1.0f, lblPos.y + 1.0f), shadowColor, idxBuf);
+				drawList->AddText(f, fontS, lblPos, markColor, idxBuf);
 			}
 		}
 

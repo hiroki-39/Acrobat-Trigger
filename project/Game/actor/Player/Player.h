@@ -153,6 +153,10 @@ public:
     MemoryType GetEquippedMemoryType() const { return weaponManager_.GetCurrentType(); }
     int GetWeaponAmmo() const { return weaponManager_.GetAmmo(); }
     int GetWeaponMaxAmmo() const { return weaponManager_.GetMaxAmmo(); }
+    std::vector<LockOnTargetHUD> GetLockOnTargets() const { return weaponManager_.GetLockOnTargets(); }
+    bool IsLockOn() const { return isLockOn_; }
+    const Vector3& GetLockOnTargetPos() const { return lockOnTargetPos_; }
+    Enemy* GetLockOnTargetEnemy() const { return lockOnTargetEnemy_; }
 
     void SetLockOn(bool isLockOn, const Vector3& targetPos = { 0, 0, 0 }, Enemy* targetEnemy = nullptr) {
         isLockOn_ = isLockOn;

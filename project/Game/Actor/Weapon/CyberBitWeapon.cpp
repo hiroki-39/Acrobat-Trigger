@@ -708,12 +708,44 @@ void CyberBitWeapon::Draw() {
         if (b.ring2Object) b.ring2Object->Draw();
     }
 
-    // マルチロックオン照準枠を描画
-    for (int i = 0; i < MAX_TARGETS; ++i) {
-        if (lockOnReticles_[i]) {
-            lockOnReticles_[i]->Draw();
+    // 3Dマルチロックオン照準枠は2D HUD描画に完全移行したためDrawは行わない
+    // for (int i = 0; i < MAX_TARGETS; ++i) {
+    //     if (lockOnReticles_[i]) {
+    //         lockOnReticles_[i]->Draw();
+    //     }
+    // }
+}
+
+std::vector<LockOnTargetHUD> CyberBitWeapon::GetLockOnTargets() const {
+    std::vector<LockOnTargetHUD> list;
+    for (size_t i = 0; i < multiLockedEnemies_.size(); ++i) {
+        const auto& lt = multiLockedEnemies_[i];
+        bool isValid = false;
+        Vector3 pos = { 0.0f, 0.0f, 0.0f };
+
+        if (lt.boss) {
+            if (!lt.boss->IsDefeated() && !lt.boss->IsCarriageDestroyed(lt.carriageIndex)) {
+                isValid = true;
+                pos = lt.boss->GetCarriagePosition(lt.carriageIndex);
+            }
+        } else if (lt.enemy) {
+            if (!lt.enemy->IsDead()) {
+                isValid = true;
+                pos = lt.enemy->GetColliderCenter();
+            }
+        }
+
+        if (isValid) {
+            LockOnTargetHUD info;
+            info.targetPos = pos;
+            info.lockedTime = lt.lockedTime;
+            info.completeTime = lockOnCompleteTime_;
+            info.isCompleted = (lt.lockedTime >= lockOnCompleteTime_);
+            info.lockIndex = static_cast<int>(i) + 1;
+            list.push_back(info);
         }
     }
+    return list;
 }
 
 void CyberBitWeapon::DrawUI() {

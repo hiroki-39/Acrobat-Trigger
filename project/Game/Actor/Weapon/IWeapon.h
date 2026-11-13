@@ -1,6 +1,8 @@
 #pragma once
 #include "MemoryType.h"
+#include "KHEngine/Math/Vector3.h"
 #include <list>
+#include <vector>
 #include <memory>
 #include <string>
 
@@ -12,6 +14,17 @@ class PlayerMissile;
 class Input;
 class Object3dCommon;
 class Object3d;
+
+/// <summary>
+/// 2D HUD描画用ロックオンターゲット情報
+/// </summary>
+struct LockOnTargetHUD {
+    Vector3 targetPos = { 0.0f, 0.0f, 0.0f };
+    float lockedTime = 0.0f;
+    float completeTime = 12.0f;
+    bool isCompleted = false;
+    int lockIndex = 0;
+};
 
 /// <summary>
 /// 武器の基底インターフェース
@@ -86,4 +99,9 @@ public:
     /// 最大弾数取得
     /// </summary>
     virtual int GetMaxAmmo() const { return 0; }
+
+    /// <summary>
+    /// 2D HUD描画用ロックオンターゲットリスト取得
+    /// </summary>
+    virtual std::vector<LockOnTargetHUD> GetLockOnTargets() const { return {}; }
 };

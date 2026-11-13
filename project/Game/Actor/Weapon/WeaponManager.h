@@ -51,6 +51,9 @@ public:
     std::string GetAmmoText() const;
     int GetAmmo() const { return currentWeapon_ ? currentWeapon_->GetAmmo() : 0; }
     int GetMaxAmmo() const { return currentWeapon_ ? currentWeapon_->GetMaxAmmo() : 0; }
+    std::vector<LockOnTargetHUD> GetLockOnTargets() const {
+        return currentWeapon_ ? currentWeapon_->GetLockOnTargets() : std::vector<LockOnTargetHUD>{};
+    }
 
 private:
     Player* owner_ = nullptr;
