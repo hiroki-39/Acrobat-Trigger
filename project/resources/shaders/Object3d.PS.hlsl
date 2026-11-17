@@ -619,10 +619,14 @@ PixelShaderOutput main(VertexShaderOutput input)
                 }
             }
             break;
+        case 10:
+            // 純粋自己発光（テクスチャ・ライティングの影響を受けない鮮やかなネオンカラー）
+            output.color = gMaterial.color;
+            break;
     }
 
-    // 環境マッピング（仮想空間シェーダー case 7, 8, 9 時は独自のホログラム発光を維持するため除外）
-    if (gMaterial.environmentCoefficient > 0.0f && gMaterial.selectLightings != 7 && gMaterial.selectLightings != 8 && gMaterial.selectLightings != 9)
+    // 環境マッピング（仮想空間シェーダー case 7, 8, 9, 10 時は独自のホログラム発光を維持するため除外）
+    if (gMaterial.environmentCoefficient > 0.0f && gMaterial.selectLightings != 7 && gMaterial.selectLightings != 8 && gMaterial.selectLightings != 9 && gMaterial.selectLightings != 10)
     {
         // 視線ベクトル（表面からカメラへ）
         float32_t3 toEye = normalize(gCamera.worldPosition - input.worldPosition);

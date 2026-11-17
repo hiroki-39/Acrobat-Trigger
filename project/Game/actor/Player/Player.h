@@ -54,6 +54,7 @@ public:
         if (active) {
             logicalPosition_ = localPos;
             baseRotation_ = localRot;
+            invincibilityTimer_ = 0.0f;
         } else {
             // カットシーン終了・スキップ時：位置・基本姿勢・動的姿勢変数を水平巡航状態へリセット
             logicalPosition_ = { 0.0f, 0.0f, 0.0f };
@@ -77,6 +78,7 @@ public:
         cutsceneQuat_ = localRotQuat.Normalized();
         if (active) {
             logicalPosition_ = localPos;
+            invincibilityTimer_ = 0.0f;
         } else {
             logicalPosition_ = { 0.0f, 0.0f, 0.0f };
             baseRotation_ = { 0.0f, 0.0f, 0.0f };

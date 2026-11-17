@@ -954,6 +954,7 @@ void GamePlayScene::Initialize()
 	{
 		uint32_t skyTex = skybox_ ? skybox_->GetCubemapSrvIndex() : 0;
 		bossFinisherSequence_->Initialize(services->GetObject3dCommon(), camera.get(), railCameraController_.get(), skyTex);
+		bossFinisherSequence_->SetTerrainObjects(&modelInstances);
 		bossFinisherSequence_->Reset(player_.get());
 	}
 }

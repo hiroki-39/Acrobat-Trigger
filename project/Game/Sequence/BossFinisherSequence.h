@@ -33,6 +33,7 @@ public:
     ~BossFinisherSequence() = default;
 
     void Initialize(Object3dCommon* object3dCommon, Camera* camera, RailCameraController* railCam, uint32_t skyboxTexIndex);
+    void SetTerrainObjects(const std::vector<std::unique_ptr<Object3d>>* terrainObjects) { terrainObjects_ = terrainObjects; }
     void StartSequence(ArmoredTrainBoss* boss, Player* player);
     void Reset(Player* player = nullptr);
     void Update(float dt, ArmoredTrainBoss* boss, Player* player, float& inOutGameSpeed);
@@ -65,6 +66,8 @@ private:
     void SetupCores(ArmoredTrainBoss* boss);
     void FireExecutionMissiles(Player* player);
     void SpawnCollapseShards(ArmoredTrainBoss* boss);
+    bool IsWorldPointClearOfTerrain(const Vector3& worldPos, float radius) const;
+    Vector3 ResolveSafeCameraLocalPos(const Vector3& desiredLocal, const Vector3& anchorOrigin, const Vector3& pRight, const Vector3& pUp, const Vector3& pFwd, const Vector3& bossHeadLocal, const Vector3& bossFwd) const;
 
 private:
     Object3dCommon* object3dCommon_ = nullptr;
@@ -154,6 +157,12 @@ private:
     Vector3 cinematicCamTargetPos_ = { 0.0f, 0.0f, 0.0f };
     Vector3 flybyCamPos_ = { 0.0f, 0.0f, 0.0f };
     Vector3 flybyLookStart_ = { 0.0f, 0.0f, 0.0f };
+    Vector3 resolvedFrontCamPos_ = { 0.0f, 0.0f, 0.0f };
+    bool hasResolvedFrontCam_ = false;
+    float chosenCamSide_ = 1.0f;
+    bool hasDissolveStarted_ = false;
+    float dissolveTimer_ = 0.0f;
+    float voxelSpawnAccum_ = 0.0f;
 
     // --- ⑤ 任務完了表示 ---
     Vector3 playerAscentStartPos_ = { 0.0f, 0.0f, 0.0f };
@@ -163,4 +172,5 @@ private:
 
     Player* player_ = nullptr;
     ArmoredTrainBoss* boss_ = nullptr;
+    const std::vector<std::unique_ptr<Object3d>>* terrainObjects_ = nullptr;
 };

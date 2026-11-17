@@ -75,6 +75,11 @@ void BossFinisherSequence::StartSequence(ArmoredTrainBoss* boss, Player* player)
     isRedMemoryAbsorbed_ = false;
     hitStopTimer_ = 0.0f;
     glitchPulseTimer_ = 0.0f;
+    hasResolvedFrontCam_ = false;
+    chosenCamSide_ = 1.0f;
+    hasDissolveStarted_ = false;
+    dissolveTimer_ = 0.0f;
+    voxelSpawnAccum_ = 0.0f;
 
     // 弱点コア（4両それぞれの車両位置）を初期化
     SetupCores(boss);
@@ -114,6 +119,11 @@ void BossFinisherSequence::Reset(Player* player) {
     isRedMemoryAbsorbed_ = false;
     hitStopTimer_ = 0.0f;
     glitchPulseTimer_ = 0.0f;
+    hasResolvedFrontCam_ = false;
+    chosenCamSide_ = 1.0f;
+    hasDissolveStarted_ = false;
+    dissolveTimer_ = 0.0f;
+    voxelSpawnAccum_ = 0.0f;
     cores_.clear();
     missiles_.clear();
     collapseShards_.clear();
@@ -595,7 +605,7 @@ void BossFinisherSequence::UpdatePhase3FinisherFire(float dt, ArmoredTrainBoss* 
             cinematicCamStartPos_ = railCam_->GetCinematicLocalPos();
         }
         playerAscentStartPos_ = { 0.0f, 1.5f, 0.0f };
-        SpawnCollapseShards(boss);
+        collapseShards_.clear(); // 消滅が始まるフェーズ3からパーティクルを出すためここでは生成しない
     }
 }
 
@@ -652,6 +662,69 @@ void BossFinisherSequence::SpawnCollapseShards(ArmoredTrainBoss* boss) {
     }
 }
 
+bool BossFinisherSequence::IsWorldPointClearOfTerrain(const Vector3& worldPos, float radius) const {
+    if (!terrainObjects_ || terrainObjects_->empty()) return true;
+    for (const auto& obj : *terrainObjects_) {
+        if (!obj || !obj->HasMeshCollider() || obj->IsBackgroundMountain()) continue;
+        // 1. 地形メッシュとの球体めり込み判定
+        if (obj->CheckCollisionWithSphere(Sphere{ worldPos, radius })) {
+            return false;
+        }
+        // 2. 真下にレイを飛ばし、崖の内側・地面の下に埋まっていないか判定
+        float gy = 0.0f;
+        Vector3 norm = { 0.0f, 1.0f, 0.0f };
+        if (obj->RaycastDown(worldPos.x, worldPos.z, worldPos.y + 80.0f, &gy, &norm)) {
+            if (worldPos.y < gy + radius) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+Vector3 BossFinisherSequence::ResolveSafeCameraLocalPos(
+    const Vector3& desiredLocal,
+    const Vector3& anchorOrigin,
+    const Vector3& pRight,
+    const Vector3& pUp,
+    const Vector3& pFwd,
+    const Vector3& bossHeadLocal,
+    const Vector3& bossFwd) const
+{
+    auto LocalToWorld = [&](const Vector3& lPos) -> Vector3 {
+        return anchorOrigin + pRight * lPos.x + pUp * lPos.y + pFwd * lPos.z;
+    };
+
+    const float kCamSafeRadius = 3.5f;
+    if (IsWorldPointClearOfTerrain(LocalToWorld(desiredLocal), kCamSafeRadius)) {
+        return desiredLocal;
+    }
+
+    // 崖や山にめり込んでいる場合：まず空側（上方向）へ段階的に逃がす
+    const float heightOffsets[] = { 4.0f, 8.0f, 12.0f, 16.0f, 22.0f, 28.0f };
+    for (float dy : heightOffsets) {
+        Vector3 cand = desiredLocal + Vector3(0.0f, dy, 0.0f);
+        if (IsWorldPointClearOfTerrain(LocalToWorld(cand), kCamSafeRadius)) {
+            return cand;
+        }
+    }
+
+    // それでも崖に当たる場合：少しボス側（内側）へ寄せつつ高さを上げてクリア位置を探す
+    const float pullFactors[] = { 0.72f, 0.50f };
+    Vector3 relFromHead = desiredLocal - bossHeadLocal;
+    for (float pf : pullFactors) {
+        for (float dy : heightOffsets) {
+            Vector3 cand = bossHeadLocal + Vector3(relFromHead.x * pf, relFromHead.y + dy, relFromHead.z * pf);
+            if (IsWorldPointClearOfTerrain(LocalToWorld(cand), kCamSafeRadius)) {
+                return cand;
+            }
+        }
+    }
+
+    // 最終フォールバック：ボス上空の安全な高い位置
+    return bossHeadLocal + bossFwd * 24.0f + Vector3(0.0f, 22.0f, 0.0f);
+}
+
 void BossFinisherSequence::UpdatePhase4DataCollapse(float dt, ArmoredTrainBoss* boss, Player* player) {
     if (!boss) return;
     boss->Stop();
@@ -664,9 +737,8 @@ void BossFinisherSequence::UpdatePhase4DataCollapse(float dt, ArmoredTrainBoss* 
     boss->SetDissolveAlpha(1.0f);
 
     // =========================================================================
-    // 【カメラフェーズ2：着弾＆正面煽りカメラへの回り込み (1.8s 〜 2.6s : 計0.8s)】
-    // ・カメラ位置：ボスの斜め前方・煽り視点へ回り込み、ドリーバックして構える
-    // ・注視点(LookAt)：ボスの中心コアへ固定
+    // 【カメラフェーズ2：1車両目正面への引きカメラ (1.8s 〜 2.6s : 計0.8s)】
+    // ・ボスの進行方向基準で正面斜め前を計算し、地形（渓谷の崖）を回避した開けた側へ配置
     // =========================================================================
     if (railCam_ && player) {
         player->SetCutsceneOverride(true, playerAscentStartPos_, { 0.0f, 0.0f, 0.0f });
@@ -687,8 +759,12 @@ void BossFinisherSequence::UpdatePhase4DataCollapse(float dt, ArmoredTrainBoss* 
                 Vector3::Dot(diff, pFwd)
             };
         };
+        auto LocalToWorld = [&](const Vector3& lPos) -> Vector3 {
+            return anchorOrigin + pRight * lPos.x + pUp * lPos.y + pFwd * lPos.z;
+        };
 
         Vector3 bossHeadLocal = WorldToAnchorLocal(boss->GetCarriagePosition(0) + Vector3(0.0f, 5.5f, 0.0f));
+        Vector3 bossTailLocal = WorldToAnchorLocal(boss->GetCarriagePosition(3) + Vector3(0.0f, 5.5f, 0.0f));
         Vector3 bossCenterWorld = (
             boss->GetCarriagePosition(0) +
             boss->GetCarriagePosition(1) +
@@ -697,13 +773,48 @@ void BossFinisherSequence::UpdatePhase4DataCollapse(float dt, ArmoredTrainBoss* 
         ) * 0.25f + Vector3(0.0f, 5.5f, 0.0f);
         Vector3 bossCenterLocal = WorldToAnchorLocal(bossCenterWorld);
 
-        float sideSign = (bossCenterLocal.x < pLocal.x) ? 1.0f : -1.0f;
+        // ボスの実際の進行方向と左右軸（カーブや斜め向きでも100%ボス基準に揃える）
+        Vector3 bossFwd = bossHeadLocal - bossTailLocal;
+        bossFwd.y = 0.0f;
+        float bLen = bossFwd.Length();
+        if (bLen > 0.001f) bossFwd = bossFwd / bLen;
+        else bossFwd = { 0.0f, 0.0f, 1.0f };
+        Vector3 bossRight = { bossFwd.z, 0.0f, -bossFwd.x };
+        Vector3 bossUp = { 0.0f, 1.0f, 0.0f };
 
-        // 1車両目の正面全体が余裕を持ってフレーム内に収まる位置までカメラを引く（-20mオフセット）
-        Vector3 frontCamPos = bossHeadLocal + Vector3(sideSign * 30.0f - 20.0f, 8.5f, 46.0f);
+        if (!hasResolvedFrontCam_) {
+            hasResolvedFrontCam_ = true;
+            // 右側と左側でどちらが渓谷の壁に当たらず開けているかを判定
+            Vector3 candRight = bossHeadLocal + bossRight * 12.0f + bossUp * 8.5f + bossFwd * 46.0f;
+            Vector3 candLeft  = bossHeadLocal - bossRight * 12.0f + bossUp * 8.5f + bossFwd * 46.0f;
+            bool clearRight = IsWorldPointClearOfTerrain(LocalToWorld(candRight), 3.5f);
+            bool clearLeft  = IsWorldPointClearOfTerrain(LocalToWorld(candLeft), 3.5f);
+
+            if (clearRight && !clearLeft) {
+                chosenCamSide_ = 1.0f;
+                resolvedFrontCamPos_ = candRight;
+            } else if (clearLeft && !clearRight) {
+                chosenCamSide_ = -1.0f;
+                resolvedFrontCamPos_ = candLeft;
+            } else {
+                // 両方クリア、または両方当たる場合は、より少ない回避移動で済む側を採用
+                Vector3 safeR = ResolveSafeCameraLocalPos(candRight, anchorOrigin, pRight, pUp, pFwd, bossHeadLocal, bossFwd);
+                Vector3 safeL = ResolveSafeCameraLocalPos(candLeft, anchorOrigin, pRight, pUp, pFwd, bossHeadLocal, bossFwd);
+                float costR = (safeR - candRight).Length();
+                float costL = (safeL - candLeft).Length();
+                if (costR <= costL) {
+                    chosenCamSide_ = 1.0f;
+                    resolvedFrontCamPos_ = safeR;
+                } else {
+                    chosenCamSide_ = -1.0f;
+                    resolvedFrontCamPos_ = safeL;
+                }
+            }
+        }
+
         float tPull = std::clamp(phaseTimer_ / 0.80f, 0.0f, 1.0f);
         float easePull = tPull * tPull * (3.0f - 2.0f * tPull);
-        Vector3 camPos = cinematicCamStartPos_ + (frontCamPos - cinematicCamStartPos_) * easePull;
+        Vector3 camPos = cinematicCamStartPos_ + (resolvedFrontCamPos_ - cinematicCamStartPos_) * easePull;
 
         Vector3 lookTarget = bossCenterLocal + (bossHeadLocal - bossCenterLocal) * (0.65f * easePull);
 
@@ -730,32 +841,26 @@ void BossFinisherSequence::UpdatePhase4DataCollapse(float dt, ArmoredTrainBoss* 
         }
     }
 
-    // 0.8秒経過で、ボス実体を残したままフェーズ3（ボスの真上ローリング通過＆ボス消滅）へ移行
-    if (phaseTimer_ >= 0.80f) {
-        phase_ = Phase::PHASE_5_MISSION_ACCOMPLISHED;
-        phaseTimer_ = 0.0f;
-        wingTrailParticles_.clear();
-        if (player) {
-            player->SetVisible(true); // ボスの上を通るシーンから自機を再表示
+        // 0.8秒経過で、ボス実体を残したままフェーズ3（ボスの真上通過＆2車両目後半通過後に消滅開始）へ移行
+        if (phaseTimer_ >= 0.80f) {
+            phase_ = Phase::PHASE_5_MISSION_ACCOMPLISHED;
+            phaseTimer_ = 0.0f;
+            hasDissolveStarted_ = false;
+            dissolveTimer_ = 0.0f;
+            voxelSpawnAccum_ = 0.0f;
+            wingTrailParticles_.clear();
+            if (player) {
+                player->SetVisible(true); // ボスの上を通るシーンから自機を再表示
+            }
         }
-    }
 }
 
 void BossFinisherSequence::UpdatePhase5MissionAccomplished(float dt, ArmoredTrainBoss* boss, Player* player) {
     // =========================================================================
-    // 【カメラフェーズ3：ローリング通過＆ボス一斉消滅 ➔ 上空フライバイ (計3.2s)】
-    // ・プレイヤーがローリングでボスの真上を通る時にボス全車両の消滅が一斉に始まる
-    // ・約2.5秒かけて上から下へ全車両が統一されたデジタル・グリッド・ディゾルブで消滅
+    // 【カメラフェーズ3：ローリング通過＆ボス一斉消滅 ➔ 上空フライバイ (計4.8s)】
+    // ・プレイヤーが2車両目の後半を通り過ぎたタイミングでボス全車両の消滅が一斉に始まる
+    // ・消滅中は上から細かいデジタル粒子・ボクセルブロックが上方向へ立ち昇る
     // =========================================================================
-    if (boss) {
-        // ボスの上を通り過ぎたタイミング (1.50s) から消滅が始まり、2.20秒かけて一斉にゆっくり消滅 (3.70sで完全消滅)
-        float dissolveProgress = std::clamp((phaseTimer_ - 1.50f) / 2.20f, 0.0f, 1.0f);
-        boss->SetDissolveAlpha(1.0f - dissolveProgress);
-        if (dissolveProgress >= 1.0f) {
-            boss->SetActive(false);
-        }
-    }
-
     if (railCam_ && player && boss) {
         player->SetVisible(true);
         // まず回転を0に戻した状態でレールアンカーの純粋なワールド基底ベクトルを取得
@@ -781,13 +886,22 @@ void BossFinisherSequence::UpdatePhase5MissionAccomplished(float dt, ArmoredTrai
         Vector3 bossHeadLocal = WorldToAnchorLocal(boss->GetCarriagePosition(0) + Vector3(0.0f, 5.5f, 0.0f));
         Vector3 bossTailLocal = WorldToAnchorLocal(boss->GetCarriagePosition(3) + Vector3(0.0f, 5.5f, 0.0f));
 
-        // 固定ルート：
-        // 前半 (0.0s〜3.5s): ボスの真上（横+5m, 高さ+11.7m）を一直線に通過し、さらに前方（+60m）まで水平飛行を続ける
+        // ボスの実際の進行方向と左右軸（カーブやどの向きにいても常にボスの真上を通る）
+        Vector3 bossFwd = bossHeadLocal - bossTailLocal;
+        bossFwd.y = 0.0f;
+        float bLen = bossFwd.Length();
+        if (bLen > 0.001f) bossFwd = bossFwd / bLen;
+        else bossFwd = { 0.0f, 0.0f, 1.0f };
+        Vector3 bossRight = { bossFwd.z, 0.0f, -bossFwd.x };
+        Vector3 bossUp = { 0.0f, 1.0f, 0.0f };
+
+        // 固定ルート（ボス進行方向基準）：
+        // 前半 (0.0s〜3.5s): ボスの真上（ボスの右+5m, 高さ+11.7m）を一直線に通過し、さらに前方（+60m）まで水平飛行を続ける
         // 後半 (3.5s〜4.8s): 十分前に進んだあと、ようやく上空（オーロラの夜空）へ上昇して飛び去る
-        Vector3 shipStart    = bossTailLocal + Vector3(5.0f, 11.7f, -22.0f);
-        Vector3 shipOverHead = bossHeadLocal + Vector3(5.0f, 11.7f, 60.0f);
-        Vector3 shipPassMid  = bossHeadLocal + Vector3(5.0f, 17.5f, 78.0f);
-        Vector3 shipSkyEnd   = bossHeadLocal + Vector3(5.0f, 36.0f, 105.0f);
+        Vector3 shipStart    = bossTailLocal + bossRight * 5.0f + bossUp * 11.7f - bossFwd * 22.0f;
+        Vector3 shipOverHead = bossHeadLocal + bossRight * 5.0f + bossUp * 11.7f + bossFwd * 60.0f;
+        Vector3 shipPassMid  = bossHeadLocal + bossRight * 5.0f + bossUp * 17.5f + bossFwd * 78.0f;
+        Vector3 shipSkyEnd   = bossHeadLocal + bossRight * 5.0f + bossUp * 36.0f + bossFwd * 105.0f;
 
         Vector3 shipPos = shipStart;
         Vector3 moveDir = shipOverHead - shipStart;
@@ -823,9 +937,10 @@ void BossFinisherSequence::UpdatePhase5MissionAccomplished(float dt, ArmoredTrai
         player->SetCutsceneOverrideQuaternion(true, shipPos, shipQuat);
         player->Update3DObjectOnly();
 
-        // ローリング完了（1.50s〜2.80s）に合わせてカメラを少しプレイヤー側へ近づけて機体全体を見せる
-        Vector3 shipNearHead = bossHeadLocal + Vector3(5.0f, 12.7f, 10.0f);
-        Vector3 camClosePos = flybyCamPos_ + (shipNearHead - flybyCamPos_) * 0.38f;
+        // ローリング完了（1.50s〜2.80s）に合わせてカメラを少しプレイヤー側へ近づけて機体全体を見せる（地形貫通回避付き）
+        Vector3 shipNearHead = bossHeadLocal + bossRight * 5.0f + bossUp * 12.7f + bossFwd * 10.0f;
+        Vector3 desiredClosePos = flybyCamPos_ + (shipNearHead - flybyCamPos_) * 0.38f;
+        Vector3 camClosePos = ResolveSafeCameraLocalPos(desiredClosePos, anchorOrigin, pRight, pUp, pFwd, bossHeadLocal, bossFwd);
         float camApproachT = std::clamp((phaseTimer_ - 0.85f) / 0.65f, 0.0f, 1.0f);
         float easeApproach = camApproachT * camApproachT * (3.0f - 2.0f * camApproachT);
         Vector3 curCamPos = flybyCamPos_ + (camClosePos - flybyCamPos_) * easeApproach;
@@ -838,21 +953,112 @@ void BossFinisherSequence::UpdatePhase5MissionAccomplished(float dt, ArmoredTrai
 
         playerAscentPos_ = shipPos;
         playerAscentRot_ = { 0.0f, 0.0f, rollAngle };
+
+        // --- フェーズ3に入った瞬間からデジタル・グリッド・ディゾルブを開始し、3.90秒かけてゆっくり消滅させて帳尻を合わせる ---
+        hasDissolveStarted_ = true;
+        if (hasDissolveStarted_) {
+            dissolveTimer_ += dt;
+            float dissolveProgress = std::clamp(dissolveTimer_ / 3.90f, 0.0f, 1.0f);
+            boss->SetDissolveAlpha(1.0f - dissolveProgress);
+
+            // シェーダーのディゾルブ・スキャンライン高度 (lerp(18.0f, -20.0f, dissolveProgress)) と同期し、
+            // 実際にモデル（高さ約17.5m）が上から消え始めてからパーティクルを発生させる
+            Vector3 camWorldPos = anchorOrigin + pRight * curCamPos.x + pUp * curCamPos.y + pFwd * curCamPos.z;
+            float scanWorldY = camWorldPos.y + (18.0f - 38.0f * dissolveProgress);
+            float bossBaseY = boss->GetCarriagePosition(0).y;
+            float bossTopWorldY = bossBaseY + 17.5f;
+            float bossBottomWorldY = bossBaseY - 1.0f;
+            bool isModelDissolving = (scanWorldY <= bossTopWorldY + 1.5f) && (scanWorldY >= bossBottomWorldY - 4.5f);
+
+            // 消えている最中：上方向に細かい粒子やボクセルブロックを大量に立ち昇らせる
+            if (isModelDissolving && dissolveProgress < 0.96f) {
+                voxelSpawnAccum_ += dt;
+                while (voxelSpawnAccum_ >= 0.02f) {
+                    voxelSpawnAccum_ -= 0.02f;
+                    for (int carIdx = 0; carIdx < 4; ++carIdx) {
+                        for (int n = 0; n < 3; ++n) {
+                            if (collapseShards_.size() >= 420) break;
+                            Vector3 carWorld = boss->GetCarriagePosition(carIdx);
+                            CollapseShard s;
+                            s.isCube = true;
+                            s.obj = std::make_unique<Object3d>();
+                            s.obj->Initialize(object3dCommon_);
+                            s.obj->SetModel("cube.obj");
+
+                            // 鮮やかな純粋ネオンカラー（シアン・マゼンタ・ピュアホワイト）
+                            int colPick = rand() % 5;
+                            if (colPick <= 1) s.color = { 0.1f, 0.95f, 1.0f, 1.0f };       // ネオンシアン
+                            else if (colPick <= 3) s.color = { 1.0f, 0.2f, 0.75f, 1.0f };  // ネオンマゼンタ
+                            else s.color = { 1.0f, 1.0f, 1.0f, 1.0f };                     // ピュアホワイト
+
+                            s.obj->SetColor(s.color);
+                            s.obj->SetEnableLighting(false);
+                            s.obj->SetEnvironmentCoefficient(0.0f);
+                            s.obj->SetSelectLightings(10); // 純粋自己発光シェーダーを使用
+
+                            // 細かい粒子(0.55〜0.95)〜ボクセルブロック(1.0〜1.65)のサイズ混在
+                            float sz = (n == 0) ? (1.0f + (rand() % 10) * 0.065f) : (0.55f + (rand() % 10) * 0.04f);
+                            s.scale = { sz, sz, sz };
+                            s.obj->SetScale(s.scale);
+
+                            // 実際にモデルが消えているスキャンライン高度付近から上向きに生成
+                            float scanY = std::clamp(scanWorldY - carWorld.y, 0.5f, 17.5f);
+                            Vector3 offset = {
+                                ((rand() % 100) - 50) * 0.14f,
+                                scanY + ((rand() % 100) - 50) * 0.04f,
+                                ((rand() % 100) - 50) * 0.28f
+                            };
+                            s.position = carWorld + offset;
+                            // 上方向へ勢いよく立ち昇る速度
+                            s.velocity = {
+                                ((rand() % 100) - 50) * 0.06f,
+                                14.0f + (rand() % 100) * 0.14f,
+                                ((rand() % 100) - 50) * 0.06f
+                            };
+                            s.rotation = { (rand() % 628) * 0.01f, (rand() % 628) * 0.01f, (rand() % 628) * 0.01f };
+                            s.rotSpeed = {
+                                ((rand() % 100) - 50) * 0.08f,
+                                ((rand() % 100) - 50) * 0.08f,
+                                ((rand() % 100) - 50) * 0.08f
+                            };
+                            s.life = 0.0f;
+                            s.maxLife = 1.0f + (rand() % 10) * 0.07f;
+                            s.obj->SetTranslate(s.position);
+                            s.obj->SetRotation(s.rotation);
+                            s.obj->Update();
+                            collapseShards_.push_back(std::move(s));
+                        }
+                    }
+                }
+            }
+
+            if (dissolveProgress >= 1.0f) {
+                boss->SetActive(false);
+            }
+        }
     }
 
-    // 崩壊シャードの残存更新
-    for (auto& s : collapseShards_) {
+    // 崩壊ボクセル・デジタル粒子の更新（上空へ昇りながら縮小・フェードアウト）
+    for (auto it = collapseShards_.begin(); it != collapseShards_.end(); ) {
+        auto& s = *it;
         s.life += dt;
+        if (s.life >= s.maxLife) {
+            it = collapseShards_.erase(it);
+            continue;
+        }
         s.position = s.position + s.velocity * dt;
         s.rotation = s.rotation + s.rotSpeed * dt;
+        s.velocity.y += 4.5f * dt; // 上方向へ加速しながら霧散
         float alpha = std::clamp(1.0f - s.life / s.maxLife, 0.0f, 1.0f);
         s.color.w = alpha;
         if (s.obj) {
             s.obj->SetTranslate(s.position);
             s.obj->SetRotation(s.rotation);
             s.obj->SetColor(s.color);
+            s.obj->SetScale({ s.scale.x * (0.4f + 0.6f * alpha), s.scale.y * (0.4f + 0.6f * alpha), s.scale.z * (0.4f + 0.6f * alpha) });
             s.obj->Update();
         }
+        ++it;
     }
 
     // 4.80秒経過で完了（COMPLETED）し、任務完了UI展開フェーズへ引き渡す

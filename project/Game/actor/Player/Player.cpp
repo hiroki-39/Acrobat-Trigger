@@ -165,7 +165,7 @@ void Player::Initialize(Object3dCommon* object3dCommon, uint32_t skyboxTexIndex)
 
 // プレイヤー被弾時の処理
 void Player::OnCollision() {
-    if (isGodMode_ || invincibilityTimer_ > 0.0f || isDead_ || isRolling_) return; 
+    if (isGodMode_ || invincibilityTimer_ > 0.0f || isDead_ || isRolling_ || isCutsceneActive_ || isExecutionMode_) return; 
     
     hp_ -= 1000;
     // 被弾しても強化状態（ダブルショット）は維持する
@@ -440,7 +440,7 @@ void Player::Draw() {
     }
     
     bool shouldDrawPlayer = true;
-    if (invincibilityTimer_ > 0.0f) {
+    if (!isCutsceneActive_ && invincibilityTimer_ > 0.0f) {
         if (std::fmod(invincibilityTimer_ / 4.0f, 2.0f) < 1.0f) {
             shouldDrawPlayer = false;
         }
