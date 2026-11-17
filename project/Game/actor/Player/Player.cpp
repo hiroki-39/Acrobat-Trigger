@@ -384,7 +384,9 @@ void Player::Update(std::list<std::unique_ptr<PlayerBullet>>& bullets, std::list
     prevLogicalPosition_ = logicalPosition_;
     Move(gameSpeed);
     UpdateReticleAndAimAssist(enemies, boss, gameSpeed);
-    weaponManager_.Update(gameSpeed, enemies, boss, parentCamera);
+    if (!isExecutionMode_) {
+        weaponManager_.Update(gameSpeed, enemies, boss, parentCamera);
+    }
     Attack(bullets, missiles, enemies, parentCamera, gameSpeed, boss);
 
     if (invincibilityTimer_ > 0.0f) {
@@ -590,9 +592,9 @@ void Player::UpdateRollAfterImages(float gameSpeed, Object3d* parentCamera) {
                     if (parentCamera) {
                         img.object->SetParent(parentCamera);
                     }
-                    // 現在の自機の姿勢（Translate, Rotation, Scale）をスナップショット記録
+                    // 現在の自機の姿勢（Translate, Quaternion Rotation, Scale）をスナップショット記録
                     img.object->SetTranslate(object_->GetTranslate());
-                    img.object->SetRotation(object_->GetRotation());
+                    img.object->SetRotationQuaternion(object_->GetRotationQuaternion());
                     img.object->SetScale(object_->GetScale());
                 }
             }
@@ -1030,16 +1032,15 @@ void Player::Move(float gameSpeed) {
     reticle_->SetRotation(Vector3(0.0f, 0.0f, reticleRoll));
     reticle_->Update();
 
-    // スクリーン基準の回転を機体のローカル座標へマッピング
-    float visualPitch = currentPitch_ * std::cos(finalBank) + currentYaw_ * std::sin(finalBank);
-    float visualYaw   = -currentPitch_ * std::sin(finalBank) + currentYaw_ * std::cos(finalBank);
+    // クォータニオンを用いた姿勢合成（ローカルZ軸ロール -> ピッチ -> ヨー）
+    Quaternion qOffset = Quaternion::FromEuler(modelRotOffset_);
+    Quaternion qRoll   = Quaternion::FromAxisAngle({ 0.0f, 0.0f, 1.0f }, baseRotation_.z + finalBank);
+    Quaternion qPitch  = Quaternion::FromAxisAngle({ 1.0f, 0.0f, 0.0f }, baseRotation_.x + currentPitch_);
+    Quaternion qYaw    = Quaternion::FromAxisAngle({ 0.0f, 1.0f, 0.0f }, baseRotation_.y + currentYaw_);
+    Quaternion finalQuat = Quaternion::Multiply(qYaw, Quaternion::Multiply(qPitch, Quaternion::Multiply(qRoll, qOffset)));
 
     object_->SetScale(playerScale_);
-    object_->SetRotation(Vector3(
-        baseRotation_.x + visualPitch + modelRotOffset_.x,
-        baseRotation_.y + visualYaw   + modelRotOffset_.y,
-        baseRotation_.z + finalBank   + modelRotOffset_.z
-    ));
+    object_->SetRotationQuaternion(finalQuat);
     object_->SetTranslate(Vector3(
         logicalPosition_.x + modelPosOffset_.x, 
         logicalPosition_.y + modelPosOffset_.y, 
@@ -1064,6 +1065,9 @@ void Player::Move(float gameSpeed) {
 // プレイヤーの攻撃（弾・ミサイル発射）処理
 void Player::Attack(std::list<std::unique_ptr<PlayerBullet>>& bullets, std::list<std::unique_ptr<PlayerMissile>>& missiles, const std::list<std::unique_ptr<Enemy>>& enemies, Object3d* parentCamera, float gameSpeed, ArmoredTrainBoss* boss) {
     if (!input_ || !isInputEnabled_) return;
+
+    // 処刑フィニッシャー中（ExecutionMode）は通常弾やサブ武器の発射を完全に抑制
+    if (isExecutionMode_) return;
 
     // 武器管理システム（メモリシステム）に攻撃処理を委譲
     weaponManager_.Attack(input_, bullets, missiles, enemies, boss, parentCamera, gameSpeed);
@@ -1180,7 +1184,9 @@ void Player::SaveSettings(const std::string& filepath) {
 
 // プレイヤー関連のUI描画処理
 void Player::DrawUI() {
-    weaponManager_.DrawUI();
+    if (!isExecutionMode_) {
+        weaponManager_.DrawUI();
+    }
 #ifdef USE_IMGUI
     ImGui::Begin("Player Editor");
     DrawImGuiContent();

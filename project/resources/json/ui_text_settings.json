@@ -219,7 +219,7 @@
                     2.0,
                     2.0
                 ],
-                "text": "",
+                "text": "SCORE: 000000",
                 "underlineColor": [
                     0.9200000166893005,
                     0.11999999731779099,
@@ -264,7 +264,7 @@
                     2.0,
                     2.0
                 ],
-                "text": "",
+                "text": "通常弾: ∞/∞",
                 "underlineColor": [
                     0.9200000166893005,
                     0.11999999731779099,
@@ -309,7 +309,7 @@
                     2.0,
                     2.0
                 ],
-                "text": "",
+                "text": "HP: 10000 / 10000",
                 "underlineColor": [
                     0.9200000166893005,
                     0.11999999731779099,
@@ -1084,6 +1084,186 @@
                 "underlineOffsetY": 42.0,
                 "underlineThickness": 2.5,
                 "underlineWidth": 320.0
+            },
+            {
+                "align": 1,
+                "color": [
+                    1.0,
+                    0.15000000596046448,
+                    0.20000000298023224,
+                    1.0
+                ],
+                "fontSize": 28.0,
+                "fontType": 1,
+                "hasOutline": true,
+                "hasShadow": true,
+                "hasUnderline": false,
+                "id": "ExecuteCritical",
+                "isVisible": false,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 2.0,
+                "posX": 640.0,
+                "posY": 160.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.800000011920929
+                ],
+                "shadowOffset": [
+                    2.0,
+                    2.0
+                ],
+                "text": "[ CRITICAL // EXECUTE READY ]",
+                "underlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                "underlineOffsetY": 0.0,
+                "underlineThickness": 0.0,
+                "underlineWidth": 0.0
+            },
+            {
+                "align": 1,
+                "color": [
+                    0.0,
+                    0.949999988079071,
+                    1.0,
+                    1.0
+                ],
+                "fontSize": 22.0,
+                "fontType": 1,
+                "hasOutline": true,
+                "hasShadow": true,
+                "hasUnderline": false,
+                "id": "ExecuteGuide",
+                "isVisible": false,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 2.0,
+                "posX": 640.0,
+                "posY": 520.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.800000011920929
+                ],
+                "shadowOffset": [
+                    2.0,
+                    2.0
+                ],
+                "text": "[ HOLD SPACE TO LOCK ON ]",
+                "underlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                "underlineOffsetY": 0.0,
+                "underlineThickness": 0.0,
+                "underlineWidth": 0.0
+            },
+            {
+                "align": 1,
+                "color": [
+                    0.949999988079071,
+                    1.0,
+                    1.0,
+                    1.0
+                ],
+                "fontSize": 38.0,
+                "fontType": 1,
+                "hasOutline": true,
+                "hasShadow": true,
+                "hasUnderline": true,
+                "id": "MissionAccomplishedTitle",
+                "isVisible": false,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 3.0,
+                "posX": 640.0,
+                "posY": 280.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.8999999761581421
+                ],
+                "shadowOffset": [
+                    3.0,
+                    3.0
+                ],
+                "text": "MISSION ACCOMPLISHED",
+                "underlineColor": [
+                    0.0,
+                    0.8999999761581421,
+                    1.0,
+                    0.800000011920929
+                ],
+                "underlineOffsetY": 46.0,
+                "underlineThickness": 2.5,
+                "underlineWidth": 480.0
+            },
+            {
+                "align": 1,
+                "color": [
+                    0.0,
+                    0.8999999761581421,
+                    1.0,
+                    1.0
+                ],
+                "fontSize": 18.0,
+                "fontType": 1,
+                "hasOutline": true,
+                "hasShadow": true,
+                "hasUnderline": false,
+                "id": "MissionAccomplishedSub",
+                "isVisible": false,
+                "outlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "outlineThickness": 2.0,
+                "posX": 640.0,
+                "posY": 340.0,
+                "shadowColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.800000011920929
+                ],
+                "shadowOffset": [
+                    2.0,
+                    2.0
+                ],
+                "text": "- 任務完了 // TARGET PURGED -",
+                "underlineColor": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                "underlineOffsetY": 0.0,
+                "underlineThickness": 0.0,
+                "underlineWidth": 0.0
             }
         ],
         "TITLE": [
@@ -1135,10 +1315,10 @@
             {
                 "align": 1,
                 "color": [
-                    0.21018046140670776,
-                    0.5284537076950073,
-                    0.600515604019165,
-                    0.12113425135612488
+                    0.3185650706291199,
+                    0.8009636402130127,
+                    0.9101859331130981,
+                    0.8024089932441711
                 ],
                 "fontSize": 53.599998474121094,
                 "fontType": 3,

@@ -20,6 +20,7 @@
 #include "Game/System/RailCameraController.h"
 #include "Game/Actor/Enemy/Enemy.h"
 #include "Game/Actor/Enemy/ArmoredTrainBoss.h"
+#include "Game/Sequence/BossFinisherSequence.h"
 #include "Game/Actor/Obstacle/Obstacle.h"
 #include "Game/Actor/Item/EnhanceRing.h"
 #include "Game/Actor/Item/MemoryItem.h"
@@ -150,6 +151,9 @@ private:
     std::unique_ptr<ArmoredTrainBoss> armoredTrainBoss_;
     bool isBossSpawned_ = false;
 
+    // 電脳フィニッシャー（クリア演出シークエンス）
+    std::unique_ptr<BossFinisherSequence> bossFinisherSequence_;
+
     // ボス戦進行ステップ
     enum class BossBattleStep {
         NOT_ACTIVE,        // 通常道中
@@ -214,6 +218,12 @@ private:
     int enemyKillShakeFrames_ = 0; // 敵撃破時の微小カメラシェイク（1〜2フレーム）
     float lastLoadTimeMs_ = 0.0f;
     int score_ = 0;
+
+    // 戦績評価（リザルトパネル）用トラッキングデータ
+    int totalEnemiesCount_ = 0;
+    int killedEnemiesCount_ = 0;
+    float stageElapsedTime_ = 0.0f;
+    float bossElapsedTime_ = 0.0f;
 
     // 敵撃破時の3Dスコア加算ポップ演出
     struct ScorePopup {
@@ -321,7 +331,8 @@ private:
     // ゲームクリア演出（GameClear Sequence）
     enum class ClearStep {
         ASCENDING,      // 自機が上空へ急上昇・飛び去る（カメラ停止、スラスター噴射）
-        SHOW_UI         // 「MISSION COMPLETE」、スコア表示、SPACEでタイトルへ戻る入力待ち
+        SHOW_UI,        // フェーズ4 (5.2s〜7.5s): シアン発光ブラケット枠付き「MISSION ACCOMPLISHED / 任務完了」
+        RESULT_PANEL    // フェーズ⑦: 半透明ホログラムウィンドウ（リザルトパネル）展開＆SPACEでタイトル復帰
     };
     ClearStep clearStep_ = ClearStep::ASCENDING;
     float clearTimer_ = 0.0f;

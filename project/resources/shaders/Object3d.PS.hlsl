@@ -555,6 +555,68 @@ PixelShaderOutput main(VertexShaderOutput input)
                 // gMaterial.color（破壊時の煤けた黒焦げ 0.15 乗算、およびカラーティント）を適用
                 output.color.rgb = bossGlow * gMaterial.color.rgb;
                 output.color.a = 1.0f;
+
+                // ===== ボス撃破時：上から下へ走るデジタル・グリッド・ディゾルブ（データ崩壊演出） =====
+                if (gMaterial.color.a < 0.999f)
+                {
+                    float dissolveProgress = saturate(1.0f - gMaterial.color.a); // 0.0(開始) -> 1.0(完全消滅)
+
+                    // 1. 3Dデジタル・グリッドメッシュ（車体を覆う高精細ホログラム格子）
+                    float3 g3d = abs(frac(wp.xyz * 1.25f - 0.5f) - 0.5f) / max(fwidth(wp.xyz * 1.25f), 0.001f);
+                    float grid3D = 1.0f - saturate(min(min(g3d.x, g3d.y), g3d.z));
+                    float digitalGrid = saturate(max(grid3D, max(wireLine * 2.0f, panelLine * 2.5f)));
+
+                    // 2. 上から下へ降りていくディゾルブ・スキャンライン高度
+                    // カメラ高度を基準にボスの上端(+18m)から下端(-20m)へスキャン境界が降下
+                    float relY = wp.y - gCamera.worldPosition.y;
+                    float scanHeight = lerp(18.0f, -20.0f, dissolveProgress);
+
+                    // 3Dデジタルボクセル（四角いデータブロック）ごとのランダム遅延シード
+                    float3 voxelBlock = floor(wp.xyz * 1.8f);
+                    float voxelNoise = frac(sin(dot(voxelBlock, float32_t3(12.9898f, 78.233f, 45.164f))) * 43758.5453f);
+
+                    // スキャン境界からの上方距離（正の値＝すでにスキャン線が通過した上部領域）
+                    float aboveScan = (relY - scanHeight) + (voxelNoise - 0.5f) * 3.5f;
+
+                    // [段階A: 完全データ消去領域] スキャン線より一定以上上の領域は完全にdiscard
+                    if (aboveScan > 4.5f || dissolveProgress >= 0.98f)
+                    {
+                        discard;
+                    }
+
+                    // [段階B: デジタル・グリッド分解領域 (0.0 < aboveScan <= 4.5f)]
+                    // 装甲のソリッド面が剥がれ落ち、ネオンシアン＆マゼンタのデジタルグリッド線だけが残って順次消えていく
+                    if (aboveScan > 0.0f)
+                    {
+                        float gridStage = aboveScan / 4.5f; // 0.0(境界直後) -> 1.0(消滅直前)
+
+                        // ボクセル単位でグリッドも徐々に欠落して消えていく
+                        if (digitalGrid < 0.15f || gridStage > voxelNoise * 0.85f + 0.15f)
+                        {
+                            discard;
+                        }
+
+                        // 残存デジタルグリッドは鮮烈なネオンシアン＆マゼンタで発光
+                        float32_t3 cyberCyan = float32_t3(0.0f, 0.95f, 1.0f);
+                        float32_t3 cyberMagenta = float32_t3(1.0f, 0.15f, 0.55f);
+                        float32_t3 gridCol = lerp(cyberCyan, cyberMagenta, voxelNoise);
+                        output.color.rgb = gridCol * 3.2f + float32_t3(1.0f, 1.0f, 1.0f) * 0.8f;
+                    }
+                    else
+                    {
+                        // [段階C: スキャン境界直下のレーザーエッジ＆グリッド浮き上がり (-3.5f <= aboveScan <= 0.0f)]
+                        float frontier = saturate(1.0f - abs(aboveScan) / 3.5f);
+                        float laserLine = pow(frontier, 3.0f);
+
+                        // 境界付近で装甲表面にデジタルグリッドが浮き上がる
+                        float32_t3 gridOverlay = float32_t3(0.1f, 0.95f, 1.0f) * (digitalGrid * frontier * 2.8f);
+                        // 境界線の白熱マゼンタ・シアンレーザー
+                        float32_t3 laserGlow = float32_t3(1.0f, 0.25f, 0.65f) * (laserLine * 3.5f)
+                                             + float32_t3(0.85f, 1.0f, 1.0f) * (pow(frontier, 8.0f) * 4.0f);
+
+                        output.color.rgb += gridOverlay + laserGlow;
+                    }
+                }
             }
             break;
     }

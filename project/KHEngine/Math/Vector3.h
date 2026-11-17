@@ -78,3 +78,9 @@ public:
         };
     }
 };
+
+// スカラー * Vector3 の二項演算子サポート
+inline Vector3 operator*(float s, const Vector3& v)
+{
+    return v * s;
+}

@@ -182,11 +182,129 @@ public:
     bool IsActive() const { return isActive_; }
     void SetActive(bool active) { isActive_ = active; }
     bool IsDefeated() const { return isDefeated_; }
+    void SetDefeated(bool defeated) {
+        isDefeated_ = defeated;
+        if (defeated) {
+            currentSpeed_ = 0.0f;
+            targetSpeed_ = 0.0f;
+        }
+    }
+    void Stop() {
+        currentSpeed_ = 0.0f;
+        targetSpeed_ = 0.0f;
+    }
     float GetTotalHpRate() const;
     const Vector3& GetPosition() const { return position_; }
     const std::vector<TrainCarriage>& GetCarriages() const { return carriages_; }
     std::vector<TrainCarriage>& GetCarriagesMutable() { return carriages_; }
     void ApplyTransforms() { UpdateCarriageTransforms(); }
+
+    // デジタル・グリッド・ディゾルブ用のアルファ値一括設定 (1.0f = 通常実体, 0.0f = 完全消滅)
+    void SetDissolveAlpha(float alpha) {
+        float a = std::clamp(alpha, 0.0f, 1.0f);
+        for (auto& car : carriages_) {
+            car.color.w = a;
+            if (car.object) {
+                Vector4 col = car.object->GetColor();
+                col.w = a;
+                car.object->SetColor(col);
+            }
+            for (auto& t : car.turrets) {
+                if (t.object) {
+                    Vector4 col = t.object->GetColor();
+                    col.w = a;
+                    t.object->SetColor(col);
+                }
+            }
+            for (auto& p : car.missilePods) {
+                if (p.object) {
+                    Vector4 col = p.object->GetColor();
+                    col.w = a;
+                    p.object->SetColor(col);
+                }
+            }
+            if (car.bigCannon) {
+                if (car.bigCannon->baseObject) {
+                    Vector4 col = car.bigCannon->baseObject->GetColor();
+                    col.w = a;
+                    car.bigCannon->baseObject->SetColor(col);
+                }
+                if (car.bigCannon->barrelObject) {
+                    Vector4 col = car.bigCannon->barrelObject->GetColor();
+                    col.w = a;
+                    car.bigCannon->barrelObject->SetColor(col);
+                }
+            }
+        }
+    }
+
+    // 先頭から後尾にかけて連鎖的に上から下へグリッド・ディゾルブさせる (totalProgress: 0.0f -> 1.0f)
+    void SetSequentialDissolve(float totalProgress) {
+        size_t count = carriages_.size();
+        if (count == 0) return;
+        for (size_t i = 0; i < count; ++i) {
+            // 先頭車両(0)から後尾車両(3)へ少しずつ開始タイミングを遅らせる
+            float delay = static_cast<float>(i) * 0.14f;
+            float duration = 0.58f;
+            float carDissolve = std::clamp((totalProgress - delay) / duration, 0.0f, 1.0f);
+            float a = 1.0f - carDissolve;
+
+            auto& car = carriages_[i];
+            car.color.w = a;
+            if (car.object) {
+                Vector4 col = car.object->GetColor();
+                col.w = a;
+                car.object->SetColor(col);
+            }
+            for (auto& t : car.turrets) {
+                if (t.object) {
+                    Vector4 col = t.object->GetColor();
+                    col.w = a;
+                    t.object->SetColor(col);
+                }
+            }
+            for (auto& p : car.missilePods) {
+                if (p.object) {
+                    Vector4 col = p.object->GetColor();
+                    col.w = a;
+                    p.object->SetColor(col);
+                }
+            }
+            if (car.bigCannon) {
+                if (car.bigCannon->baseObject) {
+                    Vector4 col = car.bigCannon->baseObject->GetColor();
+                    col.w = a;
+                    car.bigCannon->baseObject->SetColor(col);
+                }
+                if (car.bigCannon->barrelObject) {
+                    Vector4 col = car.bigCannon->barrelObject->GetColor();
+                    col.w = a;
+                    car.bigCannon->barrelObject->SetColor(col);
+                }
+            }
+        }
+    }
+
+    // 処刑フィニッシャー用：ボスのHPを1（処刑可能状態）にする
+    void SetHpToOneForExecution() {
+        if (carriages_.empty()) return;
+        isActive_ = true;
+        isDefeated_ = false;
+        // 先頭機関車のみHP1、他の護衛車両はHP0にしてメインコアを露出
+        carriages_[0].hp = 1;
+        carriages_[0].isDestroyed = false;
+        carriages_[0].color = { 1.0f, 1.0f, 1.0f, 1.0f };
+        if (carriages_[0].object) carriages_[0].object->SetColor(carriages_[0].color);
+        for (size_t i = 1; i < carriages_.size(); ++i) {
+            carriages_[i].hp = 0;
+            carriages_[i].isDestroyed = true;
+            carriages_[i].color = { 1.0f, 1.0f, 1.0f, 1.0f };
+            if (carriages_[i].object) carriages_[i].object->SetColor(carriages_[i].color);
+        }
+        isCoreExposed_ = true;
+        SetDissolveAlpha(1.0f);
+        UpdateCarriageTransforms();
+    }
 
     // JSONによるパーツ配置・設定の読み込み／保存
     bool LoadSettingsJson(const std::string& filepath = "resources/json/settings/boss_settings.json");

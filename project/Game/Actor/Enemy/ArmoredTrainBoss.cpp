@@ -337,18 +337,11 @@ void ArmoredTrainBoss::ResetChaseState() {
 void ArmoredTrainBoss::Update(const Vector3& cameraPos, const Vector3& playerForward, float playerSpeed, Player* player, std::list<std::unique_ptr<EnemyBullet>>& enemyBullets, float gameSpeed) {
     if (!isActive_) return;
 
-    // 撃破演出中
+    // 撃破演出中（撃破時はボスが前進するのを完全停止）
     if (isDefeated_) {
         defeatTimer_ += gameSpeed;
-        currentSpeed_ = (std::max)(0.0f, currentSpeed_ - 0.8f * gameSpeed);
-        if (rail_) {
-            float totalLen = (std::max)(1.0f, rail_->GetTotalLength());
-            float deltaProg = (currentSpeed_ * (gameSpeed / 60.0f)) / totalLen;
-            railProgress_ = (std::min)(1.0f, railProgress_ + deltaProg);
-            position_ = rail_->GetPosition(railProgress_);
-        } else {
-            position_.z -= currentSpeed_ * (gameSpeed / 60.0f);
-        }
+        currentSpeed_ = 0.0f;
+        targetSpeed_ = 0.0f;
         UpdateCarriageTransforms();
         return;
     }
@@ -391,8 +384,6 @@ void ArmoredTrainBoss::Update(const Vector3& cameraPos, const Vector3& playerFor
                         float randFactor = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
                         targetDynamicLeadDistance_ = trainTotalLength + 15.0f + randFactor * 4.0f;
                         leadDistanceChangeTimer_ = 3.5f + (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 2.0f;
-                        // 急接近の予兆警告音（迫り来る巨体！）
-                        // SoundManager::GetInstance()->PlaySE("Alarm01.wav", 0.65f);
                     } else {
                         // 接近終了 -> 基準距離へ復帰（最後尾が自機前方30m〜36mの中距離へ戻る）
                         isShortDistanceOpportunity_ = false;
@@ -417,17 +408,14 @@ void ArmoredTrainBoss::Update(const Vector3& cameraPos, const Vector3& playerFor
             // --- 3段階のチェイス挙動判定 ---
             if (!isCloseToPlayer_) {
                 // 【フェーズ1: 出現〜接近】
-                // 出現位置が遠いため、プレイヤーに追いつくまで高速で疾走
                 targetSpeed_ = playerSpeed + rushSpeedBonus_ + 25.0f;
 
-                // プレイヤーの近場（自機前方 desiredLeadDistance_ 付近）に到達したら並走へ移行
                 if (relativeForwardDist_ >= (trainTotalLength + 25.0f) && straightDist < (trainTotalLength + 90.0f)) {
                     isCloseToPlayer_ = true;
                     leadDistanceChangeTimer_ = 3.0f;
                 }
             } else {
                 // 【フェーズ3: 追い抜き判定】
-                // プレイヤーがボスの最後尾よりも前に躍り出た場合
                 if (relativeForwardDist_ < trainTotalLength) {
                     isOvertaking_ = true;
                 } else if (relativeForwardDist_ >= (dynamicLeadDistance_ + 5.0f)) {
@@ -435,15 +423,11 @@ void ArmoredTrainBoss::Update(const Vector3& cameraPos, const Vector3& playerFor
                 }
 
                 if (isOvertaking_) {
-                    // 自機より前に出るため進行スピードを急上昇させて追い抜く
                     targetSpeed_ = playerSpeed + rushSpeedBonus_;
                 } else {
                     // 【フェーズ2: 並走（シンクロ巡航）】
-                    // プレイヤーの近場で自機速度と同程度で並走
-                    // dynamicLeadDistance_（基準70mまたはランダム短縮距離）との前後ズレに応じて速度を微調整
                     float distDiff = relativeForwardDist_ - dynamicLeadDistance_;
                     targetSpeed_ = playerSpeed - distDiff * 0.8f;
-                    // 急停止しないよう下限を設定 (自機速度の50%以上、かつ最低20m/s)
                     float minSpeed = (std::max)(20.0f, playerSpeed * 0.5f);
                     if (targetSpeed_ < minSpeed) {
                         targetSpeed_ = minSpeed;
@@ -451,7 +435,7 @@ void ArmoredTrainBoss::Update(const Vector3& cameraPos, const Vector3& playerFor
                 }
             }
 
-            // 加減速のスムージング（急激な速度変化を抑えて自然な列車走行感を出す）
+            // 加減速のスムージング
             float accelRate = (targetSpeed_ > currentSpeed_) ? (2.5f * gameSpeed) : (1.8f * gameSpeed);
             if (currentSpeed_ < targetSpeed_) {
                 currentSpeed_ = (std::min)(targetSpeed_, currentSpeed_ + accelRate);
@@ -459,19 +443,17 @@ void ArmoredTrainBoss::Update(const Vector3& cameraPos, const Vector3& playerFor
                 currentSpeed_ = (std::max)(targetSpeed_, currentSpeed_ - accelRate);
             }
 
-            // 実速度(m/s)に基づいて進行度を加算（物理的に瞬間移動せず連続走行）
+            // 実速度(m/s)に基づいて進行度を加算
             float totalLen = (std::max)(1.0f, rail_->GetTotalLength());
             float deltaProg = (currentSpeed_ * (gameSpeed / 60.0f)) / totalLen;
             railProgress_ = (std::clamp)(railProgress_ + deltaProg, 0.0f, 1.0f);
 
         } else {
-            // 固定速度走行モード
             float totalLen = (std::max)(1.0f, rail_->GetTotalLength());
             float deltaProg = (currentSpeed_ * (gameSpeed / 60.0f)) / totalLen;
             railProgress_ = (std::clamp)(railProgress_ + deltaProg, 0.0f, 1.0f);
         }
     } else {
-        // レールなし時の直進
         position_.z -= currentSpeed_ * (gameSpeed / 60.0f);
     }
 
@@ -512,16 +494,12 @@ void ArmoredTrainBoss::Update(const Vector3& cameraPos, const Vector3& playerFor
                     float carYaw = car.rotation.y;
                     float cosCar = std::cos(-carYaw);
                     float sinCar = std::sin(-carYaw);
-                    // DirectX左手系行ベクトル変換での逆回転
                     Vector3 toPInCar = {
                         toPWorld.x * cosCar - toPWorld.z * sinCar,
                         0.0f,
                         toPWorld.x * sinCar + toPWorld.z * cosCar
                     };
 
-                    // 砲台モデルは初期状態で +X 軸を向いているため、
-                    // 車両ローカル空間で (toPInCar.x, toPInCar.z) を向くための目標ヨー角は:
-                    // x = cos(yaw), z = -sin(yaw) => yaw = atan2(-z, x)
                     float targetLocalRotY = std::atan2(-toPInCar.z, toPInCar.x);
 
                     // 基準正面（baseLocalRot.y）からの角度差分を算出
@@ -574,7 +552,6 @@ void ArmoredTrainBoss::Update(const Vector3& cameraPos, const Vector3& playerFor
     // 各車両の武装攻撃
     ExecuteAttacks(player, enemyBullets, gameSpeed);
 }
-
 bool ArmoredTrainBoss::GetGroundHeight(float x, float z, float startY, float* outGroundY, Vector3* outNormal) const {
     if (!terrainObjects_ || terrainObjects_->empty()) return false;
 
@@ -674,8 +651,6 @@ void ArmoredTrainBoss::UpdateCarriageTransforms() {
         }
 
         // 地面メッシュへの自動吸着（地面レイキャスト）
-        // ※毎フレーム全車両で実行すると数十万ポリゴンの走査でFPSが激落するため、
-        //   車両ごとにフレーム分散（1フレームあたり1車両のみ走査）＋高さキャッシュ補間を行いCPU負荷を劇的カット
         if (isGroundSnapEnabled_ && terrainObjects_ && !carriages_.empty()) {
             bool shouldCheck = !car.hasGroundHeight || ((groundCheckFrame_ % carriages_.size()) == i);
             if (shouldCheck) {
@@ -745,7 +720,6 @@ void ArmoredTrainBoss::UpdateCarriageTransforms() {
     }
     groundCheckFrame_++;
 }
-
 void ArmoredTrainBoss::ExecuteAttacks(Player* player, std::list<std::unique_ptr<EnemyBullet>>& enemyBullets, float gameSpeed) {
     if (!player || isDefeated_) return;
     Vector3 playerPos = player->GetWorldPosition();
@@ -805,10 +779,10 @@ void ArmoredTrainBoss::ExecuteAttacks(Player* player, std::list<std::unique_ptr<
                     Vector3 toTargetR = { playerPos.x - rightTipWorld.x, playerPos.y - rightTipWorld.y, playerPos.z - rightTipWorld.z };
 
                     float lenL = toTargetL.Length();
-                    Vector3 bulletVelL = (lenL > 0.001f) ? (toTargetL / lenL) * 2.5f : fireDir * 2.5f;
+                    Vector3 bulletVelL = (lenL > 0.001f) ? (toTargetL / lenL) * 2.5f : bulletVel;
 
                     float lenR = toTargetR.Length();
-                    Vector3 bulletVelR = (lenR > 0.001f) ? (toTargetR / lenR) * 2.5f : fireDir * 2.5f;
+                    Vector3 bulletVelR = (lenR > 0.001f) ? (toTargetR / lenR) * 2.5f : bulletVel;
 
                     // 左砲身から発射
                     auto bulletL = std::make_unique<EnemyBullet>();
@@ -819,9 +793,6 @@ void ArmoredTrainBoss::ExecuteAttacks(Player* player, std::list<std::unique_ptr<
                     auto bulletR = std::make_unique<EnemyBullet>();
                     bulletR->Initialize(object3dCommon_, rightTipWorld, bulletVelR, false, player);
                     enemyBullets.push_back(std::move(bulletR));
-
-                    // 発射SE
-                    // SoundManager::GetInstance()->PlaySE("launcher.mp3", 0.35f);
                 }
             } else {
                 // 射角外（撃てない死角）の時はタイマー進行を抑止
@@ -831,10 +802,6 @@ void ArmoredTrainBoss::ExecuteAttacks(Player* player, std::list<std::unique_ptr<
             }
         }
 
-        // ----------------------------------------------------
-        // 2. ミサイルポッドの攻撃処理（ミサイルポッド搭載車両：ロックオン予告後に上空へ連続発射）
-        // ----------------------------------------------------
-        if (!car.missilePods.empty()) {
         // ----------------------------------------------------
         // 2. ミサイル車の垂直ミサイル一斉攻撃シーケンス（6発発射 ➔ 全滅待機 ➔ 再ロックオン）
         // ----------------------------------------------------
@@ -908,15 +875,13 @@ void ArmoredTrainBoss::ExecuteAttacks(Player* player, std::list<std::unique_ptr<
                         };
 
                         auto missile = std::make_unique<EnemyBullet>();
-                        // salvoIndex (0〜5) を渡して、プレイヤー正面視界内の綺麗な扇状整列を実現
                         missile->InitializeMissile(object3dCommon_, spawnWorld, launchVel, player, missileFiredCount_);
                         enemyBullets.push_back(std::move(missile));
 
                         missileFiredCount_++;
-                        missileFireIntervalTimer_ = 11.0f; // 11フレーム（約0.18秒）ごとにリズミカルに発射！
+                        missileFireIntervalTimer_ = 11.0f;
 
                         if (missileFiredCount_ >= 6) {
-                            // きっちり6本撃ち切り！フィールド上の全滅監視へ移行
                             missileSeqState_ = BossMissileSequence::WAIT_ALL_CLEAR;
                             missileSeqTimer_ = 0.0f;
                         }
@@ -924,9 +889,7 @@ void ArmoredTrainBoss::ExecuteAttacks(Player* player, std::list<std::unique_ptr<
                     break;
 
                 case BossMissileSequence::WAIT_ALL_CLEAR:
-                    // 発射した6発が「全て消えるまで」絶対に次のロックオンを開始しない！
                     if (activeMissiles == 0) {
-                        // 全てのミサイルが撃墜または消滅した！待機インターバルへ移行
                         missileSeqState_ = BossMissileSequence::IDLE;
                         missileSeqTimer_ = 0.0f;
                     }
@@ -937,7 +900,6 @@ void ArmoredTrainBoss::ExecuteAttacks(Player* player, std::list<std::unique_ptr<
                 missileSeqState_ = BossMissileSequence::IDLE;
                 missileSeqTimer_ = 0.0f;
             }
-        }
         }
 
         // ----------------------------------------------------
@@ -963,7 +925,6 @@ void ArmoredTrainBoss::ExecuteAttacks(Player* player, std::list<std::unique_ptr<
         }
     }
 }
-
 void ArmoredTrainBoss::Draw() {
     if (!isActive_) return;
     for (auto& car : carriages_) {
@@ -1203,12 +1164,23 @@ void ArmoredTrainBoss::OnDamaged(int carriageIndex, int damage, BossPartType par
         }
     }
 
-    // 3. 車両本体への通常ダメージ
+    // 3. 車両本体への通常ダメージ (処刑耐え対応)
     if (carriageIndex == 0 && !isCoreExposed_) {
         damage = (std::max)(1, damage / 2);
     }
 
+    // 処刑待機状態（先頭車両の弱点コアが露出中でHPが1以下）の時は通常弾等で撃破されないようHP1をキープ
+    if (carriageIndex == 0 && isCoreExposed_ && car.hp <= 1) {
+        car.hp = 1;
+        return;
+    }
+
     car.hp -= damage;
+    // ダメージ計算後も処刑待機中ならHP1で耐える
+    if (carriageIndex == 0 && isCoreExposed_ && car.hp <= 1) {
+        car.hp = 1;
+        return;
+    }
     if (car.hp <= 0) {
         car.hp = 0;
         car.isDestroyed = true;
