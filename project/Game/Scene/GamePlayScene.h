@@ -169,11 +169,16 @@ private:
     float bossWarningSirenTimer_ = 0.0f;
 
     // ボス戦制限時間 & タイムオーバー即死攻撃用
-    float bossTimeLimit_ = 90.0f;       // ボス戦制限時間（秒）
-    float bossRemainingTime_ = 90.0f;   // ボス戦残り時間（秒）
+    float bossTimeLimit_ = 120.0f;       // ボス戦制限時間（秒）: 2分
+    float bossRemainingTime_ = 120.0f;   // ボス戦残り時間（秒）: 2分
     float bossTimeOverTimer_ = 0.0f;    // 即死攻撃シークエンス用タイマー
-    const float kBossTimeOverDuration = 3.5f; // 即死攻撃シークエンス時間
+    const float kBossTimeOverDuration = 4.0f; // 即死攻撃シークエンス時間（UI消滅後に発射・撃墜）
     bool isBossTimeOverFired_ = false;  // 即死攻撃発射フラグ
+    bool isTimeOverDebugNonLethal_ = true; // デバッグテスト用：演出完了後に死なず何度でも再確認可能にする
+    bool isTimeOverDebugLoop_ = false;     // デバッグテスト用：演出完了後に自動ループ再生
+    void TriggerTimeOverCannonSequence(bool nonLethal = true); // タイムオーバー大砲演出を即座に開始
+    std::unique_ptr<Object3d> bossTimeOverChargeSphere_; // タイムオーバー大砲チャージエネルギー球
+    std::unique_ptr<Object3d> bossTimeOverBeam_;         // タイムオーバー大砲の極大砲撃ビーム
 
     // ボス戦専用UIスプライト
     std::unique_ptr<Sprite> bossHpBarBgSprite_;

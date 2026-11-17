@@ -13,14 +13,77 @@ class Player;
 class EnemyBullet;
 
 /**
+ * @brief ボスの部位種別（部位破壊システム用）
+ */
+enum class BossPartType {
+    Carriage,   // 車両本体
+    Turret,     // 2連装砲台
+    MissilePod  // 垂直ミサイルポッド
+};
+
+/**
+ * @brief 2連装砲台マウント情報
+ */
+struct BossTurretMount {
+    std::string name;
+    Vector3 baseLocalPos = { 0.0f, 0.0f, 0.0f }; // 車両ローカル位置
+    Vector3 baseLocalRot = { 0.0f, 0.0f, 0.0f }; // 初期回転
+    Vector3 currentRot = { 0.0f, 0.0f, 0.0f };   // 現在の回転（自機追従）
+    std::unique_ptr<Object3d> object;
+    std::unique_ptr<Object3d> colliderObject;    // デバッグ用コライダー表示
+    bool isDestroyed = false;
+    bool canShoot = false; // 射角（左右90度以内）に入っているか
+    float attackTimer = 0.0f;
+    float attackInterval = 75.0f;
+    int hp = 8;
+    int maxHp = 8;
+    float colliderRadius = 2.4f;                 // 当たり判定球半径 (m)
+};
+
+/**
+ * @brief ミサイルポッドマウント情報
+ */
+struct BossMissilePodMount {
+    std::string name;
+    Vector3 baseLocalPos = { 0.0f, 0.0f, 0.0f }; // 車両ローカル位置
+    Vector3 baseLocalRot = { 0.0f, 0.0f, 0.0f }; // 初期回転
+    std::unique_ptr<Object3d> object;
+    std::unique_ptr<Object3d> colliderObject;    // デバッグ用コライダー表示
+    bool isDestroyed = false;
+    float attackTimer = 0.0f;
+    float attackInterval = 130.0f;
+    int lockOnState = 0; // 0: 待機, 1: ロックオンチャージ中, 2: 連続発射バースト
+    float lockOnTimer = 0.0f;
+    int burstCount = 0;     // バースト発射カウンター
+    float burstTimer = 0.0f;// バースト発射間隔タイマー
+    int hp = 10;
+    int maxHp = 10;
+    float colliderRadius = 2.4f;                 // 当たり判定球半径 (m)
+};
+
+/**
+ * @brief 3両目超巨大主砲マウント情報
+ */
+struct BossBigCannonMount {
+    std::unique_ptr<Object3d> baseObject;   // boss_bigTurret.obj (旋回台座)
+    std::unique_ptr<Object3d> barrelObject; // boss_bigTurret_1.obj (砲身)
+    Vector3 baseLocalPos = { 0.0f, 0.0f, 0.0f };
+    Vector3 baseRot = { 0.0f, 0.0f, 0.0f };   // 台座の旋回 (Yaw)
+    Vector3 barrelRot = { 0.0f, 0.0f, 0.0f }; // 砲身の仰角 (Pitch)
+    float recoilZ = 0.0f;                     // 発射時の砲身リコイル後退量
+    bool isTargetingTerrain = false;
+    float attackTimer = 0.0f;
+};
+
+/**
  * @brief 装甲列車の個別車両データ
  */
 struct TrainCarriage {
-    std::string name;             // 車両名（例: "Locomotive", "TurretCar", "MissileCar", "GeneratorCar"）
-    std::string displayName;      // 表示名（例: "先頭装甲機関車", "旋回砲塔車", "ミサイルコンテナ車", "動力発電車"）
+    std::string name;             // 車両名（例: "Locomotive", "TurretCar", "CannonCar", "MissileCar"）
+    std::string displayName;      // 表示名（例: "先頭装甲機関車", "多連装砲塔車", "超巨大主砲車", "垂直ミサイル車"）
     std::string modelName;        // モデル
-    Vector3 scale = { 4.0f, 3.2f, 10.0f };
-    Vector3 baseScale = { 4.0f, 3.2f, 10.0f };
+    Vector3 scale = { 1.0f, 1.0f, 1.0f };
+    Vector3 baseScale = { 1.0f, 1.0f, 1.0f };
     Vector4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
     float lengthOffset = 0.0f;        // 先頭車両からの連結距離オフセット (負のZ値)
     float baseLengthOffset = 0.0f;
@@ -41,6 +104,15 @@ struct TrainCarriage {
     Vector3 baseColliderSize = { 1.0f, 1.0f, 1.0f };
     std::unique_ptr<Object3d> object;
     std::unique_ptr<Object3d> colliderObject;
+
+    // 地面吸着キャッシュ（高負荷防止）
+    float cachedGroundY = 0.0f;
+    bool hasGroundHeight = false;
+
+    // 車両にマウントされた武装・パーツ
+    std::vector<BossTurretMount> turrets;
+    std::vector<BossMissilePodMount> missilePods;
+    std::unique_ptr<BossBigCannonMount> bigCannon;
 };
 
 /**
@@ -57,10 +129,10 @@ public:
     void Draw();
     void DrawCollider();
 
-    // 被弾判定
-    bool CheckCollision(const Sphere& bulletSphere, int* outCarriageIndex = nullptr);
-    bool CheckRaycast(const Ray& ray, float* outDist, int* outCarriageIndex = nullptr);
-    void OnDamaged(int carriageIndex, int damage = 1);
+    // 被弾判定（部位破壊システム対応）
+    bool CheckCollision(const Sphere& bulletSphere, int* outCarriageIndex = nullptr, BossPartType* outPartType = nullptr, int* outPartIndex = nullptr, Vector3* outHitPos = nullptr);
+    bool CheckRaycast(const Ray& ray, float* outDist, int* outCarriageIndex = nullptr, BossPartType* outPartType = nullptr, int* outPartIndex = nullptr);
+    void OnDamaged(int carriageIndex, int damage = 1, BossPartType partType = BossPartType::Carriage, int partIndex = -1);
 
     // 進行レール設定
     void SetRail(const Rail* rail) { rail_ = rail; }
@@ -77,6 +149,10 @@ public:
     void SetDesiredLeadDistance(float dist) { desiredLeadDistance_ = dist; targetDynamicLeadDistance_ = dist; }
     float GetDesiredLeadDistance() const { return desiredLeadDistance_; }
     float GetDynamicLeadDistance() const { return dynamicLeadDistance_; }
+
+    // タイムオーバー時：超巨大主砲の照準旋回・発射リコイル制御
+    void UpdateTimeOverCannon(const Vector3& targetPlayerPos, float timeOverTimer, float dt);
+    Vector3 GetBigCannonMuzzlePosition() const;
     void SetRandomLeadDistanceEnabled(bool enabled) { isRandomLeadEnabled_ = enabled; }
     bool IsRandomLeadDistanceEnabled() const { return isRandomLeadEnabled_; }
     bool IsShortDistanceOpportunity() const { return isShortDistanceOpportunity_; }
@@ -85,9 +161,22 @@ public:
     float GetCurrentSpeed() const { return currentSpeed_; }
     float GetTargetSpeed() const { return targetSpeed_; }
     float GetRelativeForwardDistance() const { return relativeForwardDist_; }
+    float GetRearRelativeDistance() const {
+        float totalLen = 115.0f;
+        if (!carriages_.empty()) {
+            totalLen = std::abs(carriages_.back().lengthOffset) + 20.0f;
+        }
+        return relativeForwardDist_ - totalLen;
+    }
     bool IsCloseToPlayer() const { return isCloseToPlayer_; }
     bool IsOvertaking() const { return isOvertaking_; }
     void ResetChaseState();
+
+    // 並走レーンオフセット設定（全車両の側面露出・ドッグファイト並走）
+    void SetLaneOffset(float offset) { laneOffset_ = offset; }
+    float GetLaneOffset() const { return laneOffset_; }
+    void SetDynamicLaneChangeEnabled(bool enable) { isDynamicLaneChange_ = enable; }
+    bool IsDynamicLaneChangeEnabled() const { return isDynamicLaneChange_; }
 
     // 状態
     bool IsActive() const { return isActive_; }
@@ -96,6 +185,48 @@ public:
     float GetTotalHpRate() const;
     const Vector3& GetPosition() const { return position_; }
     const std::vector<TrainCarriage>& GetCarriages() const { return carriages_; }
+    std::vector<TrainCarriage>& GetCarriagesMutable() { return carriages_; }
+    void ApplyTransforms() { UpdateCarriageTransforms(); }
+
+    // JSONによるパーツ配置・設定の読み込み／保存
+    bool LoadSettingsJson(const std::string& filepath = "resources/json/settings/boss_settings.json");
+    bool SaveSettingsJson(const std::string& filepath = "resources/json/settings/boss_settings.json") const;
+
+    // パーツ動的追加・削除
+    void AddTurret(int carriageIndex, const Vector3& localPos = { 0.0f, 5.0f, 0.0f }, const Vector3& localRot = { 0.0f, 0.0f, 0.0f });
+    void RemoveTurret(int carriageIndex, int turretIndex);
+    void AddMissilePod(int carriageIndex, const Vector3& localPos = { 0.0f, 5.0f, 0.0f }, const Vector3& localRot = { 0.0f, 0.0f, 0.0f });
+    void RemoveMissilePod(int carriageIndex, int podIndex);
+
+    // 生存しているミサイルポッドがあるか判定
+    bool HasAliveMissilePods() const {
+        for (const auto& car : carriages_) {
+            if (car.isDestroyed) continue;
+            for (const auto& pod : car.missilePods) {
+                if (!pod.isDestroyed) return true;
+            }
+        }
+        return false;
+    }
+
+    // ミサイルポッドのロックオン警告状態（HUD警告UI連携用）
+    bool IsAnyMissilePodLockingOn() const {
+        if (isDefeated_ || !HasAliveMissilePods()) return false;
+        return (missileSeqState_ == BossMissileSequence::LOCK_ON || missileSeqState_ == BossMissileSequence::FIRING);
+    }
+    float GetMissilePodLockOnProgress() const {
+        if (isDefeated_ || !HasAliveMissilePods()) return 0.0f;
+        if (missileSeqState_ == BossMissileSequence::LOCK_ON) {
+            return std::clamp(missileSeqTimer_ / missileLockOnDuration_, 0.0f, 1.0f);
+        } else if (missileSeqState_ == BossMissileSequence::FIRING) {
+            return 1.0f;
+        }
+        return 0.0f;
+    }
+    bool IsMissilePodBurstFiring() const {
+        if (isDefeated_ || !HasAliveMissilePods()) return false;
+        return (missileSeqState_ == BossMissileSequence::FIRING);
+    }
 
     // 各車両部位のワールド座標と破壊判定（マルチロックオン用）
     Vector3 GetCarriagePosition(int carriageIndex) const {
@@ -136,9 +267,9 @@ private:
     bool isFollowPlayer_ = true;        // プレイヤー連動モード
     float currentSpeed_ = 50.0f;        // ボスの現在の実速度 (m/s)
     float targetSpeed_ = 50.0f;         // 目標速度 (m/s)
-    float desiredLeadDistance_ = 120.0f; // 基準となるプレイヤー前方の並走距離 (m) (標準120m)
-    float dynamicLeadDistance_ = 120.0f; // 現在滑らかに補間中の目標並走距離 (m)
-    float targetDynamicLeadDistance_ = 120.0f; // ランダム周期で設定される目標並走距離 (m)
+    float desiredLeadDistance_ = 145.0f; // 基準となるプレイヤー前方の並走距離 (m) (最後尾が自機前方約30m)
+    float dynamicLeadDistance_ = 145.0f; // 現在滑らかに補間中の目標並走距離 (m)
+    float targetDynamicLeadDistance_ = 145.0f; // ランダム周期で設定される目標並走距離 (m)
     bool isRandomLeadEnabled_ = true;   // ランダム並走距離短縮の有効化
     bool isShortDistanceOpportunity_ = false; // 現在接近攻撃チャンス中か
     float leadDistanceChangeTimer_ = 0.0f; // 次の距離変更までのタイマー (秒)
@@ -153,10 +284,30 @@ private:
 
     float scaleMultiplier_ = 1.0f; // ボス全体スケール倍率
 
+    // 並走レーンオフセット・動的車線変更
+    float laneOffset_ = -10.0f;          // レール進行方向に対する左右並走オフセット (m)
+    bool isDynamicLaneChange_ = true;    // 緩やかな車線変更により全車両の側面を露出
+    float laneChangeTimer_ = 0.0f;
+
     // 地面吸着（レイキャスト）用メンバ
     const std::vector<std::unique_ptr<Object3d>>* terrainObjects_ = nullptr;
     bool isGroundSnapEnabled_ = true;
     float groundSnapOffset_ = 0.0f; // 車体底面からの微調整オフセット
+    uint32_t groundCheckFrame_ = 0; // 車両ごとのレイキャスト分散カウンター（CPU負荷軽減）
+
+    // ミサイル一斉射撃シーケンス管理（6発発射 ➔ 全滅監視 ➔ 再ロックオン）
+    enum class BossMissileSequence {
+        IDLE,           // 待機インターバル
+        LOCK_ON,        // ロックオンチャージ中（約2.5秒）
+        FIRING,         // 6発連続発射
+        WAIT_ALL_CLEAR  // フィールド上のミサイル全滅待機
+    };
+    BossMissileSequence missileSeqState_ = BossMissileSequence::IDLE;
+    float missileSeqTimer_ = 0.0f;
+    float missileLockOnDuration_ = 160.0f;  // 約2.6秒の長めのロックオン警告猶予
+    float missileIdleInterval_ = 180.0f;    // 全滅後の通常待機インターバル（約3.0秒）
+    int missileFiredCount_ = 0;             // 今回のバーストで発射したミサイル数 (最大6)
+    float missileFireIntervalTimer_ = 0.0f; // 1発ごとの発射間隔タイマー (約10f / 0.16s)
 
     std::vector<TrainCarriage> carriages_;
     float defeatTimer_ = 0.0f;

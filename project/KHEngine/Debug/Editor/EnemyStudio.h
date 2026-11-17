@@ -5,6 +5,7 @@
 #include "KHEngine/Graphics/3d/Object/Object3d.h"
 #include "KHEngine/Graphics/3d/Object/Object3dCommon.h"
 #include "Game/Actor/Enemy/EnemyPresetManager.h"
+#include "Game/Actor/Enemy/ArmoredTrainBoss.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -14,6 +15,11 @@
  */
 class EnemyStudio {
 public:
+    enum class EditorMode {
+        NORMAL_ENEMY, // 通常敵エディタ
+        BOSS_TRAIN    // 装甲列車ボスエディタ
+    };
+
     static EnemyStudio* GetInstance();
 
     void Initialize(DirectXCommon* dxCommon, SrvManager* srvManager, Object3dCommon* object3dCommon);
@@ -27,6 +33,8 @@ public:
     // 表示フラグ
     bool& GetShowViewport() { return showViewport_; }
     bool& GetShowEditor() { return showEditor_; }
+    EditorMode GetEditorMode() const { return editorMode_; }
+    void SetEditorMode(EditorMode mode) { editorMode_ = mode; }
 
 private:
     EnemyStudio() = default;
@@ -82,7 +90,7 @@ private:
     Vector4 backgroundColor_ = { 0.10f, 0.12f, 0.16f, 1.0f };
     bool showPlayer_ = true;
     Vector3 playerPosition_ = { 0.0f, 0.0f, -15.0f }; // 敵の手前に配置
-    bool showCollider_ = true;
+    bool showCollider_ = false; // 当たり判定ブロック（デフォルト非表示）
     bool showFormation_ = true;
     bool showGrid_ = true;
     float gridSize_ = 30.0f;
@@ -94,10 +102,18 @@ private:
     float previewAnimTimer_ = 0.0f;
 
     // 編集ステータス
+    EditorMode editorMode_ = EditorMode::NORMAL_ENEMY;
     std::string currentPresetKey_ = "RUSHER";
     char newPresetKeyInput_[64] = "NEW_ENEMY";
     std::string statusMessage_ = "";
     float statusMessageTimer_ = 0.0f;
+
+    // 装甲列車ボスプレビュー
+    std::unique_ptr<ArmoredTrainBoss> previewBoss_;
+    int selectedCarriageIndex_ = 1; // 選択中車両 (0〜3)
+    int selectedTurretIndex_ = -1;
+    int selectedMissilePodIndex_ = -1;
+    void DrawBossControlUI();
 
     // 利用可能なモデル一覧
     std::vector<std::string> availableModels_;

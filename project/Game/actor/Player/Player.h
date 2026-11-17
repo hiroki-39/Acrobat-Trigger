@@ -229,6 +229,33 @@ public:
         }
         return logicalPosition_;
     }
+    Vector3 GetWorldForward() const {
+        if (object_) {
+            const Matrix4x4& wMat = object_->GetmatWorld();
+            Vector3 f = { wMat.m[2][0], wMat.m[2][1], wMat.m[2][2] };
+            float len = f.Length();
+            if (len > 0.0001f) return f / len;
+        }
+        return { 0.0f, 0.0f, 1.0f };
+    }
+    Vector3 GetWorldUp() const {
+        if (object_) {
+            const Matrix4x4& wMat = object_->GetmatWorld();
+            Vector3 u = { wMat.m[1][0], wMat.m[1][1], wMat.m[1][2] };
+            float len = u.Length();
+            if (len > 0.0001f) return u / len;
+        }
+        return { 0.0f, 1.0f, 0.0f };
+    }
+    Vector3 GetWorldRight() const {
+        if (object_) {
+            const Matrix4x4& wMat = object_->GetmatWorld();
+            Vector3 r = { wMat.m[0][0], wMat.m[0][1], wMat.m[0][2] };
+            float len = r.Length();
+            if (len > 0.0001f) return r / len;
+        }
+        return { 1.0f, 0.0f, 0.0f };
+    }
 
     // 動的移動制限（ソフトリミット）
     void SetTargetMoveLimits(float limitX, float limitYMin, float limitYMax) {
@@ -253,6 +280,10 @@ public:
     Vector3 GetLeftWingPosition() const;
     Vector3 GetRightWingPosition() const;
     float GetFinalBank() const { return finalBank_; }
+
+    // 入力有効・無効切り替え（タイムオーバー拘束演出時など）
+    void SetEnableInput(bool enable) { isInputEnabled_ = enable; }
+    bool IsInputEnabled() const { return isInputEnabled_; }
 
 private:
     
@@ -291,6 +322,7 @@ private:
 
     Object3dCommon* object3dCommon_ = nullptr; 
     Input* input_ = nullptr;
+    bool isInputEnabled_ = true; // 操作入力フラグ（タイムオーバー時はfalseで移動不能に拘束）
     
     uint32_t skyboxTexIndex_ = 0; 
 

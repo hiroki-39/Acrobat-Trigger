@@ -499,10 +499,68 @@ PixelShaderOutput main(VertexShaderOutput input)
                 }
             }
             break;
+        case 9:
+            {
+                // ===== スターフォックス風 サイバー仮想空間 装甲列車ボス（重装甲サイバーハル・ネオンバイオレットサーキット・輪郭発光） =====
+                float32_t3 wp = input.worldPosition;
+                float32_t NdotV = saturate(abs(dot(normal, toEye)));
+                
+                // 輪郭のネオンリム発光（威圧感のあるエレクトリックパープル＆サイバーインディゴのフレネル発光）
+                float32_t rim = pow(1.0f - NdotV, 2.5f);
+
+                // 基本装甲カラー：ハイテクな重装甲ダークチタンスレート＆ディープネイビー
+                float32_t3 cyberHull = float32_t3(0.040f, 0.055f, 0.090f);
+                // 上面・側面・前面の立体的な陰影（ディレクショナルライトと環境光の合成）
+                float32_t NdotL = dot(normal, -gDirectionlLight.direction);
+                float32_t lightFactor = pow(saturate(NdotL * 0.5f + 0.5f), 1.6f);
+                float32_t shade = 0.38f + 0.62f * lightFactor;
+
+                // 敵ボスの象徴的なネオン発光カラー（弾丸のイエローと被らない重厚なパープル＆インディゴ）
+                // メイン：エレクトリックバイオレット（紫電サイバー回路ライン）
+                float32_t3 neonViolet = float32_t3(0.76f, 0.12f, 1.0f);
+                // サブ：サイバーディープインディゴ（大型パネルライン）
+                float32_t3 neonIndigo = float32_t3(0.18f, 0.45f, 0.95f);
+
+                // 輪郭ネオンリム発光
+                float32_t3 rimLight = lerp(neonViolet, neonIndigo, rim * 0.5f) * (rim * 1.60f);
+
+                // 1. 車体表面の幾何学デジタルスキャンライン＆ワイヤーフレーム
+                float2 uvMesh = abs(frac(input.texcoord * 16.0f - 0.5f) - 0.5f);
+                float wireLine = (1.0f - saturate(min(uvMesh.x, uvMesh.y) * 11.0f)) * 0.42f;
+
+                // 2. 装甲板の継ぎ目（ワールド座標ベースのハイテク大型装甲プレートライン）
+                float panelZ = abs(frac(wp.z / 3.5f - 0.5f) - 0.5f) / max(fwidth(wp.z / 3.5f), 0.001f);
+                float panelY = abs(frac(wp.y / 2.2f - 0.5f) - 0.5f) / max(fwidth(wp.y / 2.2f), 0.001f);
+                float panelLine = (1.0f - saturate(min(panelZ, panelY))) * 0.30f;
+
+                // 3. 静的なサイバー警戒スキャナー（パルスなしの洗練されたハイテク装甲パターン）
+                float hazard = saturate(sin((wp.x + wp.y + wp.z * 0.5f) * 2.2f) * 6.0f) * 0.12f * (1.0f - rim);
+
+                // 発光コンポーネントの合成（サイバーパルスは撤去し、安定した重厚感を演出）
+                float32_t3 circuitGlow = (neonViolet * wireLine) + (neonIndigo * panelLine) + (neonViolet * hazard);
+
+                // 装甲ハルとサイバー発光の合成
+                float32_t3 bossGlow = (cyberHull * shade) + rimLight + circuitGlow;
+
+                // 【被弾時フラッシュ発光ブースト】：
+                // gMaterial.color.rgb が 1.0 を超えているオーバーブースト時、エッジとコアを白熱超発光！
+                float maxCol = max(gMaterial.color.r, max(gMaterial.color.g, gMaterial.color.b));
+                if (maxCol > 1.05f)
+                {
+                    float flashIntensity = maxCol - 1.0f;
+                    float32_t3 whiteCoreFlash = float32_t3(1.0f, 0.95f, 0.90f) * (flashIntensity * (rim * 3.5f + 1.4f));
+                    bossGlow += whiteCoreFlash;
+                }
+
+                // gMaterial.color（破壊時の煤けた黒焦げ 0.15 乗算、およびカラーティント）を適用
+                output.color.rgb = bossGlow * gMaterial.color.rgb;
+                output.color.a = 1.0f;
+            }
+            break;
     }
 
-    // 環境マッピング（仮想空間シェーダー case 7, 8 時は独自のホログラム発光を維持するため除外）
-    if (gMaterial.environmentCoefficient > 0.0f && gMaterial.selectLightings != 7 && gMaterial.selectLightings != 8)
+    // 環境マッピング（仮想空間シェーダー case 7, 8, 9 時は独自のホログラム発光を維持するため除外）
+    if (gMaterial.environmentCoefficient > 0.0f && gMaterial.selectLightings != 7 && gMaterial.selectLightings != 8 && gMaterial.selectLightings != 9)
     {
         // 視線ベクトル（表面からカメラへ）
         float32_t3 toEye = normalize(gCamera.worldPosition - input.worldPosition);

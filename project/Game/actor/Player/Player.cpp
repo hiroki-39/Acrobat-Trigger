@@ -14,6 +14,7 @@ void Player::Initialize(Object3dCommon* object3dCommon, uint32_t skyboxTexIndex)
     // プレイヤーと関連オブジェクトの初期化
     object3dCommon_ = object3dCommon;
     input_ = EngineServices::GetInstance()->GetInput();
+    isInputEnabled_ = true;
 
     skyboxTexIndex_ = skyboxTexIndex;
 
@@ -747,8 +748,8 @@ void Player::UpdateReticleAndAimAssist(const std::list<std::unique_ptr<Enemy>>& 
             Vector3 toB = { bPos.x - playerWorldPos.x, bPos.y - playerWorldPos.y, bPos.z - playerWorldPos.z };
             float projDist = toB.x * aimDir.x + toB.y * aimDir.y + toB.z * aimDir.z;
 
-            // ボス実効射程（10m 〜 160m）
-            if (projDist < 10.0f || projDist > 160.0f) continue;
+            // ボス実効射程（10m 〜 280m：全長130m超の全車両をマルチロックオン可能に拡大）
+            if (projDist < 10.0f || projDist > 280.0f) continue;
 
             Vector3 closestPt = {
                 playerWorldPos.x + aimDir.x * projDist,
@@ -758,8 +759,8 @@ void Player::UpdateReticleAndAimAssist(const std::list<std::unique_ptr<Enemy>>& 
 
             Vector3 diff = { bPos.x - closestPt.x, bPos.y - closestPt.y, bPos.z - closestPt.z };
             float offsetDist = std::sqrtf(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z);
-            // ボス吸い付き許容半径も適切に引き締め
-            float thresholdRadius = 3.2f + projDist * 0.035f;
+            // 巨大車両のサイズ（幅約19m）に合わせて適度に照準吸い付き範囲を確保
+            float thresholdRadius = 6.0f + projDist * 0.04f;
 
             if (offsetDist < thresholdRadius) {
                 float score = offsetDist / thresholdRadius;
@@ -851,9 +852,8 @@ void Player::UpdateReticleAndAimAssist(const std::list<std::unique_ptr<Enemy>>& 
 void Player::Move(float gameSpeed) {
     if (!input_) return;
 
-    
     // 回避（バレルロール）判定：Qキーで左回避、Eキーで右回避（単押しで即座に発動）
-    if (!isRolling_) {
+    if (isInputEnabled_ && !isRolling_) {
         if (input_->TriggerKey(DIK_Q)) {
             isRolling_ = true;
             rollTimer_ = 0.0f;
@@ -874,8 +874,8 @@ void Player::Move(float gameSpeed) {
         }
     }
 
-    // ブーストキー判定
-    bool boostKeyPressed = input_->PushKey(DIK_LSHIFT);
+    // ブーストキー判定（入力無効時は強制OFF）
+    bool boostKeyPressed = isInputEnabled_ ? input_->PushKey(DIK_LSHIFT) : false;
     
     // オーバーヒートからの復帰判定（25%まで回復したら再使用可能）
     if (isBoostOverheated_) {
@@ -903,7 +903,7 @@ void Player::Move(float gameSpeed) {
         }
     }
 
-    bool isBraking = input_->PushKey(DIK_LCONTROL);
+    bool isBraking = isInputEnabled_ ? input_->PushKey(DIK_LCONTROL) : false;
     
     float targetZ = 0.0f; 
     if (isBoosting_) {
@@ -917,17 +917,19 @@ void Player::Move(float gameSpeed) {
     float currentSpeed = speed_;
     if (isBoosting_) currentSpeed *= 1.4f;
 
-    // スティック / キー入力の検出
+    // スティック / キー入力の検出（入力無効時は0）
     float inputX = 0.0f;
     float inputY = 0.0f;
-    if (input_->PushKey(DIK_A) || input_->PushKey(DIK_LEFT))  inputX -= 1.0f;
-    if (input_->PushKey(DIK_D) || input_->PushKey(DIK_RIGHT)) inputX += 1.0f;
-    if (input_->PushKey(DIK_W) || input_->PushKey(DIK_UP))    inputY += 1.0f;
-    if (input_->PushKey(DIK_S) || input_->PushKey(DIK_DOWN))  inputY -= 1.0f;
+    if (isInputEnabled_) {
+        if (input_->PushKey(DIK_A) || input_->PushKey(DIK_LEFT))  inputX -= 1.0f;
+        if (input_->PushKey(DIK_D) || input_->PushKey(DIK_RIGHT)) inputX += 1.0f;
+        if (input_->PushKey(DIK_W) || input_->PushKey(DIK_UP))    inputY += 1.0f;
+        if (input_->PushKey(DIK_S) || input_->PushKey(DIK_DOWN))  inputY -= 1.0f;
+    }
 
     // 回避・ロールキー押下時の横ブースト
     float currentSpeedX = currentSpeed;
-    if (input_->PushKey(DIK_Q) || input_->PushKey(DIK_E)) {
+    if (isInputEnabled_ && (input_->PushKey(DIK_Q) || input_->PushKey(DIK_E))) {
         currentSpeedX *= 1.4f;
     }
 
@@ -1061,7 +1063,7 @@ void Player::Move(float gameSpeed) {
 
 // プレイヤーの攻撃（弾・ミサイル発射）処理
 void Player::Attack(std::list<std::unique_ptr<PlayerBullet>>& bullets, std::list<std::unique_ptr<PlayerMissile>>& missiles, const std::list<std::unique_ptr<Enemy>>& enemies, Object3d* parentCamera, float gameSpeed, ArmoredTrainBoss* boss) {
-    if (!input_) return;
+    if (!input_ || !isInputEnabled_) return;
 
     // 武器管理システム（メモリシステム）に攻撃処理を委譲
     weaponManager_.Attack(input_, bullets, missiles, enemies, boss, parentCamera, gameSpeed);

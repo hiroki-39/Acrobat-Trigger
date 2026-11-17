@@ -103,6 +103,7 @@ void TitleScene::Initialize()
         modelManager->LoadModel("enemy.obj");
         modelManager->LoadModel("fixedTurret.obj");
         modelManager->LoadModel("missile.obj");
+        modelManager->LoadModel("missile_enemy.obj");
         modelManager->LoadModel("RockOn.obj");
         modelManager->LoadModel("collider_cube_player.obj");
         modelManager->LoadModel("collider_sphere_enemy.obj");
