@@ -608,6 +608,7 @@ void UITextManager::LoadSettings()
 		// 新形式: "scenes": { "TITLE": [...], "GAMEPLAY": [...] }
 		if (root.contains("scenes") && root["scenes"].is_object())
 		{
+			hasLoadedFromFile_ = true;
 			for (auto& [sName, arr] : root["scenes"].items())
 			{
 				if (arr.is_array())
@@ -620,6 +621,7 @@ void UITextManager::LoadSettings()
 		// 旧形式下位互換: "items": [...] を "GAMEPLAY" に流し込み
 		else if (root.contains("items") && root["items"].is_array())
 		{
+			hasLoadedFromFile_ = true;
 			auto& sceneData = GetOrCreateScene("GAMEPLAY");
 			parseItemArray(root["items"], sceneData);
 		}

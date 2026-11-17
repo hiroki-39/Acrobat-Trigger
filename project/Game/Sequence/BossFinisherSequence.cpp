@@ -5,6 +5,7 @@
 #include "Game/System/RailCameraController.h"
 #include "KHEngine/Core/Services/EngineServices.h"
 #include "KHEngine/Graphics/3d/Model/ModelManager.h"
+#include "KHEngine/Graphics/3d/Particle/ParticleEffect.h"
 #include "KHEngine/Sound/Core/SoundManager.h"
 #include "KHEngine/Input/Input.h"
 #include "KHEngine/UI/UITextManager.h"
@@ -100,12 +101,10 @@ void BossFinisherSequence::StartSequence(ArmoredTrainBoss* boss, Player* player)
     // SE再生（警報・警告音）
     SoundManager::GetInstance()->PlaySE("Alarm01.wav", 0.9f);
 
-    // UIテキストエディタ一括管理: 処刑警告・操作ガイドを表示
+    // UIテキストエディタ一括管理: 処刑警告・操作ガイドを表示（エディタで編集・保存された文言と色を保持）
     if (auto textMgr = UITextManager::GetInstance()) {
         textMgr->SetVisible("ExecuteCritical", true, "GAMEPLAY");
         textMgr->SetVisible("ExecuteGuide", true, "GAMEPLAY");
-        textMgr->SetText("ExecuteGuide", "[ HOLD SPACE TO LOCK ON ]", "GAMEPLAY");
-        textMgr->SetColor("ExecuteGuide", { 0.0f, 0.95f, 1.0f, 1.0f }, "GAMEPLAY");
         textMgr->SetVisible("MissionAccomplishedTitle", false, "GAMEPLAY");
         textMgr->SetVisible("MissionAccomplishedSub", false, "GAMEPLAY");
     }
@@ -454,7 +453,9 @@ void BossFinisherSequence::FireExecutionMissiles(Player* player) {
         m.obj->SetModel("missile.obj");
         m.obj->SetColor({ 1.0f, 0.15f, 0.55f, 1.0f }); // ネオンマゼンタ発光
         m.obj->SetEnvironmentTextureIndex(skyboxTexIndex_);
-        m.obj->SetEnableLighting(false);
+        m.obj->SetEnvironmentCoefficient(0.0f);
+        m.obj->SetEnableLighting(true);
+        m.obj->SetSelectLightings(11); // ミサイル専用サイバーシェーダー
         m.obj->SetScale({ 1.5f, 1.5f, 1.5f });
         m.obj->SetTranslate(m.position);
         m.obj->Update();
@@ -572,6 +573,20 @@ void BossFinisherSequence::UpdatePhase3FinisherFire(float dt, ArmoredTrainBoss* 
         if (t >= 1.0f) {
             m.isHit = true;
             SoundManager::GetInstance()->PlaySE("explosion.mp3", 0.95f);
+
+            // サイバーボクセルブロック着弾パーティクルを再生（巨大ボスの車体に隠れないようカメラ手前・上側へ引き出す）
+            if (onVoxelHit_) {
+                Vector3 fxPos = target + Vector3(0.0f, 4.0f, 0.0f);
+                if (camera_) {
+                    const Matrix4x4& cMat = camera_->GetWorldMatrix();
+                    Vector3 toCam = { cMat.m[3][0] - target.x, cMat.m[3][1] - target.y, cMat.m[3][2] - target.z };
+                    float len = toCam.Length();
+                    if (len > 0.001f) {
+                        fxPos = fxPos + (toCam / len) * 10.5f;
+                    }
+                }
+                onVoxelHit_(fxPos, 32, 1.3f, 2.7f);
+            }
 
             // 衝撃波リングをコア位置に展開
             if (m.targetCoreIndex >= 0 && m.targetCoreIndex < static_cast<int>(shockwaveRings_.size())) {
@@ -900,8 +915,8 @@ void BossFinisherSequence::UpdatePhase5MissionAccomplished(float dt, ArmoredTrai
         // 後半 (3.5s〜4.8s): 十分前に進んだあと、ようやく上空（オーロラの夜空）へ上昇して飛び去る
         Vector3 shipStart    = bossTailLocal + bossRight * 5.0f + bossUp * 11.7f - bossFwd * 22.0f;
         Vector3 shipOverHead = bossHeadLocal + bossRight * 5.0f + bossUp * 11.7f + bossFwd * 60.0f;
-        Vector3 shipPassMid  = bossHeadLocal + bossRight * 5.0f + bossUp * 17.5f + bossFwd * 78.0f;
-        Vector3 shipSkyEnd   = bossHeadLocal + bossRight * 5.0f + bossUp * 36.0f + bossFwd * 105.0f;
+        Vector3 shipPassMid  = bossHeadLocal + bossRight * 5.0f + bossUp * 24.0f + bossFwd * 78.0f;
+        Vector3 shipSkyEnd   = bossHeadLocal + bossRight * 5.0f + bossUp * 58.0f + bossFwd * 105.0f;
 
         Vector3 shipPos = shipStart;
         Vector3 moveDir = shipOverHead - shipStart;
@@ -921,11 +936,8 @@ void BossFinisherSequence::UpdatePhase5MissionAccomplished(float dt, ArmoredTrai
             float invT2 = 1.0f - t2;
             shipPos = shipOverHead * (invT2 * invT2) + shipPassMid * (2.0f * invT2 * t2) + shipSkyEnd * (t2 * t2);
 
-            float t2Next = std::clamp(t2 + 0.02f, 0.0f, 1.0f);
-            float invT2Next = 1.0f - t2Next;
-            Vector3 nextShipPos = shipOverHead * (invT2Next * invT2Next) + shipPassMid * (2.0f * invT2Next * t2Next) + shipSkyEnd * (t2Next * t2Next);
-
-            moveDir = nextShipPos - shipPos;
+            // 2次ベジェ曲線の正確な接線ベクトルを使用（t2=1.0f 終端でもゼロベクトルにならず上向き姿勢を維持）
+            moveDir = (shipPassMid - shipOverHead) * (2.0f * invT2) + (shipSkyEnd - shipPassMid) * (2.0f * t2);
             rollAngle = 0.0f; // 上昇中はローリングせず水平姿勢のまま上昇
         }
 
@@ -985,11 +997,12 @@ void BossFinisherSequence::UpdatePhase5MissionAccomplished(float dt, ArmoredTrai
                             s.obj->Initialize(object3dCommon_);
                             s.obj->SetModel("cube.obj");
 
-                            // 鮮やかな純粋ネオンカラー（シアン・マゼンタ・ピュアホワイト）
+                            // ボス本体のカラー（エレクトリックバイオレット・サイバーインディゴ）＆ディゾルブ境界色（シアン・マゼンタ）に統一
                             int colPick = rand() % 5;
-                            if (colPick <= 1) s.color = { 0.1f, 0.95f, 1.0f, 1.0f };       // ネオンシアン
-                            else if (colPick <= 3) s.color = { 1.0f, 0.2f, 0.75f, 1.0f };  // ネオンマゼンタ
-                            else s.color = { 1.0f, 1.0f, 1.0f, 1.0f };                     // ピュアホワイト
+                            if (colPick <= 1) s.color = { 0.76f, 0.14f, 1.0f, 1.0f };       // エレクトリックバイオレット（ボス主力色）
+                            else if (colPick == 2) s.color = { 0.22f, 0.48f, 1.0f, 1.0f };  // サイバーインディゴ（ボスサブ色）
+                            else if (colPick == 3) s.color = { 0.05f, 0.95f, 1.0f, 1.0f };  // ネオンシアン（ディゾルブグリッド色）
+                            else s.color = { 1.0f, 0.18f, 0.60f, 1.0f };                    // ネオンマゼンタ（ディゾルブレーザー色）
 
                             s.obj->SetColor(s.color);
                             s.obj->SetEnableLighting(false);
@@ -1050,12 +1063,12 @@ void BossFinisherSequence::UpdatePhase5MissionAccomplished(float dt, ArmoredTrai
         s.rotation = s.rotation + s.rotSpeed * dt;
         s.velocity.y += 4.5f * dt; // 上方向へ加速しながら霧散
         float alpha = std::clamp(1.0f - s.life / s.maxLife, 0.0f, 1.0f);
-        s.color.w = alpha;
+        s.color.w = 1.0f;
         if (s.obj) {
             s.obj->SetTranslate(s.position);
             s.obj->SetRotation(s.rotation);
             s.obj->SetColor(s.color);
-            s.obj->SetScale({ s.scale.x * (0.4f + 0.6f * alpha), s.scale.y * (0.4f + 0.6f * alpha), s.scale.z * (0.4f + 0.6f * alpha) });
+            s.obj->SetScale({ s.scale.x * alpha, s.scale.y * alpha, s.scale.z * alpha });
             s.obj->Update();
         }
         ++it;

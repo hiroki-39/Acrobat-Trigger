@@ -697,6 +697,7 @@ void GamePlayScene::Initialize()
 
 	missileSmokeEffect_.Initialize(dxCommon, srvManager);
 	missileSmokeEffect_.LoadFromJson("missile_smoke.json");
+	ModelManager::GetInstance()->LoadModel("cube.obj");
 
 	ringEffect_.Initialize(dxCommon, srvManager);
 	ringEffect_.LoadFromJson("ring.json");
@@ -879,66 +880,69 @@ void GamePlayScene::Initialize()
 			bossDefeated.isVisible = false;
 			textMgr->RegisterText(bossDefeated, "GAMEPLAY");
 		}
-		if (!textMgr->HasTextItem("ExecuteCritical", "GAMEPLAY"))
+		if (!textMgr->HasLoadedFromFile())
 		{
-			UITextItem item;
-			item.id = "ExecuteCritical";
-			item.text = "[ CRITICAL // EXECUTE READY ]";
-			item.position = { 640.0f, 160.0f };
-			item.fontSize = 28.0f;
-			item.fontType = ImGuiManager::FontType::Japanese_MPLUS;
-			item.color = { 1.0f, 0.15f, 0.2f, 1.0f };
-			item.hasOutline = true;
-			item.outlineThickness = 2.0f;
-			item.align = UITextAlign::Center;
-			item.isVisible = false;
-			textMgr->RegisterText(item, "GAMEPLAY");
-		}
-		if (!textMgr->HasTextItem("ExecuteGuide", "GAMEPLAY"))
-		{
-			UITextItem item;
-			item.id = "ExecuteGuide";
-			item.text = "[ HOLD SPACE TO LOCK ON ]";
-			item.position = { 640.0f, 520.0f };
-			item.fontSize = 22.0f;
-			item.fontType = ImGuiManager::FontType::Japanese_MPLUS;
-			item.color = { 0.0f, 0.95f, 1.0f, 1.0f };
-			item.hasOutline = true;
-			item.outlineThickness = 2.0f;
-			item.align = UITextAlign::Center;
-			item.isVisible = false;
-			textMgr->RegisterText(item, "GAMEPLAY");
-		}
-		if (!textMgr->HasTextItem("MissionAccomplishedTitle", "GAMEPLAY"))
-		{
-			UITextItem item;
-			item.id = "MissionAccomplishedTitle";
-			item.text = "MISSION ACCOMPLISHED";
-			item.position = { 640.0f, 290.0f };
-			item.fontSize = 38.0f;
-			item.fontType = ImGuiManager::FontType::Japanese_MPLUS;
-			item.color = { 0.95f, 1.0f, 1.0f, 1.0f };
-			item.hasOutline = true;
-			item.outlineThickness = 3.0f;
-			item.hasShadow = true;
-			item.align = UITextAlign::Center;
-			item.isVisible = false;
-			textMgr->RegisterText(item, "GAMEPLAY");
-		}
-		if (!textMgr->HasTextItem("MissionAccomplishedSub", "GAMEPLAY"))
-		{
-			UITextItem item;
-			item.id = "MissionAccomplishedSub";
-			item.text = "- 任務完了 // TARGET PURGED -";
-			item.position = { 640.0f, 335.0f };
-			item.fontSize = 18.0f;
-			item.fontType = ImGuiManager::FontType::Japanese_MPLUS;
-			item.color = { 0.0f, 0.9f, 1.0f, 1.0f };
-			item.hasOutline = true;
-			item.outlineThickness = 2.0f;
-			item.align = UITextAlign::Center;
-			item.isVisible = false;
-			textMgr->RegisterText(item, "GAMEPLAY");
+			if (!textMgr->HasTextItem("ExecuteCritical", "GAMEPLAY"))
+			{
+				UITextItem item;
+				item.id = "ExecuteCritical";
+				item.text = "[ CRITICAL // EXECUTE READY ]";
+				item.position = { 640.0f, 160.0f };
+				item.fontSize = 28.0f;
+				item.fontType = ImGuiManager::FontType::Japanese_MPLUS;
+				item.color = { 1.0f, 0.15f, 0.2f, 1.0f };
+				item.hasOutline = true;
+				item.outlineThickness = 2.0f;
+				item.align = UITextAlign::Center;
+				item.isVisible = false;
+				textMgr->RegisterText(item, "GAMEPLAY");
+			}
+			if (!textMgr->HasTextItem("ExecuteGuide", "GAMEPLAY"))
+			{
+				UITextItem item;
+				item.id = "ExecuteGuide";
+				item.text = "[ HOLD SPACE TO LOCK ON ]";
+				item.position = { 640.0f, 520.0f };
+				item.fontSize = 22.0f;
+				item.fontType = ImGuiManager::FontType::Japanese_MPLUS;
+				item.color = { 0.0f, 0.95f, 1.0f, 1.0f };
+				item.hasOutline = true;
+				item.outlineThickness = 2.0f;
+				item.align = UITextAlign::Center;
+				item.isVisible = false;
+				textMgr->RegisterText(item, "GAMEPLAY");
+			}
+			if (!textMgr->HasTextItem("MissionAccomplishedTitle", "GAMEPLAY"))
+			{
+				UITextItem item;
+				item.id = "MissionAccomplishedTitle";
+				item.text = "MISSION ACCOMPLISHED";
+				item.position = { 640.0f, 290.0f };
+				item.fontSize = 38.0f;
+				item.fontType = ImGuiManager::FontType::Japanese_MPLUS;
+				item.color = { 0.95f, 1.0f, 1.0f, 1.0f };
+				item.hasOutline = true;
+				item.outlineThickness = 3.0f;
+				item.hasShadow = true;
+				item.align = UITextAlign::Center;
+				item.isVisible = false;
+				textMgr->RegisterText(item, "GAMEPLAY");
+			}
+			if (!textMgr->HasTextItem("MissionAccomplishedSub", "GAMEPLAY"))
+			{
+				UITextItem item;
+				item.id = "MissionAccomplishedSub";
+				item.text = "- 任務完了 // TARGET PURGED -";
+				item.position = { 640.0f, 335.0f };
+				item.fontSize = 18.0f;
+				item.fontType = ImGuiManager::FontType::Japanese_MPLUS;
+				item.color = { 0.0f, 0.9f, 1.0f, 1.0f };
+				item.hasOutline = true;
+				item.outlineThickness = 2.0f;
+				item.align = UITextAlign::Center;
+				item.isVisible = false;
+				textMgr->RegisterText(item, "GAMEPLAY");
+			}
 		}
 
 		// シーン開始時に処刑・クリア関連テキストを確実に非表示にリセット
@@ -955,6 +959,9 @@ void GamePlayScene::Initialize()
 		uint32_t skyTex = skybox_ ? skybox_->GetCubemapSrvIndex() : 0;
 		bossFinisherSequence_->Initialize(services->GetObject3dCommon(), camera.get(), railCameraController_.get(), skyTex);
 		bossFinisherSequence_->SetTerrainObjects(&modelInstances);
+		bossFinisherSequence_->SetOnVoxelHit([this](const Vector3& pos, int count, float minSz, float maxSz) {
+			SpawnVoxelHitParticles(pos, count, minSz, maxSz);
+		});
 		bossFinisherSequence_->Reset(player_.get());
 	}
 }
@@ -1284,6 +1291,7 @@ void GamePlayScene::SeamlessResetForRetry()
 	reconstructShards_.clear();
 	thrusterEffect_.ClearParticles();
 	explosionEffect_.ClearParticles();
+	voxelHitParticles_.clear();
 	hitEffect_.ClearParticles();
 	dodgeEffect_.ClearParticles();
 	for (auto& shard : gameOverShards_)
@@ -2023,6 +2031,9 @@ void GamePlayScene::Update()
 
 		colCtx.hitEffect = &hitEffect_;
 		colCtx.explosionEffect = &explosionEffect_;
+		colCtx.onSpawnVoxelHit = [this](const Vector3& pos, int count, float minSz, float maxSz) {
+			SpawnVoxelHitParticles(pos, count, minSz, maxSz);
+		};
 		colCtx.dodgeEffect = &dodgeEffect_;
 		colCtx.ringEffect = &ringEffect_;
 		colCtx.healRingEffect = &healRingEffect_;
@@ -2329,9 +2340,9 @@ void GamePlayScene::Update()
 					thrusterEffect_.SetBaseColor({ 1.0f, 0.55f, 0.1f, 1.0f });
 				}
 			}
-			else if (gamePhase_ == GamePhase::PLAYING)
+			else if (gamePhase_ == GamePhase::PLAYING || (gamePhase_ == GamePhase::CLEAR && player_->IsVisible()))
 			{
-				// 通常プレイ時
+				// 通常プレイ時およびクリア演出・リザルト背景飛行時
 				shouldEmitThruster = true;
 				// 巡航時はクールな高エネルギーシアンブルー、ブースト時やロール回避時はブレイジングオレンジ
 				if (player_->IsBoosting() || player_->IsRolling())
@@ -2365,6 +2376,34 @@ void GamePlayScene::Update()
 		dodgeEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
 		trailEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
 		missileSmokeEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
+		for (auto it = voxelHitParticles_.begin(); it != voxelHitParticles_.end(); )
+		{
+			auto& vp = *it;
+			vp.life += dt;
+			if (vp.life >= vp.maxLife)
+			{
+				it = voxelHitParticles_.erase(it);
+				continue;
+			}
+			vp.position = vp.position + vp.velocity * dt;
+			vp.rotation = vp.rotation + vp.rotSpeed * dt;
+			vp.velocity.x *= (1.0f - 2.6f * dt);
+			vp.velocity.y *= (1.0f - 2.6f * dt);
+			vp.velocity.z *= (1.0f - 2.6f * dt);
+			float lifeRatio = std::clamp(vp.life / vp.maxLife, 0.0f, 1.0f);
+			// くすみを防ぐためアルファは1.0fを保ち、スケール縮小のみで消滅させる
+			float scaleFade = 1.0f - lifeRatio * lifeRatio;
+			vp.color.w = 1.0f;
+			if (vp.obj)
+			{
+				vp.obj->SetTranslate(vp.position);
+				vp.obj->SetRotation(vp.rotation);
+				vp.obj->SetColor(vp.color);
+				vp.obj->SetScale({ vp.scale.x * scaleFade, vp.scale.y * scaleFade, vp.scale.z * scaleFade });
+				vp.obj->Update();
+			}
+			++it;
+		}
 		ringEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
 		healRingEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
 
@@ -2533,38 +2572,47 @@ void GamePlayScene::Update()
 			char weaponStr[64] = "";
 			Vector4 weaponColor = { 1.0f, 1.0f, 1.0f, 1.0f };
 
-			MemoryType memType = player_->GetEquippedMemoryType();
-			int currentAmmo = player_->GetWeaponAmmo();
-			int maxAmmo = player_->GetWeaponMaxAmmo();
-
-			switch (memType)
+			if (bossFinisherSequence_ && bossFinisherSequence_->IsActive() && bossFinisherSequence_->IsRedMemoryAbsorbed())
 			{
-			case MemoryType::BOMB:
-				snprintf(weaponStr, sizeof(weaponStr), "ボム: %d/%d", currentAmmo, maxAmmo);
-				weaponColor = { 1.0f, 0.2f, 0.2f, 1.0f }; // ネオンレッド
-				break;
-			case MemoryType::CYBER_BIT:
-			case MemoryType::FUNNEL:
-				snprintf(weaponStr, sizeof(weaponStr), "ファンネル: %d/%d", currentAmmo, maxAmmo);
-				weaponColor = { 1.0f, 0.65f, 0.12f, 1.0f }; // エレクトリックオレンジ/ゴールド
-				break;
-			case MemoryType::SPREAD:
-				snprintf(weaponStr, sizeof(weaponStr), "拡散弾: %d/%d", currentAmmo, maxAmmo);
-				weaponColor = { 0.2f, 1.0f, 0.35f, 1.0f }; // ネオングリーン
-				break;
-			case MemoryType::CHARGE_SHOT:
-				snprintf(weaponStr, sizeof(weaponStr), "チャージ: %d/%d", currentAmmo, maxAmmo);
-				weaponColor = { 1.0f, 0.95f, 0.15f, 1.0f }; // ネオンイエロー
-				break;
-			case MemoryType::LASER_BEAM:
-				snprintf(weaponStr, sizeof(weaponStr), "レーザー: %d/%d", currentAmmo, maxAmmo);
-				weaponColor = { 0.2f, 0.6f, 1.0f, 1.0f }; // ディープブルー
-				break;
-			case MemoryType::NONE:
-			default:
-				snprintf(weaponStr, sizeof(weaponStr), "通常弾: ∞/∞");
-				weaponColor = { 0.4f, 0.9f, 1.0f, 1.0f }; // ネオンシアン
-				break;
+				int execAmmo = bossFinisherSequence_->HasFiredMissiles() ? 0 : 4;
+				snprintf(weaponStr, sizeof(weaponStr), "処刑弾: %d/4", execAmmo);
+				weaponColor = { 1.0f, 0.15f, 0.35f, 1.0f }; // 処刑赤メモリカラー
+			}
+			else
+			{
+				MemoryType memType = player_->GetEquippedMemoryType();
+				int currentAmmo = player_->GetWeaponAmmo();
+				int maxAmmo = player_->GetWeaponMaxAmmo();
+
+				switch (memType)
+				{
+				case MemoryType::BOMB:
+					snprintf(weaponStr, sizeof(weaponStr), "ボム: %d/%d", currentAmmo, maxAmmo);
+					weaponColor = { 1.0f, 0.2f, 0.2f, 1.0f }; // ネオンレッド
+					break;
+				case MemoryType::CYBER_BIT:
+				case MemoryType::FUNNEL:
+					snprintf(weaponStr, sizeof(weaponStr), "ファンネル: %d/%d", currentAmmo, maxAmmo);
+					weaponColor = { 1.0f, 0.65f, 0.12f, 1.0f }; // エレクトリックオレンジ/ゴールド
+					break;
+				case MemoryType::SPREAD:
+					snprintf(weaponStr, sizeof(weaponStr), "拡散弾: %d/%d", currentAmmo, maxAmmo);
+					weaponColor = { 0.2f, 1.0f, 0.35f, 1.0f }; // ネオングリーン
+					break;
+				case MemoryType::CHARGE_SHOT:
+					snprintf(weaponStr, sizeof(weaponStr), "チャージ: %d/%d", currentAmmo, maxAmmo);
+					weaponColor = { 1.0f, 0.95f, 0.15f, 1.0f }; // ネオンイエロー
+					break;
+				case MemoryType::LASER_BEAM:
+					snprintf(weaponStr, sizeof(weaponStr), "レーザー: %d/%d", currentAmmo, maxAmmo);
+					weaponColor = { 0.2f, 0.6f, 1.0f, 1.0f }; // ディープブルー
+					break;
+				case MemoryType::NONE:
+				default:
+					snprintf(weaponStr, sizeof(weaponStr), "通常弾: ∞/∞");
+					weaponColor = { 0.4f, 0.9f, 1.0f, 1.0f }; // ネオンシアン
+					break;
+				}
 			}
 
 			UITextManager::GetInstance()->SetText("LockOn", weaponStr);
@@ -4348,6 +4396,17 @@ void GamePlayScene::Draw()
 	dodgeEffect_.Draw();
 	trailEffect_.Draw();
 	missileSmokeEffect_.Draw();
+	if (!voxelHitParticles_.empty())
+	{
+		if (object3dCommon) object3dCommon->SetCommonDrawSetting();
+		for (const auto& vp : voxelHitParticles_)
+		{
+			if (vp.obj && vp.color.w > 0.01f)
+			{
+				vp.obj->Draw();
+			}
+		}
+	}
 	ringEffect_.Draw();
 	healRingEffect_.Draw();
 	// スピードライン（プレイヤーが前進飛行している時のみ描画）
@@ -6820,6 +6879,112 @@ void GamePlayScene::DrawGameOverUI()
 #endif
 }
 
+void GamePlayScene::SpawnVoxelHitParticles(const Vector3& worldPos, int count, float minSize, float maxSize)
+{
+	auto services = EngineServices::GetInstance();
+	Object3dCommon* object3dCommon = services ? services->GetObject3dCommon() : nullptr;
+	if (!object3dCommon) return;
+
+	// ボス（紫・マゼンタ・赤系）と明確に区別できるプレイヤー専用シアン／アイスブルーカラーのみを使用
+	auto PickPlayerCyberColor = [](int idx) -> Vector4 {
+		int p = idx % 3;
+		if (p == 0) return { 0.05f, 0.95f, 1.0f, 1.0f }; // 鮮烈ネオンシアン
+		if (p == 1) return { 0.40f, 0.94f, 1.0f, 1.0f }; // クリスタルアイスブルー
+		return { 0.85f, 0.98f, 1.0f, 1.0f };             // アイスホワイト
+	};
+
+	// カメラ向きの基底ベクトル（ボクセルで作るリング円がカメラから正面に見えやすいようにする）
+	Vector3 ringNormal = { 0.0f, 0.0f, -1.0f };
+	if (activeCamera_)
+	{
+		const Matrix4x4& cMat = activeCamera_->GetWorldMatrix();
+		Vector3 toCam = { cMat.m[3][0] - worldPos.x, cMat.m[3][1] - worldPos.y, cMat.m[3][2] - worldPos.z };
+		float len = toCam.Length();
+		if (len > 0.001f) ringNormal = toCam / len;
+	}
+	Vector3 upRef = (std::abs(ringNormal.y) < 0.9f) ? Vector3{ 0.0f, 1.0f, 0.0f } : Vector3{ 1.0f, 0.0f, 0.0f };
+	Vector3 ringRight = Vector3::Cross(upRef, ringNormal).Normalize();
+	Vector3 ringUp = Vector3::Cross(ringNormal, ringRight).Normalize();
+
+	// 1. ボクセルブロックで作る円形リング（着弾点から放射状に弾け広がる）
+	int ringCount = (count >= 24) ? 18 : 12;
+	float ringSpeed = (maxSize > 1.8f) ? 30.0f : 18.0f;
+	for (int i = 0; i < ringCount; ++i)
+	{
+		if (voxelHitParticles_.size() >= 420) break;
+		float theta = (6.2831853f * static_cast<float>(i)) / static_cast<float>(ringCount);
+		Vector3 radialDir = (ringRight * std::cos(theta) + ringUp * std::sin(theta)).Normalize();
+
+		VoxelHitParticle vp;
+		vp.obj = std::make_unique<Object3d>();
+		vp.obj->Initialize(object3dCommon);
+		vp.obj->SetModel("cube.obj");
+		vp.color = PickPlayerCyberColor(i);
+		vp.obj->SetColor(vp.color);
+		vp.obj->SetEnableLighting(false);
+		vp.obj->SetEnvironmentCoefficient(0.0f);
+		vp.obj->SetSelectLightings(10);
+
+		float sz = minSize * 0.85f;
+		vp.scale = { sz, sz, sz };
+		vp.obj->SetScale(vp.scale);
+		vp.position = worldPos + radialDir * 1.2f;
+		vp.velocity = radialDir * ringSpeed;
+		vp.rotation = { 0.0f, 0.0f, theta };
+		vp.rotSpeed = { 4.0f, 6.0f, 4.0f };
+		vp.life = 0.0f;
+		vp.maxLife = 0.50f;
+		vp.obj->SetTranslate(vp.position);
+		vp.obj->SetRotation(vp.rotation);
+		vp.obj->Update();
+		voxelHitParticles_.push_back(std::move(vp));
+	}
+
+	// 2. その周りから全方向へ花火のように弾けるボクセルブロック
+	int burstCount = count;
+	float minSpd = (maxSize > 1.8f) ? 16.0f : 10.0f;
+	float maxSpd = (maxSize > 1.8f) ? 44.0f : 26.0f;
+	for (int i = 0; i < burstCount; ++i)
+	{
+		if (voxelHitParticles_.size() >= 420) break;
+		float phi = static_cast<float>(rand() % 628) * 0.01f;
+		float cosT = (static_cast<float>(rand() % 200) - 100.0f) * 0.01f;
+		float sinT = std::sqrt((std::max)(0.0f, 1.0f - cosT * cosT));
+		Vector3 dir = { sinT * std::cos(phi), cosT, sinT * std::sin(phi) };
+
+		VoxelHitParticle vp;
+		vp.obj = std::make_unique<Object3d>();
+		vp.obj->Initialize(object3dCommon);
+		vp.obj->SetModel("cube.obj");
+		vp.color = PickPlayerCyberColor(rand());
+		vp.obj->SetColor(vp.color);
+		vp.obj->SetEnableLighting(false);
+		vp.obj->SetEnvironmentCoefficient(0.0f);
+		vp.obj->SetSelectLightings(10);
+
+		float tSz = static_cast<float>(rand() % 100) / 100.0f;
+		float sz = minSize + (maxSize - minSize) * tSz;
+		vp.scale = { sz, sz, sz };
+		vp.obj->SetScale(vp.scale);
+
+		float spd = minSpd + (maxSpd - minSpd) * (static_cast<float>(rand() % 100) / 100.0f);
+		vp.position = worldPos + dir * 0.8f;
+		vp.velocity = dir * spd;
+		vp.rotation = { (rand() % 628) * 0.01f, (rand() % 628) * 0.01f, (rand() % 628) * 0.01f };
+		vp.rotSpeed = {
+			((rand() % 100) - 50) * 0.14f,
+			((rand() % 100) - 50) * 0.14f,
+			((rand() % 100) - 50) * 0.14f
+		};
+		vp.life = 0.0f;
+		vp.maxLife = 0.48f + (rand() % 10) * 0.04f;
+		vp.obj->SetTranslate(vp.position);
+		vp.obj->SetRotation(vp.rotation);
+		vp.obj->Update();
+		voxelHitParticles_.push_back(std::move(vp));
+	}
+}
+
 void GamePlayScene::StartClearSequence()
 {
 	if (gamePhase_ != GamePhase::PLAYING) return;
@@ -6831,14 +6996,28 @@ void GamePlayScene::StartClearSequence()
 	clearStep_ = fromFinisher ? ClearStep::SHOW_UI : ClearStep::ASCENDING;
 	clearTimer_ = 0.0f;
 	clearTotalTimer_ = 0.0f;
-	clearAscentSpeed_ = fromFinisher ? 45.0f : 10.0f; // 上昇初速
+	clearAscentSpeed_ = fromFinisher ? 18.0f : 8.0f; // 上空へ高く上昇する初速
 
 	if (player_)
 	{
 		clearStartPlayerPos_ = player_->GetTranslate();
 		clearPlayerAscentPos_ = clearStartPlayerPos_;
 		clearPlayerAscentRot_ = player_->GetRotation();
-		player_->SetCutsceneOverride(true, clearPlayerAscentPos_, clearPlayerAscentRot_);
+		if (fromFinisher && player_->IsCutsceneUsingQuaternion())
+		{
+			// フィニッシャー演出のクォータニオン姿勢と上昇方向をそのまま引き継ぎ、切り替わり瞬間の一瞬傾きを防止
+			clearUseQuat_ = true;
+			clearQuat_ = player_->GetCutsceneQuaternion();
+			Matrix4x4 rotM = clearQuat_.ToMatrix();
+			Vector3 fwd = { rotM.m[2][0], rotM.m[2][1], rotM.m[2][2] };
+			clearMoveDir_ = (fwd.Length() > 0.001f) ? fwd.Normalize() : Vector3{ 0.0f, 0.45f, 0.89f };
+			player_->SetCutsceneOverrideQuaternion(true, clearPlayerAscentPos_, clearQuat_);
+		}
+		else
+		{
+			clearUseQuat_ = false;
+			player_->SetCutsceneOverride(true, clearPlayerAscentPos_, clearPlayerAscentRot_);
+		}
 		player_->Update3DObjectOnly();
 	}
 
@@ -6876,35 +7055,48 @@ void GamePlayScene::UpdateClearSequence(float dt)
 		retryStartRailIndex_ = railCameraController_->GetCurrentRailIndex();
 	}
 
-	// 自機の上昇・加速・姿勢制御
-	clearAscentSpeed_ += 40.0f * dt; // ぐんぐん加速
-	// 機首を上向きに傾ける（-0.5rad ≒ -28度）
-	clearPlayerAscentRot_.x += (-0.5f - clearPlayerAscentRot_.x) * (3.0f * dt);
-	// ロールとヨーを水平に復元
-	clearPlayerAscentRot_.y += (0.0f - clearPlayerAscentRot_.y) * (4.0f * dt);
-	clearPlayerAscentRot_.z += (0.0f - clearPlayerAscentRot_.z) * (4.0f * dt);
-
-	// 位置更新（上空＋前方へ加速上昇）
-	clearPlayerAscentPos_.y += (clearAscentSpeed_ * 0.85f) * dt;
-	clearPlayerAscentPos_.z += (clearAscentSpeed_ * 1.35f) * dt;
-
-	if (player_)
+	// 自機の上昇・加速・姿勢制御（ある程度上昇したら上昇を止めて非表示にする）
+	const float kAscentHideTime = fromFinisher ? 3.2f : 4.5f;
+	if (clearTotalTimer_ >= kAscentHideTime)
 	{
-		player_->SetCutsceneOverride(true, clearPlayerAscentPos_, clearPlayerAscentRot_);
-		player_->Update3DObjectOnly();
-
-		// スラスターエフェクト（ジェット排気）を自機後方に噴射
-		Vector3 pWorld = player_->GetWorldPosition();
-		thrusterEffect_.SetPosition(pWorld);
-		thrusterEffect_.Play();
+		if (player_)
+		{
+			player_->SetVisible(false);
+		}
+	}
+	else
+	{
+		clearAscentSpeed_ += 4.5f * dt;
+		if (clearUseQuat_)
+		{
+			clearPlayerAscentPos_ = clearPlayerAscentPos_ + clearMoveDir_ * (clearAscentSpeed_ * dt);
+			if (player_)
+			{
+				player_->SetCutsceneOverrideQuaternion(true, clearPlayerAscentPos_, clearQuat_);
+				player_->Update3DObjectOnly();
+			}
+		}
+		else
+		{
+			clearPlayerAscentRot_.x += (-0.5f - clearPlayerAscentRot_.x) * (3.0f * dt);
+			clearPlayerAscentRot_.y += (0.0f - clearPlayerAscentRot_.y) * (4.0f * dt);
+			clearPlayerAscentRot_.z += (0.0f - clearPlayerAscentRot_.z) * (4.0f * dt);
+			clearPlayerAscentPos_.y += (clearAscentSpeed_ * 0.65f) * dt;
+			clearPlayerAscentPos_.z += (clearAscentSpeed_ * 1.15f) * dt;
+			if (player_)
+			{
+				player_->SetCutsceneOverride(true, clearPlayerAscentPos_, clearPlayerAscentRot_);
+				player_->Update3DObjectOnly();
+			}
+		}
 	}
 
 	if (railCameraController_)
 	{
 		if (fromFinisher)
 		{
-			// 処刑フィニッシャー完了時（フェーズ4：5.2s〜7.5s）：
-			// カメラ位置・向きともに一切動かさず完全固定
+			// 処刑フィニッシャー完了時（SHOW_UI 〜 RESULT_PANEL）：
+			// 上昇していく自機をそのままのカメラ位置・向きから見送り続ける
 			Vector3 curCam = railCameraController_->GetCinematicLocalPos();
 			Vector3 curLook = railCameraController_->GetCinematicLookAt();
 			railCameraController_->SetCinematicCamera(true, curCam, curLook, 1.0f);
@@ -7069,10 +7261,15 @@ void GamePlayScene::DrawClearUI()
 		bool fromFinisher = (bossFinisherSequence_ && bossFinisherSequence_->IsCompleted());
 		barProgress = fromFinisher ? 1.0f : std::clamp(clearTimer_ / 0.4f, 0.0f, 1.0f);
 	}
-	else if (clearStep_ == ClearStep::SHOW_UI || clearStep_ == ClearStep::RESULT_PANEL)
+	else if (clearStep_ == ClearStep::SHOW_UI)
 	{
-		float totalT = (clearStep_ == ClearStep::SHOW_UI) ? clearTimer_ : (clearTimer_ + 2.3f);
-		barProgress = 1.0f - std::clamp(totalT / 0.35f, 0.0f, 1.0f);
+		// 任務完了のUIが出ている間は黒帯を出したまま維持
+		barProgress = 1.0f;
+	}
+	else if (clearStep_ == ClearStep::RESULT_PANEL)
+	{
+		// リザルト画面時は黒帯なし
+		barProgress = 0.0f;
 	}
 	float barHeight = barHeightMax * barProgress;
 	if (barHeight > 0.5f)
@@ -7094,19 +7291,24 @@ void GamePlayScene::DrawClearUI()
 		// 暗い横帯ではなく、シアン発光の角括弧（ブラケット枠 [ ] ）付きで
 		// 「MISSION ACCOMPLISHED / 任務完了」をコンパクトに展開
 		// =====================================================================
-		float fadeIn = std::clamp(clearTimer_ / 0.35f, 0.0f, 1.0f);
-		float fadeOut = (clearTimer_ > 1.95f) ? std::clamp(1.0f - (clearTimer_ - 1.95f) / 0.35f, 0.0f, 1.0f) : 1.0f;
-		float uiAlpha = fadeIn * fadeOut * transitionAlpha;
+		float fadeIn = std::clamp(clearTimer_ / 0.30f, 0.0f, 1.0f);
+		float closeT = (clearTimer_ > 1.95f) ? std::clamp((clearTimer_ - 1.95f) / 0.25f, 0.0f, 1.0f) : 0.0f;
+		float easeClose = 1.0f - (1.0f - closeT) * (1.0f - closeT) * (1.0f - closeT);
+		float closeAlpha = (clearTimer_ > 2.15f) ? std::clamp(1.0f - (clearTimer_ - 2.15f) / 0.12f, 0.0f, 1.0f) : 1.0f;
+		float uiAlpha = fadeIn * closeAlpha * transitionAlpha;
+		float textFadeOut = (clearTimer_ > 1.95f) ? std::clamp(1.0f - (clearTimer_ - 1.95f) / 0.14f, 0.0f, 1.0f) : 1.0f;
+		float textAlpha = fadeIn * textFadeOut * transitionAlpha;
 
 		if (uiAlpha > 0.001f)
 		{
 			float cx = viewPos.x + screenW * 0.5f;
 			float cy = viewPos.y + screenH * 0.44f;
 
-			// ブラケット枠 [ ] の展開アニメーション
-			float openT = std::clamp(clearTimer_ / 0.40f, 0.0f, 1.0f);
+			// ブラケット枠 [ ] の展開・収納アニメーション（開く時と同じくパッと閉じる）
+			float openT = std::clamp(clearTimer_ / 0.35f, 0.0f, 1.0f);
 			float easeOpen = 1.0f - (1.0f - openT) * (1.0f - openT) * (1.0f - openT);
-			float halfW = (30.0f + 245.0f * easeOpen) * scale;
+			float widthRatio = easeOpen * (1.0f - easeClose);
+			float halfW = (20.0f + 255.0f * widthRatio) * scale;
 			float halfH = 48.0f * scale;
 			float armLen = 22.0f * scale;
 			float thick = 2.8f * scale;
@@ -7141,43 +7343,72 @@ void GamePlayScene::DrawClearUI()
 			drawList->AddLine(ImVec2(cx + halfW, cy - halfH), ImVec2(cx + halfW, cy + halfH), bracketCol, thick);
 			drawList->AddLine(ImVec2(cx + halfW, cy + halfH), ImVec2(cx + halfW - armLen, cy + halfH), bracketCol, thick);
 
-			// テキスト描画（MISSION ACCOMPLISHED / 任務完了）
-			const char* titleStr = "MISSION ACCOMPLISHED";
-			float titleSize = 36.0f * scale;
-			ImVec2 tSz = fontMplus->CalcTextSizeA(titleSize, FLT_MAX, -1.0f, titleStr);
-			ImVec2 tPos(cx - tSz.x * 0.5f, cy - 26.0f * scale);
-			drawList->AddText(fontMplus, titleSize, ImVec2(tPos.x + 2.0f * scale, tPos.y + 2.0f * scale), IM_COL32(0, 0, 0, static_cast<int>(210.0f * uiAlpha)), titleStr);
-			drawList->AddText(fontMplus, titleSize, tPos, IM_COL32(235, 255, 255, static_cast<int>(255.0f * uiAlpha)), titleStr);
+			// テキスト描画（UITextManagerで編集された文言・位置・サイズ・色・スタイルをそのまま反映。削除・空文字の場合は描画しない）
+			auto DrawManagedClearText = [&](const char* itemId) {
+				if (textAlpha <= 0.001f) return;
+				auto textMgr = UITextManager::GetInstance();
+				UITextItem* item = textMgr ? textMgr->GetTextItem(itemId, "GAMEPLAY") : nullptr;
+				if (!item || item->text.empty()) return;
 
-			const char* subStr = "- 任務完了 // TARGET PURGED -";
-			float subSize = 18.0f * scale;
-			ImVec2 sSz = fontMplus->CalcTextSizeA(subSize, FLT_MAX, -1.0f, subStr);
-			ImVec2 sPos(cx - sSz.x * 0.5f, cy + 12.0f * scale);
-			drawList->AddText(fontMplus, subSize, ImVec2(sPos.x + 1.5f * scale, sPos.y + 1.5f * scale), IM_COL32(0, 0, 0, static_cast<int>(200.0f * uiAlpha)), subStr);
-			drawList->AddText(fontMplus, subSize, sPos, IM_COL32(0, 240, 255, static_cast<int>(255.0f * uiAlpha)), subStr);
+				const char* txt = item->text.c_str();
+				ImFont* font = fontMplus;
+				if (imguiManager) {
+					ImFont* f = imguiManager->GetFont(item->fontType);
+					if (f) font = f;
+				}
+				float fSize = item->fontSize * scale;
+				if (fSize < 6.0f) fSize = 6.0f;
+
+				ImVec2 tSz = font->CalcTextSizeA(fSize, FLT_MAX, -1.0f, txt);
+				float scaleX = screenW / 1280.0f;
+				float scaleY = screenH / 720.0f;
+				ImVec2 tPos(viewPos.x + item->position.x * scaleX, viewPos.y + item->position.y * scaleY);
+				if (item->align == UITextAlign::Center) tPos.x -= tSz.x * 0.5f;
+				else if (item->align == UITextAlign::Right) tPos.x -= tSz.x;
+
+				if (item->hasShadow) {
+					ImU32 shCol = ImGui::ColorConvertFloat4ToU32(ImVec4(item->shadowColor.x, item->shadowColor.y, item->shadowColor.z, item->shadowColor.w * textAlpha));
+					drawList->AddText(font, fSize, ImVec2(tPos.x + item->shadowOffset.x * scale, tPos.y + item->shadowOffset.y * scale), shCol, txt);
+				}
+				if (item->hasOutline) {
+					float thickOut = item->outlineThickness * scale;
+					Vector4 oc = item->outlineColor;
+					ImU32 outCol = ImGui::ColorConvertFloat4ToU32(ImVec4(oc.x, oc.y, oc.z, oc.w * textAlpha));
+					drawList->AddText(font, fSize, ImVec2(tPos.x - thickOut, tPos.y), outCol, txt);
+					drawList->AddText(font, fSize, ImVec2(tPos.x + thickOut, tPos.y), outCol, txt);
+					drawList->AddText(font, fSize, ImVec2(tPos.x, tPos.y - thickOut), outCol, txt);
+					drawList->AddText(font, fSize, ImVec2(tPos.x, tPos.y + thickOut), outCol, txt);
+				}
+				Vector4 mc = item->color;
+				ImU32 mainCol = ImGui::ColorConvertFloat4ToU32(ImVec4(mc.x, mc.y, mc.z, mc.w * textAlpha));
+				drawList->AddText(font, fSize, tPos, mainCol, txt);
+			};
+
+			DrawManagedClearText("MissionAccomplishedTitle");
+			DrawManagedClearText("MissionAccomplishedSub");
 		}
 	}
 	else if (clearStep_ == ClearStep::RESULT_PANEL)
 	{
 		// =====================================================================
-		// フェーズ⑦：リザルトUI展開（半透明ホログラムウィンドウ）
-		// 4項目を順次カウントアップ表示し、右側に総合評価ランクを確定表示
+		// フェーズ⑦：リザルトUI展開（上昇中の自機を背景に即座に展開）
 		// =====================================================================
-		float openT = std::clamp(clearTimer_ / 0.35f, 0.0f, 1.0f);
+		float resT = clearTimer_;
+		float openT = std::clamp(resT / 0.35f, 0.0f, 1.0f);
 		float easeOpen = 1.0f - (1.0f - openT) * (1.0f - openT) * (1.0f - openT);
 		float uiAlpha = openT * transitionAlpha;
 
 		float cx = viewPos.x + screenW * 0.5f;
 		float cy = viewPos.y + screenH * 0.50f;
-		float panelW = 760.0f * scale;
-		float panelH = (40.0f + 350.0f * easeOpen) * scale;
+		float panelW = screenW;
+		float panelH = (48.0f * scale) + (screenH - 48.0f * scale) * easeOpen;
 
 		ImVec2 pMin(cx - panelW * 0.5f, cy - panelH * 0.5f);
 		ImVec2 pMax(cx + panelW * 0.5f, cy + panelH * 0.5f);
 
-		// 半透明ダークホログラム背景
-		drawList->AddRectFilled(pMin, pMax, IM_COL32(4, 16, 30, static_cast<int>(215.0f * uiAlpha)), 6.0f * scale);
-		drawList->AddRect(pMin, pMax, IM_COL32(0, 225, 255, static_cast<int>(190.0f * uiAlpha)), 6.0f * scale, 0, 1.8f * scale);
+		// 半透明ダークホログラム背景（背景の自機が透けて見える全画面サイズ）
+		drawList->AddRectFilled(pMin, pMax, IM_COL32(4, 16, 30, static_cast<int>(180.0f * uiAlpha)), 0.0f);
+		drawList->AddRect(pMin, pMax, IM_COL32(0, 225, 255, static_cast<int>(190.0f * uiAlpha)), 0.0f, 0, 2.2f * scale);
 
 		// 内部スキャンライン（ホログラム質感）
 		for (float y = pMin.y + 4.0f * scale; y < pMax.y; y += 6.0f * scale)
@@ -7204,9 +7435,9 @@ void GamePlayScene::DrawClearUI()
 
 			// ヘッダー
 			const char* headerStr = "MISSION RESULT // 戦績評価ログ";
-			float headerSize = 22.0f * scale;
-			drawList->AddText(fontMplus, headerSize, ImVec2(pMin.x + 28.0f * scale, pMin.y + 18.0f * scale), IM_COL32(0, 240, 255, static_cast<int>(255.0f * contentAlpha)), headerStr);
-			drawList->AddLine(ImVec2(pMin.x + 24.0f * scale, pMin.y + 50.0f * scale), ImVec2(pMax.x - 24.0f * scale, pMin.y + 50.0f * scale), IM_COL32(0, 200, 240, static_cast<int>(130.0f * contentAlpha)), 1.2f * scale);
+			float headerSize = 30.0f * scale;
+			drawList->AddText(fontMplus, headerSize, ImVec2(pMin.x + 56.0f * scale, pMin.y + 32.0f * scale), IM_COL32(0, 240, 255, static_cast<int>(255.0f * contentAlpha)), headerStr);
+			drawList->AddLine(ImVec2(pMin.x + 48.0f * scale, pMin.y + 82.0f * scale), ImVec2(pMax.x - 48.0f * scale, pMin.y + 82.0f * scale), IM_COL32(0, 200, 240, static_cast<int>(130.0f * contentAlpha)), 1.6f * scale);
 
 			// 戦績データの算出
 			int totalEnemies = (std::max)(1, totalEnemiesCount_);
@@ -7239,25 +7470,25 @@ void GamePlayScene::DrawClearUI()
 			};
 
 			// 各行描画ラムダ（高速カウントアップ演出付き）
-			float startX = pMin.x + 32.0f * scale;
-			float rowY = pMin.y + 70.0f * scale;
-			float rowStep = 64.0f * scale;
+			float startX = pMin.x + 64.0f * scale;
+			float rowY = pMin.y + 115.0f * scale;
+			float rowStep = 112.0f * scale;
 
 			auto drawStatRow = [&](int idx, float startDelay, const char* jpLabel, const char* enLabel, const char* valStr) {
-				if (clearTimer_ < startDelay) return;
-				float rowT = std::clamp((clearTimer_ - startDelay) / 0.25f, 0.0f, 1.0f);
+				if (resT < startDelay) return;
+				float rowT = std::clamp((resT - startDelay) / 0.25f, 0.0f, 1.0f);
 				float y = rowY + idx * rowStep;
 
-				drawList->AddText(fontMplus, 17.0f * scale, ImVec2(startX, y), IM_COL32(220, 245, 255, static_cast<int>(255.0f * rowT * transitionAlpha)), jpLabel);
-				drawList->AddText(fontMono, 12.0f * scale, ImVec2(startX, y + 22.0f * scale), IM_COL32(0, 200, 235, static_cast<int>(200.0f * rowT * transitionAlpha)), enLabel);
+				drawList->AddText(fontMplus, 26.0f * scale, ImVec2(startX, y), IM_COL32(220, 245, 255, static_cast<int>(255.0f * rowT * transitionAlpha)), jpLabel);
+				drawList->AddText(fontMono, 16.0f * scale, ImVec2(startX, y + 32.0f * scale), IM_COL32(0, 200, 235, static_cast<int>(200.0f * rowT * transitionAlpha)), enLabel);
 
-				drawList->AddText(fontMono, 24.0f * scale, ImVec2(startX + 265.0f * scale, y + 6.0f * scale), IM_COL32(255, 255, 255, static_cast<int>(255.0f * rowT * transitionAlpha)), valStr);
-				drawList->AddLine(ImVec2(startX, y + 48.0f * scale), ImVec2(startX + 470.0f * scale, y + 48.0f * scale), IM_COL32(0, 180, 220, static_cast<int>(65.0f * rowT * transitionAlpha)), 1.0f);
+				drawList->AddText(fontMono, 36.0f * scale, ImVec2(startX + 410.0f * scale, y + 10.0f * scale), IM_COL32(255, 255, 255, static_cast<int>(255.0f * rowT * transitionAlpha)), valStr);
+				drawList->AddLine(ImVec2(startX, y + 76.0f * scale), ImVec2(startX + 740.0f * scale, y + 76.0f * scale), IM_COL32(0, 180, 220, static_cast<int>(65.0f * rowT * transitionAlpha)), 1.4f);
 			};
 
 			// 1. 敵撃破数
 			{
-				float countT = std::clamp((clearTimer_ - 0.15f) / 0.35f, 0.0f, 1.0f);
+				float countT = std::clamp((resT - 0.15f) / 0.35f, 0.0f, 1.0f);
 				int dispKill = static_cast<int>(killedEnemies * countT);
 				int dispPct = static_cast<int>(killPct * countT);
 				char buf[64];
@@ -7266,21 +7497,21 @@ void GamePlayScene::DrawClearUI()
 			}
 			// 2. クリアタイム（ステージ全体）
 			{
-				float countT = std::clamp((clearTimer_ - 0.45f) / 0.35f, 0.0f, 1.0f);
+				float countT = std::clamp((resT - 0.45f) / 0.35f, 0.0f, 1.0f);
 				char buf[64];
 				formatTime(stageElapsedTime_ * countT, buf, sizeof(buf));
 				drawStatRow(1, 0.45f, "クリアタイム（ステージ全体）", "TOTAL MISSION TIME", buf);
 			}
 			// 3. クリアタイム（ボス戦）
 			{
-				float countT = std::clamp((clearTimer_ - 0.75f) / 0.35f, 0.0f, 1.0f);
+				float countT = std::clamp((resT - 0.75f) / 0.35f, 0.0f, 1.0f);
 				char buf[64];
 				formatTime(bossElapsedTime_ * countT, buf, sizeof(buf));
 				drawStatRow(2, 0.75f, "クリアタイム（ボス戦）", "BOSS ENGAGEMENT TIME", buf);
 			}
 			// 4. 被弾率 / 残存装甲率
 			{
-				float countT = std::clamp((clearTimer_ - 1.05f) / 0.35f, 0.0f, 1.0f);
+				float countT = std::clamp((resT - 1.05f) / 0.35f, 0.0f, 1.0f);
 				int dispDmg = static_cast<int>(damagePct * countT);
 				int dispInt = static_cast<int>(integrityPct * countT);
 				char buf[64];
@@ -7289,42 +7520,42 @@ void GamePlayScene::DrawClearUI()
 			}
 
 			// 右側：総合評価ランク枠 & ネオン発光スタンプ演出
-			float rankBoxX = pMax.x - 195.0f * scale;
-			float rankBoxY = pMin.y + 74.0f * scale;
-			float rankBoxW = 165.0f * scale;
-			float rankBoxH = 225.0f * scale;
-			drawList->AddRectFilled(ImVec2(rankBoxX, rankBoxY), ImVec2(rankBoxX + rankBoxW, rankBoxY + rankBoxH), IM_COL32(2, 12, 24, static_cast<int>(180.0f * contentAlpha)), 4.0f * scale);
-			drawList->AddRect(ImVec2(rankBoxX, rankBoxY), ImVec2(rankBoxX + rankBoxW, rankBoxY + rankBoxH), IM_COL32(0, 220, 255, static_cast<int>(130.0f * contentAlpha)), 4.0f * scale, 0, 1.2f * scale);
+			float rankBoxX = pMax.x - 350.0f * scale;
+			float rankBoxY = pMin.y + 120.0f * scale;
+			float rankBoxW = 290.0f * scale;
+			float rankBoxH = 390.0f * scale;
+			drawList->AddRectFilled(ImVec2(rankBoxX, rankBoxY), ImVec2(rankBoxX + rankBoxW, rankBoxY + rankBoxH), IM_COL32(2, 12, 24, static_cast<int>(180.0f * contentAlpha)), 6.0f * scale);
+			drawList->AddRect(ImVec2(rankBoxX, rankBoxY), ImVec2(rankBoxX + rankBoxW, rankBoxY + rankBoxH), IM_COL32(0, 220, 255, static_cast<int>(130.0f * contentAlpha)), 6.0f * scale, 0, 1.6f * scale);
 
 			const char* evalStr = "EVALUATION RANK";
-			ImVec2 evSz = fontMono->CalcTextSizeA(13.0f * scale, FLT_MAX, -1.0f, evalStr);
-			drawList->AddText(fontMono, 13.0f * scale, ImVec2(rankBoxX + (rankBoxW - evSz.x) * 0.5f, rankBoxY + 14.0f * scale), IM_COL32(0, 235, 255, static_cast<int>(230.0f * contentAlpha)), evalStr);
+			ImVec2 evSz = fontMono->CalcTextSizeA(20.0f * scale, FLT_MAX, -1.0f, evalStr);
+			drawList->AddText(fontMono, 20.0f * scale, ImVec2(rankBoxX + (rankBoxW - evSz.x) * 0.5f, rankBoxY + 22.0f * scale), IM_COL32(0, 235, 255, static_cast<int>(230.0f * contentAlpha)), evalStr);
 
 			const char* evalJp = "総合評価";
-			ImVec2 evJpSz = fontMplus->CalcTextSizeA(15.0f * scale, FLT_MAX, -1.0f, evalJp);
-			drawList->AddText(fontMplus, 15.0f * scale, ImVec2(rankBoxX + (rankBoxW - evJpSz.x) * 0.5f, rankBoxY + 32.0f * scale), IM_COL32(210, 240, 255, static_cast<int>(210.0f * contentAlpha)), evalJp);
+			ImVec2 evJpSz = fontMplus->CalcTextSizeA(22.0f * scale, FLT_MAX, -1.0f, evalJp);
+			drawList->AddText(fontMplus, 22.0f * scale, ImVec2(rankBoxX + (rankBoxW - evJpSz.x) * 0.5f, rankBoxY + 52.0f * scale), IM_COL32(210, 240, 255, static_cast<int>(210.0f * contentAlpha)), evalJp);
 
-			if (clearTimer_ >= 1.35f)
+			if (resT >= 1.35f)
 			{
-				float stampT = std::clamp((clearTimer_ - 1.35f) / 0.18f, 0.0f, 1.0f);
+				float stampT = std::clamp((resT - 1.35f) / 0.18f, 0.0f, 1.0f);
 				float stampScale = 2.2f - 1.2f * (stampT * stampT * (3.0f - 2.0f * stampT));
-				float rFontSize = 115.0f * scale * stampScale;
+				float rFontSize = 190.0f * scale * stampScale;
 				ImVec2 rSz = fontMplus->CalcTextSizeA(rFontSize, FLT_MAX, -1.0f, rankChar);
-				ImVec2 rPos(rankBoxX + (rankBoxW - rSz.x) * 0.5f, rankBoxY + 62.0f * scale + (115.0f * scale - rSz.y) * 0.5f);
+				ImVec2 rPos(rankBoxX + (rankBoxW - rSz.x) * 0.5f, rankBoxY + 115.0f * scale + (190.0f * scale - rSz.y) * 0.5f);
 
 				// 発光シャドウ
-				drawList->AddText(fontMplus, rFontSize, ImVec2(rPos.x + 2.5f * scale, rPos.y + 2.5f * scale), IM_COL32(0, 0, 0, static_cast<int>(220.0f * stampT * transitionAlpha)), rankChar);
+				drawList->AddText(fontMplus, rFontSize, ImVec2(rPos.x + 3.0f * scale, rPos.y + 3.0f * scale), IM_COL32(0, 0, 0, static_cast<int>(220.0f * stampT * transitionAlpha)), rankChar);
 				drawList->AddText(fontMplus, rFontSize, rPos, rankColor, rankChar);
 			}
 
 			// 下部：タイトル復帰ガイド（呼吸点滅）
-			if (clearTimer_ >= 1.65f)
+			if (resT >= 1.65f)
 			{
-				float pulse = 0.65f + 0.35f * std::sin((clearTimer_ - 1.65f) * 5.0f);
+				float pulse = 0.65f + 0.35f * std::sin((resT - 1.65f) * 5.0f);
 				const char* guideStr = "[ PRESS SPACE TO RETURN TITLE ]";
-				float gFontSize = 18.0f * scale;
+				float gFontSize = 24.0f * scale;
 				ImVec2 gSz = fontMono->CalcTextSizeA(gFontSize, FLT_MAX, -1.0f, guideStr);
-				drawList->AddText(fontMono, gFontSize, ImVec2(cx - gSz.x * 0.5f, pMax.y - 36.0f * scale), IM_COL32(0, 245, 255, static_cast<int>(255.0f * pulse * transitionAlpha)), guideStr);
+				drawList->AddText(fontMono, gFontSize, ImVec2(cx - gSz.x * 0.5f, pMax.y - 54.0f * scale), IM_COL32(0, 245, 255, static_cast<int>(255.0f * pulse * transitionAlpha)), guideStr);
 			}
 		}
 	}

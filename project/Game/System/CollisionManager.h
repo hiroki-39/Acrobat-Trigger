@@ -38,6 +38,7 @@ struct CollisionContext {
     ParticleEffect* hitEffect = nullptr;
     ParticleEffect* explosionEffect = nullptr;
     ParticleEffect* dodgeEffect = nullptr;
+    std::function<void(const Vector3&, int, float, float)> onSpawnVoxelHit = nullptr;
     ParticleEffect* ringEffect = nullptr;
     ParticleEffect* healRingEffect = nullptr;
 

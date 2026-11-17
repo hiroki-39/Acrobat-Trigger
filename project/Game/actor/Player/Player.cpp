@@ -78,6 +78,10 @@ void Player::Initialize(Object3dCommon* object3dCommon, uint32_t skyboxTexIndex)
         mountedMissiles_[i] = std::make_unique<Object3d>();
         mountedMissiles_[i]->Initialize(object3dCommon);
         mountedMissiles_[i]->SetModel("missile.obj");
+        mountedMissiles_[i]->SetColor({ 0.15f, 0.92f, 1.0f, 1.0f });
+        mountedMissiles_[i]->SetEnvironmentCoefficient(0.0f);
+        mountedMissiles_[i]->SetEnableLighting(true);
+        mountedMissiles_[i]->SetSelectLightings(11);
         mountedMissiles_[i]->SetParent(object_.get());
         float xOffset = 0.0f;
         float yOffset = -0.2f;

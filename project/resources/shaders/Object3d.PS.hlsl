@@ -505,6 +505,57 @@ PixelShaderOutput main(VertexShaderOutput input)
                 float32_t3 wp = input.worldPosition;
                 float32_t NdotV = saturate(abs(dot(normal, toEye)));
                 
+                // HP1瀕死（処刑待機）時のテクスチャ崩壊＆レッドグリッチパラメータ
+                bool isCriticalGlitch = (gMaterial.fresnelF0 > 0.5f);
+                float gTime = gMaterial.shininess;
+
+                // テクスチャ・座標グリッチ（HP1時は水平走査線単位でUVとパネル座標が崩壊してズレる）
+                float2 glitchUV = input.texcoord;
+                float32_t3 glitchWp = wp;
+                float critHoleEdge = 0.0f;
+                float critRedFlash = 0.0f;
+                float critNoiseFlash = 0.0f;
+
+                if (isCriticalGlitch)
+                {
+                    // 高速タイムステップでパチパチ切り替わるグリッチシード
+                    float timeTick = floor(gTime * 11.0f);
+                    float bandY = floor(wp.y * 1.6f);
+                    float bandNoise = frac(sin(dot(float2(bandY, timeTick), float2(12.9898f, 78.233f))) * 43758.5453f);
+                    if (bandNoise > 0.78f)
+                    {
+                        float shift = (bandNoise - 0.78f) * 1.4f;
+                        glitchUV.x += shift * 0.25f;
+                        glitchWp.x += shift * 1.8f;
+                        glitchWp.z -= shift * 1.8f;
+                    }
+
+                    // ところどころテクスチャ・装甲が欠損して穴が開くデジタル崩壊
+                    float3 crackBlock = floor(wp.xyz * 0.85f);
+                    float crackSeed = frac(sin(dot(crackBlock, float32_t3(19.31f, 47.17f, 83.43f))) * 24634.6345f);
+                    float crackFlicker = frac(sin(dot(crackBlock.xy, float2(12.9898f, 78.233f)) + timeTick * 0.37f) * 43758.5453f);
+                    // 静的な崩壊箇所(約14%) + 明滅する一時的な欠損箇所(約6%)
+                    float holeMetric = crackSeed + (crackFlicker > 0.88f ? 0.12f : 0.0f);
+                    if (holeMetric > 0.90f && gMaterial.color.a >= 0.999f)
+                    {
+                        discard;
+                    }
+                    // 崩壊穴の周囲（フチ）を赤・マゼンタで熱く発光させる
+                    if (holeMetric > 0.82f)
+                    {
+                        critHoleEdge = saturate((holeMetric - 0.82f) / 0.08f);
+                    }
+
+                    // モデル自体にノイズを入れて一瞬真っ赤になるエラーフラッシュ
+                    float pulseA = sin(gTime * 17.3f) * sin(gTime * 39.7f + 1.1f);
+                    float pulseB = sin(gTime * 7.1f + 0.5f) * sin(gTime * 23.0f + 1.5707963f);
+                    float globalSpike = pow(saturate(max(pulseA, pulseB)), 5.0f);
+                    float microNoise = frac(sin(dot(floor(wp.xyz * 2.2f), float32_t3(12.9898f, 78.233f, 45.164f)) + timeTick) * 43758.5453f);
+                    float scanRedBand = pow(saturate(sin(wp.y * 1.3f - gTime * 18.0f)), 6.0f);
+                    critRedFlash = saturate(globalSpike * 1.35f + (bandNoise > 0.86f ? 0.65f : 0.0f) + scanRedBand * 0.55f);
+                    critNoiseFlash = (microNoise > 0.82f) ? (microNoise - 0.82f) * 4.5f : 0.0f;
+                }
+
                 // 輪郭のネオンリム発光（威圧感のあるエレクトリックパープル＆サイバーインディゴのフレネル発光）
                 float32_t rim = pow(1.0f - NdotV, 2.5f);
 
@@ -525,22 +576,34 @@ PixelShaderOutput main(VertexShaderOutput input)
                 float32_t3 rimLight = lerp(neonViolet, neonIndigo, rim * 0.5f) * (rim * 1.60f);
 
                 // 1. 車体表面の幾何学デジタルスキャンライン＆ワイヤーフレーム
-                float2 uvMesh = abs(frac(input.texcoord * 16.0f - 0.5f) - 0.5f);
+                float2 uvMesh = abs(frac(glitchUV * 16.0f - 0.5f) - 0.5f);
                 float wireLine = (1.0f - saturate(min(uvMesh.x, uvMesh.y) * 11.0f)) * 0.42f;
 
                 // 2. 装甲板の継ぎ目（ワールド座標ベースのハイテク大型装甲プレートライン）
-                float panelZ = abs(frac(wp.z / 3.5f - 0.5f) - 0.5f) / max(fwidth(wp.z / 3.5f), 0.001f);
-                float panelY = abs(frac(wp.y / 2.2f - 0.5f) - 0.5f) / max(fwidth(wp.y / 2.2f), 0.001f);
+                float panelZ = abs(frac(glitchWp.z / 3.5f - 0.5f) - 0.5f) / max(fwidth(glitchWp.z / 3.5f), 0.001f);
+                float panelY = abs(frac(glitchWp.y / 2.2f - 0.5f) - 0.5f) / max(fwidth(glitchWp.y / 2.2f), 0.001f);
                 float panelLine = (1.0f - saturate(min(panelZ, panelY))) * 0.30f;
 
                 // 3. 静的なサイバー警戒スキャナー（パルスなしの洗練されたハイテク装甲パターン）
-                float hazard = saturate(sin((wp.x + wp.y + wp.z * 0.5f) * 2.2f) * 6.0f) * 0.12f * (1.0f - rim);
+                float hazard = saturate(sin((glitchWp.x + glitchWp.y + glitchWp.z * 0.5f) * 2.2f) * 6.0f) * 0.12f * (1.0f - rim);
 
                 // 発光コンポーネントの合成（サイバーパルスは撤去し、安定した重厚感を演出）
                 float32_t3 circuitGlow = (neonViolet * wireLine) + (neonIndigo * panelLine) + (neonViolet * hazard);
 
                 // 装甲ハルとサイバー発光の合成
                 float32_t3 bossGlow = (cyberHull * shade) + rimLight + circuitGlow;
+
+                // HP1瀕死時のレッドフラッシュ＆崩壊エッジ発光を合成
+                if (isCriticalGlitch)
+                {
+                    float32_t3 dangerRed = float32_t3(1.0f, 0.07f, 0.09f);
+                    float32_t3 glitchMagenta = float32_t3(1.0f, 0.15f, 0.45f);
+                    // 崩壊穴のフチ発光
+                    bossGlow += lerp(glitchMagenta, dangerRed, critHoleEdge) * (critHoleEdge * 2.4f);
+                    // モデル全体・走査線・ノイズによる一瞬の赤いエラーフラッシュ
+                    float redMix = saturate(critRedFlash * 0.85f + critNoiseFlash * 0.55f);
+                    bossGlow = lerp(bossGlow, dangerRed * (1.35f + rim * 1.5f), redMix);
+                }
 
                 // 【被弾時フラッシュ発光ブースト】：
                 // gMaterial.color.rgb が 1.0 を超えているオーバーブースト時、エッジとコアを白熱超発光！
@@ -620,13 +683,47 @@ PixelShaderOutput main(VertexShaderOutput input)
             }
             break;
         case 10:
-            // 純粋自己発光（テクスチャ・ライティングの影響を受けない鮮やかなネオンカラー）
-            output.color = gMaterial.color;
+            {
+                // 超高輝度・純粋自己発光（背景と混ざってくすまない鮮烈ネオン発光）
+                float32_t NdotV10 = saturate(abs(dot(normal, toEye)));
+                float32_t centerCore = pow(NdotV10, 1.4f);
+                output.color.rgb = gMaterial.color.rgb * (1.65f + 0.65f * centerCore);
+                output.color.a = gMaterial.color.a;
+            }
+            break;
+        case 11:
+            {
+                // ===== サイバー仮想空間 高エネルギーミサイル専用シェーダー =====
+                float32_t3 wp = input.worldPosition;
+                float32_t NdotV = saturate(abs(dot(normal, toEye)));
+                float32_t rim = pow(1.0f - NdotV, 2.0f);
+
+                // ダークサイバー合金ボディ
+                float32_t3 darkHull = float32_t3(0.055f, 0.085f, 0.16f);
+                float32_t NdotL = dot(normal, -gDirectionlLight.direction);
+                float32_t shade = 0.45f + 0.55f * saturate(NdotL * 0.5f + 0.5f);
+
+                // ミサイル本体に沿ったネオンサーキットライン＆エネルギーリング
+                float2 uvGrid = abs(frac(input.texcoord * 8.0f - 0.5f) - 0.5f);
+                float circuitLine = 1.0f - saturate(min(uvGrid.x, uvGrid.y) * 9.0f);
+                float bodyBand = pow(saturate(sin(input.texcoord.y * 18.0f)), 4.0f);
+
+                // ネオンカラー（gMaterial.color をベースにエッジと回路が高輝度発光）
+                float32_t3 neonCore = gMaterial.color.rgb;
+                float32_t3 whiteHot = float32_t3(0.92f, 0.98f, 1.0f);
+
+                float32_t3 finalCol = (darkHull * shade)
+                                    + neonCore * (rim * 2.2f + circuitLine * 0.85f + bodyBand * 0.75f + 0.25f)
+                                    + whiteHot * (pow(rim, 3.0f) * 0.65f);
+
+                output.color.rgb = finalCol;
+                output.color.a = gMaterial.color.a;
+            }
             break;
     }
 
-    // 環境マッピング（仮想空間シェーダー case 7, 8, 9, 10 時は独自のホログラム発光を維持するため除外）
-    if (gMaterial.environmentCoefficient > 0.0f && gMaterial.selectLightings != 7 && gMaterial.selectLightings != 8 && gMaterial.selectLightings != 9 && gMaterial.selectLightings != 10)
+    // 環境マッピング（仮想空間シェーダー case 7, 8, 9, 10, 11 時は独自のホログラム発光を維持するため除外）
+    if (gMaterial.environmentCoefficient > 0.0f && gMaterial.selectLightings != 7 && gMaterial.selectLightings != 8 && gMaterial.selectLightings != 9 && gMaterial.selectLightings != 10 && gMaterial.selectLightings != 11)
     {
         // 視線ベクトル（表面からカメラへ）
         float32_t3 toEye = normalize(gCamera.worldPosition - input.worldPosition);

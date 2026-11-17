@@ -110,12 +110,11 @@ void CollisionManager::CheckPlayerAttacksVsEnemies(CollisionContext& ctx)
                 missile->OnCollision();
                 (*it)->Kill();
 
-                if (ctx.hitEffect)
+                if (ctx.onSpawnVoxelHit)
                 {
-                    ctx.hitEffect->SetPosition(missileSphere.center);
-                    ctx.hitEffect->Play();
+                    ctx.onSpawnVoxelHit(missileSphere.center, 16, 0.6f, 1.3f);
                 }
-                if (ctx.explosionEffect)
+                else if (ctx.explosionEffect)
                 {
                     ctx.explosionEffect->SetPosition(missileSphere.center);
                     ctx.explosionEffect->Play();
@@ -216,14 +215,28 @@ void CollisionManager::CheckPlayerAttacksVsBoss(CollisionContext& ctx)
         {
             missile->OnCollision();
             ctx.boss->OnDamaged(hitCarIdx, 4, hitPartType, hitPartIdx);
-            if (ctx.hitEffect)
+            // 巨大ボス車体に埋もれて見えないのを防ぐため、着弾時のミサイル位置からカメラ方向・上方向へ引き出す
+            Vector3 fxPos = (hitPartType == BossPartType::Carriage) ? missile->GetPreviousPosition() : hitPos;
+            if (ctx.cameraObject)
             {
-                ctx.hitEffect->SetPosition(hitPos);
-                ctx.hitEffect->Play();
+                const Matrix4x4& cMat = ctx.cameraObject->GetmatWorld();
+                Vector3 toCam = { cMat.m[3][0] - fxPos.x, cMat.m[3][1] - fxPos.y, cMat.m[3][2] - fxPos.z };
+                float len = std::sqrt(toCam.x * toCam.x + toCam.y * toCam.y + toCam.z * toCam.z);
+                if (len > 0.001f)
+                {
+                    float pull = (hitPartType == BossPartType::Carriage) ? 9.0f : 3.5f;
+                    fxPos.x += (toCam.x / len) * pull;
+                    fxPos.y += (toCam.y / len) * pull + 2.5f;
+                    fxPos.z += (toCam.z / len) * pull;
+                }
             }
-            if (ctx.explosionEffect)
+            if (ctx.onSpawnVoxelHit)
             {
-                ctx.explosionEffect->SetPosition(hitPos);
+                ctx.onSpawnVoxelHit(fxPos, 30, 1.2f, 2.5f);
+            }
+            else if (ctx.explosionEffect)
+            {
+                ctx.explosionEffect->SetPosition(fxPos);
                 ctx.explosionEffect->Play();
             }
             if (hitPartType != BossPartType::Carriage)
@@ -585,7 +598,11 @@ void CollisionManager::CheckPlayerAttacksVsObstacles(CollisionContext& ctx)
                 missile->OnCollision();
                 (*it)->Kill();
 
-                if (ctx.hitEffect)
+                if (ctx.onSpawnVoxelHit)
+                {
+                    ctx.onSpawnVoxelHit(missileSphere.center, 14, 0.6f, 1.2f);
+                }
+                else if (ctx.hitEffect)
                 {
                     ctx.hitEffect->SetPosition(missileSphere.center);
                     ctx.hitEffect->Play();

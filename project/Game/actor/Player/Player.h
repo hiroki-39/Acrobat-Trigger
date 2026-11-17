@@ -92,6 +92,8 @@ public:
         }
     }
     bool IsCutsceneActive() const { return isCutsceneActive_; }
+    bool IsCutsceneUsingQuaternion() const { return isCutsceneUseQuat_; }
+    const Quaternion& GetCutsceneQuaternion() const { return cutsceneQuat_; }
 
     void ResetPosture() {
         baseRotation_ = { 0.0f, 0.0f, 0.0f };

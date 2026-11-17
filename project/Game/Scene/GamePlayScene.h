@@ -113,6 +113,21 @@ private:
     ParticleEffect trailEffect_;      
     ParticleEffect missileSmokeEffect_; 
     ParticleEffect ringEffect_;
+
+    // ミサイル着弾時のサイバーボクセルブロック粒子
+    struct VoxelHitParticle {
+        std::unique_ptr<Object3d> obj;
+        Vector3 position;
+        Vector3 velocity;
+        Vector3 rotation;
+        Vector3 rotSpeed;
+        Vector3 scale;
+        Vector4 color;
+        float life = 0.0f;
+        float maxLife = 0.6f;
+    };
+    std::vector<VoxelHitParticle> voxelHitParticles_;
+    void SpawnVoxelHitParticles(const Vector3& worldPos, int count = 28, float minSize = 1.2f, float maxSize = 2.5f);
     ParticleEffect healRingEffect_; // リング取得時のキラキラエフェクト
     ParticleEffect windEffect_;     // 気流線（風の筋）エフェクト
 
@@ -340,6 +355,9 @@ private:
     Vector3 clearStartPlayerPos_ = { 0.0f, 0.0f, 0.0f };
     Vector3 clearPlayerAscentPos_ = { 0.0f, 0.0f, 0.0f };
     Vector3 clearPlayerAscentRot_ = { 0.0f, 0.0f, 0.0f };
+    bool clearUseQuat_ = false;
+    Quaternion clearQuat_ = Quaternion::Identity();
+    Vector3 clearMoveDir_ = { 0.0f, 0.45f, 0.89f };
     float clearAscentSpeed_ = 0.0f;
 
     void StartClearSequence();

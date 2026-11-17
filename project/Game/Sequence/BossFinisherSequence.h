@@ -7,11 +7,13 @@
 #include <memory>
 #include <array>
 #include <string>
+#include <functional>
 
 class Player;
 class ArmoredTrainBoss;
 class RailCameraController;
 class Object3dCommon;
+class ParticleEffect;
 
 /// <summary>
 /// 電脳仮想空間の世界観に統一したボス撃破（処刑）シークエンス管理クラス
@@ -34,6 +36,7 @@ public:
 
     void Initialize(Object3dCommon* object3dCommon, Camera* camera, RailCameraController* railCam, uint32_t skyboxTexIndex);
     void SetTerrainObjects(const std::vector<std::unique_ptr<Object3d>>* terrainObjects) { terrainObjects_ = terrainObjects; }
+    void SetOnVoxelHit(std::function<void(const Vector3&, int, float, float)> cb) { onVoxelHit_ = std::move(cb); }
     void StartSequence(ArmoredTrainBoss* boss, Player* player);
     void Reset(Player* player = nullptr);
     void Update(float dt, ArmoredTrainBoss* boss, Player* player, float& inOutGameSpeed);
@@ -43,6 +46,8 @@ public:
 
     bool IsActive() const { return phase_ != Phase::INACTIVE && phase_ != Phase::COMPLETED; }
     bool IsCompleted() const { return phase_ == Phase::COMPLETED; }
+    bool IsRedMemoryAbsorbed() const { return isRedMemoryAbsorbed_; }
+    bool HasFiredMissiles() const { return phase_ >= Phase::PHASE_3_FINISHER_FIRE; }
     bool IsMoviePhase() const {
         return phase_ == Phase::PHASE_3_FINISHER_FIRE ||
                phase_ == Phase::PHASE_4_DATA_COLLAPSE ||
@@ -73,6 +78,7 @@ private:
     Object3dCommon* object3dCommon_ = nullptr;
     Camera* camera_ = nullptr;
     RailCameraController* railCam_ = nullptr;
+    std::function<void(const Vector3&, int, float, float)> onVoxelHit_;
     uint32_t skyboxTexIndex_ = 0;
 
     Phase phase_ = Phase::INACTIVE;

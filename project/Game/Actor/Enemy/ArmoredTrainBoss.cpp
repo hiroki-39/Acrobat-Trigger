@@ -337,6 +337,9 @@ void ArmoredTrainBoss::ResetChaseState() {
 void ArmoredTrainBoss::Update(const Vector3& cameraPos, const Vector3& playerForward, float playerSpeed, Player* player, std::list<std::unique_ptr<EnemyBullet>>& enemyBullets, float gameSpeed) {
     if (!isActive_) return;
 
+    // HP1瀕死（処刑待機）時のシェーダーグリッチ＆崩壊パーティクル更新
+    UpdateCriticalGlitchState(gameSpeed / 60.0f);
+
     // 撃破演出中（撃破時はボスが前進するのを完全停止）
     if (isDefeated_) {
         defeatTimer_ += gameSpeed;
@@ -927,6 +930,12 @@ void ArmoredTrainBoss::ExecuteAttacks(Player* player, std::list<std::unique_ptr<
 }
 void ArmoredTrainBoss::Draw() {
     if (!isActive_) return;
+    for (const auto& cp : criticalParticles_) {
+        if (cp.obj && cp.color.w > 0.01f) {
+            cp.obj->Draw();
+        }
+    }
+    if (!isActive_) return;
     for (auto& car : carriages_) {
         if (car.object) {
             car.object->Draw();
@@ -949,6 +958,111 @@ void ArmoredTrainBoss::Draw() {
                 car.bigCannon->barrelObject->Draw();
             }
         }
+    }
+}
+
+void ArmoredTrainBoss::UpdateCriticalGlitchState(float dt) {
+    bool isCrit = IsCriticalHpOne();
+    if (isCrit) {
+        criticalGlitchTimer_ += dt;
+    }
+
+    float gTime = isCrit ? criticalGlitchTimer_ : 40.0f;
+    float gIntensity = isCrit ? 1.0f : 0.04f;
+
+    for (auto& car : carriages_) {
+        if (car.object) car.object->SetGlitchParams(gTime, gIntensity);
+        for (auto& t : car.turrets) {
+            if (t.object) t.object->SetGlitchParams(gTime, gIntensity);
+        }
+        for (auto& p : car.missilePods) {
+            if (p.object) p.object->SetGlitchParams(gTime, gIntensity);
+        }
+        if (car.bigCannon) {
+            if (car.bigCannon->baseObject) car.bigCannon->baseObject->SetGlitchParams(gTime, gIntensity);
+            if (car.bigCannon->barrelObject) car.bigCannon->barrelObject->SetGlitchParams(gTime, gIntensity);
+        }
+    }
+
+    // HP1状態の間（ディゾルブ開始前まで）：テクスチャが崩壊している箇所付近から上方向にパーティクルを発生させる
+    bool isDissolving = (!carriages_.empty() && carriages_[0].color.w < 0.999f);
+    if (isCrit && !isDissolving && object3dCommon_) {
+        criticalParticleAccum_ += dt;
+        while (criticalParticleAccum_ >= 0.03f) {
+            criticalParticleAccum_ -= 0.03f;
+            for (size_t carIdx = 0; carIdx < carriages_.size(); ++carIdx) {
+                int spawnCount = (carIdx == 0) ? 3 : 1;
+                for (int n = 0; n < spawnCount; ++n) {
+                    if (criticalParticles_.size() >= 180) break;
+                    const Vector3& carPos = carriages_[carIdx].position;
+                    CriticalGlitchParticle p;
+                    p.obj = std::make_unique<Object3d>();
+                    p.obj->Initialize(object3dCommon_);
+                    p.obj->SetModel("cube.obj");
+
+                    int cPick = rand() % 5;
+                    if (cPick <= 1) p.color = { 1.0f, 0.10f, 0.14f, 1.0f };       // 警告ネオンレッド
+                    else if (cPick <= 3) p.color = { 0.80f, 0.16f, 1.0f, 1.0f };  // エレクトリックバイオレット
+                    else p.color = { 1.0f, 0.18f, 0.55f, 1.0f };                  // ネオンマゼンタ
+
+                    p.obj->SetColor(p.color);
+                    p.obj->SetEnableLighting(false);
+                    p.obj->SetEnvironmentCoefficient(0.0f);
+                    p.obj->SetSelectLightings(10); // 純粋自己発光
+
+                    float sz = 0.45f + (rand() % 10) * 0.06f;
+                    p.scale = { sz, sz, sz };
+                    p.obj->SetScale(p.scale);
+
+                    Vector3 offset = {
+                        ((rand() % 100) - 50) * 0.16f * scaleMultiplier_,
+                        (3.0f + (rand() % 100) * 0.13f) * scaleMultiplier_,
+                        ((rand() % 100) - 50) * 0.36f * scaleMultiplier_
+                    };
+                    p.position = carPos + offset;
+                    p.velocity = {
+                        ((rand() % 100) - 50) * 0.05f,
+                        11.0f + (rand() % 100) * 0.09f,
+                        ((rand() % 100) - 50) * 0.05f
+                    };
+                    p.rotation = { (rand() % 628) * 0.01f, (rand() % 628) * 0.01f, (rand() % 628) * 0.01f };
+                    p.rotSpeed = {
+                        ((rand() % 100) - 50) * 0.08f,
+                        ((rand() % 100) - 50) * 0.08f,
+                        ((rand() % 100) - 50) * 0.08f
+                    };
+                    p.life = 0.0f;
+                    p.maxLife = 0.65f + (rand() % 10) * 0.05f;
+                    p.obj->SetTranslate(p.position);
+                    p.obj->SetRotation(p.rotation);
+                    p.obj->Update();
+                    criticalParticles_.push_back(std::move(p));
+                }
+            }
+        }
+    }
+
+    // 既存崩壊パーティクルの更新（上空へ昇りながら縮小・フェードアウト）
+    for (auto it = criticalParticles_.begin(); it != criticalParticles_.end(); ) {
+        auto& p = *it;
+        p.life += dt;
+        if (p.life >= p.maxLife) {
+            it = criticalParticles_.erase(it);
+            continue;
+        }
+        p.position = p.position + p.velocity * dt;
+        p.rotation = p.rotation + p.rotSpeed * dt;
+        p.velocity.y += 4.0f * dt;
+        float alpha = std::clamp(1.0f - p.life / p.maxLife, 0.0f, 1.0f);
+        p.color.w = 1.0f;
+        if (p.obj) {
+            p.obj->SetTranslate(p.position);
+            p.obj->SetRotation(p.rotation);
+            p.obj->SetColor(p.color);
+            p.obj->SetScale({ p.scale.x * alpha, p.scale.y * alpha, p.scale.z * alpha });
+            p.obj->Update();
+        }
+        ++it;
     }
 }
 

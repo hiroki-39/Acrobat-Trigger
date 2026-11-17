@@ -181,6 +181,7 @@ public:
     // 状態
     bool IsActive() const { return isActive_; }
     void SetActive(bool active) { isActive_ = active; }
+    bool IsCriticalHpOne() const { return isActive_ && !carriages_.empty() && carriages_[0].hp <= 1; }
     bool IsDefeated() const { return isDefeated_; }
     void SetDefeated(bool defeated) {
         isDefeated_ = defeated;
@@ -430,4 +431,21 @@ private:
     std::vector<TrainCarriage> carriages_;
     float defeatTimer_ = 0.0f;
     float defeatExplosionTimer_ = 0.0f;
+
+    // HP1瀕死時の崩壊パーティクル演出
+    struct CriticalGlitchParticle {
+        std::unique_ptr<Object3d> obj;
+        Vector3 position;
+        Vector3 velocity;
+        Vector3 rotation;
+        Vector3 rotSpeed;
+        Vector3 scale;
+        Vector4 color;
+        float life = 0.0f;
+        float maxLife = 0.8f;
+    };
+    std::vector<CriticalGlitchParticle> criticalParticles_;
+    float criticalGlitchTimer_ = 0.0f;
+    float criticalParticleAccum_ = 0.0f;
+    void UpdateCriticalGlitchState(float dt);
 };

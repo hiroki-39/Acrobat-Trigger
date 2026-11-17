@@ -134,6 +134,7 @@ public://メンバ関数
 	void SetEnableLighting(bool enable);
 	void SetSelectLightings(int32_t v);
 	int32_t GetSelectLightings() const;
+	void SetGlitchParams(float time, float intensity);
 
 	// インスタンス固有マテリアルカラー設定
 	void SetColor(const Vector4& color);
