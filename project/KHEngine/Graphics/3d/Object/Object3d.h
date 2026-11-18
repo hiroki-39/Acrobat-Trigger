@@ -73,6 +73,7 @@ public://メンバ関数
 	// --- Getter ---
 	const Vector3& GetScale() const { return transform.scale; }
 	const Vector3& GetRotation() const { return transform.rotation; }
+	const Quaternion& GetRotationQuaternion() const { return transform.rotationQuat; }
 	const Vector3& GetTranslate() const { return transform.translate; }
 	const Matrix4x4& GetmatWorld() const { return worldMatrix_; }
 	Vector4 GetDirectionalLightColor() const;
@@ -99,7 +100,8 @@ public://メンバ関数
 	void SetModel(Model* model) { this->model = model; }
 	void SetModel(const std::string& filePath);
 	void SetScale(const Vector3& scale) { transform.scale = scale; }
-	void SetRotation(const Vector3& rotation) { transform.rotation = rotation; }
+	void SetRotation(const Vector3& rotation) { transform.rotation = rotation; transform.useQuaternion = false; }
+	void SetRotationQuaternion(const Quaternion& quat) { transform.rotationQuat = quat; transform.useQuaternion = true; }
 	void SetTranslate(const Vector3& translate) { transform.translate = translate; }
 	void SetCamera(Camera* camera) { this->camera = camera; }
 	void SetDirectionalLightColor(const Vector4& color);
@@ -132,6 +134,7 @@ public://メンバ関数
 	void SetEnableLighting(bool enable);
 	void SetSelectLightings(int32_t v);
 	int32_t GetSelectLightings() const;
+	void SetGlitchParams(float time, float intensity);
 
 	// インスタンス固有マテリアルカラー設定
 	void SetColor(const Vector4& color);

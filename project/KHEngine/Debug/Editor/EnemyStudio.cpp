@@ -62,6 +62,13 @@ void EnemyStudio::Initialize(DirectXCommon* dxCommon, SrvManager* srvManager, Ob
     if (!names.empty()) {
         currentPresetKey_ = names[0];
     }
+
+    // 8. 装甲列車ボスのプレビュー用インスタンス初期化
+    previewBoss_ = std::make_unique<ArmoredTrainBoss>();
+    previewBoss_->Initialize(object3dCommon_, { 0.0f, 0.0f, 0.0f }, 0);
+    previewBoss_->SetFollowPlayer(false);
+    previewBoss_->SetGroundSnapEnabled(false);
+    previewBoss_->SetActive(true);
 }
 
 void EnemyStudio::CreateRenderTargets() {
@@ -197,6 +204,14 @@ void EnemyStudio::Update(float dt) {
         playerObj_->Update();
     }
 
+    // 装甲列車ボスモード時はボスのトランスフォームを更新して完了
+    if (editorMode_ == EditorMode::BOSS_TRAIN) {
+        if (previewBoss_) {
+            previewBoss_->ApplyTransforms();
+        }
+        return;
+    }
+
     // 選択中プリセットの取得と敵プレビューオブジェクト更新
     const auto* preset = EnemyPresetManager::GetInstance()->GetPreset(currentPresetKey_);
     if (!preset) return;
@@ -329,32 +344,41 @@ void EnemyStudio::Render() {
     // 4. 通常モデル描画
     object3dCommon_->SetCommonDrawSetting();
 
-    // プレイヤー描画
-    if (showPlayer_ && playerObj_) {
-        playerObj_->Draw();
-    }
-
-    // 敵機体群描画
-    const auto* preset = EnemyPresetManager::GetInstance()->GetPreset(currentPresetKey_);
-    if (preset) {
-        int activeCount = (showFormation_ && preset->formationType != "NONE") ? preset->formationCount : 1;
-        activeCount = std::clamp(activeCount, 1, static_cast<int>(enemyObjs_.size()));
-        for (int i = 0; i < activeCount; ++i) {
-            if (enemyObjs_[i]) {
-                enemyObjs_[i]->Draw();
+    if (editorMode_ == EditorMode::BOSS_TRAIN) {
+        if (previewBoss_) {
+            previewBoss_->Draw();
+            if (showCollider_) {
+                previewBoss_->DrawCollider();
             }
         }
-    }
-
-    // 5. コライダーワイヤーフレーム描画
-    if (showCollider_ && preset) {
-        object3dCommon_->SetWireframeDrawSetting();
-        if (preset->colliderType == "SPHERE") {
-            if (colliderSphereObj_) colliderSphereObj_->Draw();
-        } else {
-            if (colliderBoxObj_) colliderBoxObj_->Draw();
+    } else {
+        // プレイヤー描画
+        if (showPlayer_ && playerObj_) {
+            playerObj_->Draw();
         }
-        object3dCommon_->SetCommonDrawSetting();
+
+        // 敵機体群描画
+        const auto* preset = EnemyPresetManager::GetInstance()->GetPreset(currentPresetKey_);
+        if (preset) {
+            int activeCount = (showFormation_ && preset->formationType != "NONE") ? preset->formationCount : 1;
+            activeCount = std::clamp(activeCount, 1, static_cast<int>(enemyObjs_.size()));
+            for (int i = 0; i < activeCount; ++i) {
+                if (enemyObjs_[i]) {
+                    enemyObjs_[i]->Draw();
+                }
+            }
+        }
+
+        // 5. コライダーワイヤーフレーム描画
+        if (showCollider_ && preset) {
+            object3dCommon_->SetWireframeDrawSetting();
+            if (preset->colliderType == "SPHERE") {
+                if (colliderSphereObj_) colliderSphereObj_->Draw();
+            } else {
+                if (colliderBoxObj_) colliderBoxObj_->Draw();
+            }
+            object3dCommon_->SetCommonDrawSetting();
+        }
     }
 
     // 6. バリア遷移: SRV へ
@@ -397,37 +421,101 @@ void EnemyStudio::DrawViewportWindow() {
 void EnemyStudio::HandleCameraInput(float contentWidth, float contentHeight) {
     ImGuiIO& io = ImGui::GetIO();
 
-    // 右ボタンドラッグ: オービット回転
-    if (ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
+    bool isShift = io.KeyShift;
+    bool isCtrl = io.KeyCtrl;
+    bool isAlt = io.KeyAlt;
+
+    // カメラの各方向ベクトル（ワールド座標）を精密計算
+    float cosYaw = std::cos(cameraYaw_);
+    float sinYaw = std::sin(cameraYaw_);
+    float cosPitch = std::cos(cameraPitch_);
+    float sinPitch = std::sin(cameraPitch_);
+
+    // 画面右方向 (Right)
+    Vector3 camRight = { cosYaw, 0.0f, sinYaw };
+    // 画面上方向 (Up)
+    Vector3 camUp = { -sinPitch * sinYaw, cosPitch, sinPitch * cosYaw };
+
+    // --- 1. パン（平行移動）：中ボタンドラッグ または Shift + 右ドラッグ または Alt + 中ドラッグ ---
+    bool isPanDragging = ImGui::IsMouseDragging(ImGuiMouseButton_Middle) ||
+                         (isShift && ImGui::IsMouseDragging(ImGuiMouseButton_Right)) ||
+                         (isAlt && ImGui::IsMouseDragging(ImGuiMouseButton_Middle));
+
+    if (isPanDragging) {
         ImVec2 delta = io.MouseDelta;
-        cameraYaw_ += delta.x * 0.008f;
-        cameraPitch_ += delta.y * 0.008f;
-        cameraPitch_ = std::clamp(cameraPitch_, -1.48f, 1.48f);
+        // マウスの移動量に画面比と距離を乗じて自然な追従係数を算出
+        float panFactor = cameraDistance_ * 0.0016f;
+
+        // マウスの移動方向に合わせて注視点をスムーズにシフト
+        cameraTarget_.x -= (camRight.x * delta.x - camUp.x * delta.y) * panFactor;
+        cameraTarget_.y -= (camRight.y * delta.x - camUp.y * delta.y) * panFactor;
+        cameraTarget_.z -= (camRight.z * delta.x - camUp.z * delta.y) * panFactor;
+    }
+    // --- 2. オービット回転：右ボタンドラッグ（Shiftなし） または Alt + 左ドラッグ ---
+    else if ((!isShift && ImGui::IsMouseDragging(ImGuiMouseButton_Right)) ||
+             (isAlt && ImGui::IsMouseDragging(ImGuiMouseButton_Left))) {
+        ImVec2 delta = io.MouseDelta;
+        float rotSpeed = 0.0055f;
+        cameraYaw_ += delta.x * rotSpeed;
+        cameraPitch_ += delta.y * rotSpeed;
+        // 真上・真下付近でのジンバルロック防止
+        cameraPitch_ = std::clamp(cameraPitch_, -1.52f, 1.52f);
     }
 
-    // 中ボタンドラッグ: 注視点パン
-    if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
-        ImVec2 delta = io.MouseDelta;
-        float factor = cameraDistance_ * 0.0015f;
-        float cosYaw = std::cos(cameraYaw_);
-        float sinYaw = std::sin(cameraYaw_);
-        cameraTarget_.x -= (cosYaw * delta.x) * factor;
-        cameraTarget_.z -= (-sinYaw * delta.x) * factor;
-        cameraTarget_.y += delta.y * factor;
-    }
-
-    // マウスホイール: ズーム
+    // --- 3. ズーム：マウスホイール または Ctrl + 右ドラッグ ---
     if (std::abs(io.MouseWheel) > 0.01f) {
-        cameraDistance_ -= io.MouseWheel * (cameraDistance_ * 0.12f);
-        cameraDistance_ = std::clamp(cameraDistance_, 2.0f, 250.0f);
+        // 指数関数的なズーム（近距離では細かく、遠距離では一気に移動）
+        cameraDistance_ *= (1.0f - io.MouseWheel * 0.12f);
+        cameraDistance_ = std::clamp(cameraDistance_, 1.5f, 350.0f);
+    } else if (isCtrl && ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
+        ImVec2 delta = io.MouseDelta;
+        cameraDistance_ *= (1.0f - delta.y * 0.01f);
+        cameraDistance_ = std::clamp(cameraDistance_, 1.5f, 350.0f);
     }
 
-    // ダブルクリック: カメラリセット
+    // --- 4. キーボードによるカメラパン (W, A, S, D, Q, E) ---
+    if (ImGui::IsWindowFocused() || ImGui::IsItemHovered()) {
+        float keyMoveSpeed = cameraDistance_ * 0.02f;
+        if (io.KeyShift) keyMoveSpeed *= 2.5f;
+
+        if (ImGui::IsKeyDown(ImGuiKey_W)) {
+            // 前方（Z-forward or Pitch込み）
+            cameraTarget_.x -= sinYaw * keyMoveSpeed;
+            cameraTarget_.z += cosYaw * keyMoveSpeed;
+        }
+        if (ImGui::IsKeyDown(ImGuiKey_S)) {
+            cameraTarget_.x += sinYaw * keyMoveSpeed;
+            cameraTarget_.z -= cosYaw * keyMoveSpeed;
+        }
+        if (ImGui::IsKeyDown(ImGuiKey_A)) {
+            cameraTarget_.x -= camRight.x * keyMoveSpeed;
+            cameraTarget_.z -= camRight.z * keyMoveSpeed;
+        }
+        if (ImGui::IsKeyDown(ImGuiKey_D)) {
+            cameraTarget_.x += camRight.x * keyMoveSpeed;
+            cameraTarget_.z += camRight.z * keyMoveSpeed;
+        }
+        if (ImGui::IsKeyDown(ImGuiKey_E)) {
+            cameraTarget_.y += keyMoveSpeed;
+        }
+        if (ImGui::IsKeyDown(ImGuiKey_Q)) {
+            cameraTarget_.y -= keyMoveSpeed;
+        }
+    }
+
+    // --- 5. ダブルクリック: 現在のモードに応じた視点リセット ---
     if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-        cameraTarget_ = { 0.0f, 0.0f, 0.0f };
-        cameraDistance_ = 18.0f;
-        cameraYaw_ = 0.0f;
-        cameraPitch_ = 0.35f;
+        if (editorMode_ == EditorMode::BOSS_TRAIN) {
+            cameraTarget_ = { 0.0f, 6.0f, -50.0f };
+            cameraDistance_ = 100.0f;
+            cameraYaw_ = 0.5f;
+            cameraPitch_ = 0.35f;
+        } else {
+            cameraTarget_ = { 0.0f, 0.0f, 0.0f };
+            cameraDistance_ = 18.0f;
+            cameraYaw_ = 0.0f;
+            cameraPitch_ = 0.35f;
+        }
     }
 }
 
@@ -435,6 +523,36 @@ void EnemyStudio::DrawControlWindow() {
     if (!showEditor_) return;
 
     if (ImGui::Begin("エネミーエディター", &showEditor_)) {
+        // モード切り替えタブバー
+        if (ImGui::BeginTabBar("EnemyStudioModeTabs")) {
+            if (ImGui::BeginTabItem("通常エネミー編集")) {
+                if (editorMode_ != EditorMode::NORMAL_ENEMY) {
+                    editorMode_ = EditorMode::NORMAL_ENEMY;
+                    cameraTarget_ = { 0.0f, 0.0f, 0.0f };
+                    cameraDistance_ = 18.0f;
+                }
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem("装甲列車ボス編集")) {
+                if (editorMode_ != EditorMode::BOSS_TRAIN) {
+                    editorMode_ = EditorMode::BOSS_TRAIN;
+                    cameraTarget_ = { 0.0f, 6.0f, -50.0f };
+                    cameraDistance_ = 100.0f;
+                    cameraYaw_ = 0.5f;
+                    cameraPitch_ = 0.35f;
+                }
+                ImGui::EndTabItem();
+            }
+            ImGui::EndTabBar();
+        }
+
+        // 装甲列車ボス編集モード
+        if (editorMode_ == EditorMode::BOSS_TRAIN) {
+            DrawBossControlUI();
+            ImGui::End();
+            return;
+        }
+
         auto presetMgr = EnemyPresetManager::GetInstance();
         const auto& names = presetMgr->GetPresetNames();
 
@@ -728,5 +846,311 @@ void EnemyStudio::Draw3DLine(ImDrawList* drawList, const Vector3& start, const V
     ImVec2 s, e;
     if (projectPoint(start, s) && projectPoint(end, e)) {
         drawList->AddLine(s, e, color, thickness);
+    }
+}
+
+void EnemyStudio::DrawBossControlUI() {
+    if (!previewBoss_) {
+        ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "装甲列車ボスが初期化されていません");
+        return;
+    }
+
+    auto& cars = previewBoss_->GetCarriagesMutable();
+
+    // 1. ファイル操作ヘッダー
+    ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.8f, 1.0f), "装甲列車ボス・パーツ配置オーサリング");
+    ImGui::Separator();
+
+    if (ImGui::Button("設定を保存 (Save to boss_settings.json)", ImVec2(260, 30))) {
+        if (previewBoss_->SaveSettingsJson()) {
+            statusMessage_ = "設定を boss_settings.json に保存しました！";
+            statusMessageTimer_ = 3.5f;
+        } else {
+            statusMessage_ = "保存に失敗しました。";
+            statusMessageTimer_ = 3.5f;
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("設定を再読み込み (Reload)", ImVec2(180, 30))) {
+        if (previewBoss_->LoadSettingsJson()) {
+            statusMessage_ = "設定を再読み込みしました！";
+            statusMessageTimer_ = 3.5f;
+        }
+    }
+
+    if (!statusMessage_.empty()) {
+        ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.3f, 1.0f), "%s", statusMessage_.c_str());
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+
+    // 2. カメラ操作・視点プリセット
+    if (ImGui::CollapsingHeader("カメラ・視点操作 (Camera Controls)", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Text("車両フォーカス:");
+        if (ImGui::Button("全体俯瞰")) {
+            cameraTarget_ = { 0.0f, 6.0f, -50.0f };
+            cameraDistance_ = 100.0f;
+            cameraPitch_ = 0.35f;
+            cameraYaw_ = 0.5f;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("1両目 (機関車)")) {
+            cameraTarget_ = { 0.0f, 8.0f, 0.0f };
+            cameraDistance_ = 35.0f;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("2両目 (砲塔車)")) {
+            cameraTarget_ = { 0.0f, 6.0f, cars.size() > 1 ? cars[1].lengthOffset : -38.0f };
+            cameraDistance_ = 30.0f;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("3両目 (主砲車)")) {
+            cameraTarget_ = { 0.0f, 6.0f, cars.size() > 2 ? cars[2].lengthOffset : -72.0f };
+            cameraDistance_ = 32.0f;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("4両目 (ミサイル)")) {
+            cameraTarget_ = { 0.0f, 6.0f, cars.size() > 3 ? cars[3].lengthOffset : -105.0f };
+            cameraDistance_ = 30.0f;
+        }
+
+        ImGui::Text("アングル切り替え (Blender風):");
+        if (ImGui::Button("真上 (Top)")) {
+            cameraPitch_ = 1.50f;
+            cameraYaw_ = 0.0f;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("右横 (Side R)")) {
+            cameraPitch_ = 0.0f;
+            cameraYaw_ = 1.5708f;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("左横 (Side L)")) {
+            cameraPitch_ = 0.0f;
+            cameraYaw_ = -1.5708f;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("正面 (Front)")) {
+            cameraPitch_ = 0.0f;
+            cameraYaw_ = 0.0f;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("後面 (Back)")) {
+            cameraPitch_ = 0.0f;
+            cameraYaw_ = 3.14159f;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("斜め (Iso)")) {
+            cameraPitch_ = 0.35f;
+            cameraYaw_ = 0.6f;
+        }
+
+        ImGui::TextDisabled("※操作: [右ドラッグ]回転 / [中ドラッグ or Shift+右ドラッグ]パン / [ホイール]ズーム / [W,A,S,D,Q,E]移動");
+        ImGui::Checkbox("当たり判定ブロック（赤）を表示", &showCollider_);
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+
+    // 3. ボス基本設定
+    if (ImGui::CollapsingHeader("ボス基本・接近距離設定 (Boss Settings)", ImGuiTreeNodeFlags_DefaultOpen)) {
+        float bScale = previewBoss_->GetScaleMultiplier();
+        if (ImGui::SliderFloat("ボス全体スケール (Scale)", &bScale, 0.2f, 3.0f, "%.2fx")) {
+            previewBoss_->SetScaleMultiplier(bScale);
+        }
+
+        bool isFollow = previewBoss_->IsFollowPlayer();
+        if (ImGui::Checkbox("自機追従・並走チェイス有効化 (Follow Player)", &isFollow)) {
+            previewBoss_->SetFollowPlayer(isFollow);
+        }
+
+        float leadDist = previewBoss_->GetDesiredLeadDistance();
+        if (ImGui::SliderFloat("基準接近距離 (Lead Distance)", &leadDist, 100.0f, 400.0f, "%.1f m")) {
+            previewBoss_->SetDesiredLeadDistance(leadDist);
+        }
+        ImGui::TextDisabled("※最後尾が自機に被らない推奨値: 180m〜240m (現在列車長: 約130m)");
+
+        bool isRandLead = previewBoss_->IsRandomLeadDistanceEnabled();
+        if (ImGui::Checkbox("ランダム接近チャンス演出有効 (Random Lead Distance)", &isRandLead)) {
+            previewBoss_->SetRandomLeadDistanceEnabled(isRandLead);
+        }
+
+        ImGui::Separator();
+        ImGui::Text("並走レーン・側面露出設定:");
+        float laneOff = previewBoss_->GetLaneOffset();
+        if (ImGui::SliderFloat("並走オフセット (Lane Offset)", &laneOff, -25.0f, 25.0f, "%.1f m")) {
+            previewBoss_->SetLaneOffset(laneOff);
+        }
+        ImGui::TextDisabled("※左右にずらすことで、4両目だけでなく全車両の側面がズラリと見渡せます");
+
+        bool isDynLane = previewBoss_->IsDynamicLaneChangeEnabled();
+        if (ImGui::Checkbox("緩やかな車線変更を有効化 (Dynamic Lane Change)", &isDynLane)) {
+            previewBoss_->SetDynamicLaneChangeEnabled(isDynLane);
+        }
+
+        ImGui::Separator();
+        ImGui::Text("地面接地設定 (Ground Snap):");
+        bool isSnap = previewBoss_->IsGroundSnapEnabled();
+        if (ImGui::Checkbox("地面メッシュへの自動吸着 (Ground Snap)", &isSnap)) {
+            previewBoss_->SetGroundSnapEnabled(isSnap);
+        }
+        float snapOff = previewBoss_->GetGroundSnapOffset();
+        if (ImGui::DragFloat("接地高さ微調整 (Snap Offset)", &snapOff, 0.05f, -5.0f, 5.0f, "%.2f m")) {
+            previewBoss_->SetGroundSnapOffset(snapOff);
+        }
+    }
+
+    ImGui::Spacing();
+
+    // 4. 車両ごとのパーツ調整
+    bool needTransformUpdate = false;
+
+    for (int cIdx = 0; cIdx < static_cast<int>(cars.size()); ++cIdx) {
+        auto& car = cars[cIdx];
+        ImGui::PushID(cIdx);
+
+        std::string headerName = "[" + std::to_string(cIdx + 1) + "両目] " + car.displayName + " (" + car.name + ")";
+        if (ImGui::CollapsingHeader(headerName.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+            // 連結オフセット（先頭車両以外）
+            if (cIdx > 0) {
+                if (ImGui::DragFloat("連結オフセット (Length Offset)", &car.baseLengthOffset, 0.2f, -300.0f, 0.0f, "%.1f m")) {
+                    car.lengthOffset = car.baseLengthOffset * previewBoss_->GetScaleMultiplier();
+                    needTransformUpdate = true;
+                }
+            }
+
+            // 超巨大主砲 (Car3)
+            if (car.bigCannon) {
+                if (ImGui::TreeNodeEx("超巨大主砲マウント (Big Cannon)", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    if (ImGui::DragFloat3("主砲台座位置 (Base Pos)", &car.bigCannon->baseLocalPos.x, 0.05f)) {
+                        needTransformUpdate = true;
+                    }
+                    if (ImGui::SliderAngle("台座旋回 (Yaw)", &car.bigCannon->baseRot.y, -180.0f, 180.0f)) {
+                        needTransformUpdate = true;
+                    }
+                    if (ImGui::SliderAngle("砲身仰角 (Pitch)", &car.bigCannon->barrelRot.x, -15.0f, 60.0f)) {
+                        needTransformUpdate = true;
+                    }
+                    ImGui::TreePop();
+                }
+            }
+
+            // 砲台リスト
+            std::string turretTreeName = "2連装砲台リスト (" + std::to_string(car.turrets.size()) + "基)";
+            if (ImGui::TreeNode(turretTreeName.c_str())) {
+                int removeIdx = -1;
+                for (int tIdx = 0; tIdx < static_cast<int>(car.turrets.size()); ++tIdx) {
+                    auto& t = car.turrets[tIdx];
+                    ImGui::PushID(tIdx);
+
+                    std::string tLabel = std::to_string(tIdx + 1) + ": " + t.name;
+                    if (ImGui::TreeNode(tLabel.c_str())) {
+                        char nameBuf[64];
+                        strncpy_s(nameBuf, t.name.c_str(), sizeof(nameBuf) - 1);
+                        if (ImGui::InputText("名称", nameBuf, sizeof(nameBuf))) {
+                            t.name = nameBuf;
+                        }
+
+                        if (ImGui::DragFloat3("ローカル位置 (X, Y, Z)", &t.baseLocalPos.x, 0.05f)) {
+                            needTransformUpdate = true;
+                        }
+
+                        Vector3 tRotDeg = {
+                            t.baseLocalRot.x * (180.0f / 3.14159265f),
+                            t.baseLocalRot.y * (180.0f / 3.14159265f),
+                            t.baseLocalRot.z * (180.0f / 3.14159265f)
+                        };
+                        if (ImGui::DragFloat3("初期回転角度 (度: P, Y, R)", &tRotDeg.x, 1.0f, -180.0f, 180.0f, "%.1f°")) {
+                            t.baseLocalRot = {
+                                tRotDeg.x * (3.14159265f / 180.0f),
+                                tRotDeg.y * (3.14159265f / 180.0f),
+                                tRotDeg.z * (3.14159265f / 180.0f)
+                            };
+                            t.currentRot = t.baseLocalRot;
+                            needTransformUpdate = true;
+                        }
+
+                        if (ImGui::Button("この砲台を削除")) {
+                            removeIdx = tIdx;
+                        }
+                        ImGui::TreePop();
+                    }
+                    ImGui::PopID();
+                }
+
+                if (removeIdx >= 0) {
+                    previewBoss_->RemoveTurret(cIdx, removeIdx);
+                    needTransformUpdate = true;
+                }
+
+                if (ImGui::Button("+ 砲台を新規追加")) {
+                    previewBoss_->AddTurret(cIdx, { 0.0f, 5.0f, 0.0f });
+                    needTransformUpdate = true;
+                }
+
+                ImGui::TreePop();
+            }
+
+            // ミサイルポッドリスト
+            std::string podTreeName = "ミサイルポッドリスト (" + std::to_string(car.missilePods.size()) + "基)";
+            if (ImGui::TreeNode(podTreeName.c_str())) {
+                int removePodIdx = -1;
+                for (int pIdx = 0; pIdx < static_cast<int>(car.missilePods.size()); ++pIdx) {
+                    auto& p = car.missilePods[pIdx];
+                    ImGui::PushID(pIdx);
+
+                    std::string pLabel = std::to_string(pIdx + 1) + ": " + p.name;
+                    if (ImGui::TreeNode(pLabel.c_str())) {
+                        char nameBuf[64];
+                        strncpy_s(nameBuf, p.name.c_str(), sizeof(nameBuf) - 1);
+                        if (ImGui::InputText("名称", nameBuf, sizeof(nameBuf))) {
+                            p.name = nameBuf;
+                        }
+
+                        if (ImGui::DragFloat3("ローカル位置 (X, Y, Z)", &p.baseLocalPos.x, 0.05f)) {
+                            needTransformUpdate = true;
+                        }
+
+                        Vector3 pRotDeg = {
+                            p.baseLocalRot.x * (180.0f / 3.14159265f),
+                            p.baseLocalRot.y * (180.0f / 3.14159265f),
+                            p.baseLocalRot.z * (180.0f / 3.14159265f)
+                        };
+                        if (ImGui::DragFloat3("回転角度 (度: P, Y, R)", &pRotDeg.x, 1.0f, -180.0f, 180.0f, "%.1f°")) {
+                            p.baseLocalRot = {
+                                pRotDeg.x * (3.14159265f / 180.0f),
+                                pRotDeg.y * (3.14159265f / 180.0f),
+                                pRotDeg.z * (3.14159265f / 180.0f)
+                            };
+                            needTransformUpdate = true;
+                        }
+
+                        if (ImGui::Button("このポッドを削除")) {
+                            removePodIdx = pIdx;
+                        }
+                        ImGui::TreePop();
+                    }
+                    ImGui::PopID();
+                }
+
+                if (removePodIdx >= 0) {
+                    previewBoss_->RemoveMissilePod(cIdx, removePodIdx);
+                    needTransformUpdate = true;
+                }
+
+                if (ImGui::Button("+ ミサイルポッドを新規追加")) {
+                    previewBoss_->AddMissilePod(cIdx, { 0.0f, 5.0f, 0.0f });
+                    needTransformUpdate = true;
+                }
+
+                ImGui::TreePop();
+            }
+        }
+        ImGui::PopID();
+    }
+
+    if (needTransformUpdate) {
+        previewBoss_->ApplyTransforms();
     }
 }

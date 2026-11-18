@@ -14,6 +14,7 @@ void Player::Initialize(Object3dCommon* object3dCommon, uint32_t skyboxTexIndex)
     // プレイヤーと関連オブジェクトの初期化
     object3dCommon_ = object3dCommon;
     input_ = EngineServices::GetInstance()->GetInput();
+    isInputEnabled_ = true;
 
     skyboxTexIndex_ = skyboxTexIndex;
 
@@ -77,6 +78,10 @@ void Player::Initialize(Object3dCommon* object3dCommon, uint32_t skyboxTexIndex)
         mountedMissiles_[i] = std::make_unique<Object3d>();
         mountedMissiles_[i]->Initialize(object3dCommon);
         mountedMissiles_[i]->SetModel("missile.obj");
+        mountedMissiles_[i]->SetColor({ 0.15f, 0.92f, 1.0f, 1.0f });
+        mountedMissiles_[i]->SetEnvironmentCoefficient(0.0f);
+        mountedMissiles_[i]->SetEnableLighting(true);
+        mountedMissiles_[i]->SetSelectLightings(11);
         mountedMissiles_[i]->SetParent(object_.get());
         float xOffset = 0.0f;
         float yOffset = -0.2f;
@@ -164,7 +169,7 @@ void Player::Initialize(Object3dCommon* object3dCommon, uint32_t skyboxTexIndex)
 
 // プレイヤー被弾時の処理
 void Player::OnCollision() {
-    if (isGodMode_ || invincibilityTimer_ > 0.0f || isDead_ || isRolling_) return; 
+    if (isGodMode_ || invincibilityTimer_ > 0.0f || isDead_ || isRolling_ || isCutsceneActive_ || isExecutionMode_) return; 
     
     hp_ -= 1000;
     // 被弾しても強化状態（ダブルショット）は維持する
@@ -383,7 +388,9 @@ void Player::Update(std::list<std::unique_ptr<PlayerBullet>>& bullets, std::list
     prevLogicalPosition_ = logicalPosition_;
     Move(gameSpeed);
     UpdateReticleAndAimAssist(enemies, boss, gameSpeed);
-    weaponManager_.Update(gameSpeed, enemies, boss, parentCamera);
+    if (!isExecutionMode_) {
+        weaponManager_.Update(gameSpeed, enemies, boss, parentCamera);
+    }
     Attack(bullets, missiles, enemies, parentCamera, gameSpeed, boss);
 
     if (invincibilityTimer_ > 0.0f) {
@@ -437,7 +444,7 @@ void Player::Draw() {
     }
     
     bool shouldDrawPlayer = true;
-    if (invincibilityTimer_ > 0.0f) {
+    if (!isCutsceneActive_ && invincibilityTimer_ > 0.0f) {
         if (std::fmod(invincibilityTimer_ / 4.0f, 2.0f) < 1.0f) {
             shouldDrawPlayer = false;
         }
@@ -589,9 +596,9 @@ void Player::UpdateRollAfterImages(float gameSpeed, Object3d* parentCamera) {
                     if (parentCamera) {
                         img.object->SetParent(parentCamera);
                     }
-                    // 現在の自機の姿勢（Translate, Rotation, Scale）をスナップショット記録
+                    // 現在の自機の姿勢（Translate, Quaternion Rotation, Scale）をスナップショット記録
                     img.object->SetTranslate(object_->GetTranslate());
-                    img.object->SetRotation(object_->GetRotation());
+                    img.object->SetRotationQuaternion(object_->GetRotationQuaternion());
                     img.object->SetScale(object_->GetScale());
                 }
             }
@@ -747,8 +754,8 @@ void Player::UpdateReticleAndAimAssist(const std::list<std::unique_ptr<Enemy>>& 
             Vector3 toB = { bPos.x - playerWorldPos.x, bPos.y - playerWorldPos.y, bPos.z - playerWorldPos.z };
             float projDist = toB.x * aimDir.x + toB.y * aimDir.y + toB.z * aimDir.z;
 
-            // ボス実効射程（10m 〜 160m）
-            if (projDist < 10.0f || projDist > 160.0f) continue;
+            // ボス実効射程（10m 〜 280m：全長130m超の全車両をマルチロックオン可能に拡大）
+            if (projDist < 10.0f || projDist > 280.0f) continue;
 
             Vector3 closestPt = {
                 playerWorldPos.x + aimDir.x * projDist,
@@ -758,8 +765,8 @@ void Player::UpdateReticleAndAimAssist(const std::list<std::unique_ptr<Enemy>>& 
 
             Vector3 diff = { bPos.x - closestPt.x, bPos.y - closestPt.y, bPos.z - closestPt.z };
             float offsetDist = std::sqrtf(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z);
-            // ボス吸い付き許容半径も適切に引き締め
-            float thresholdRadius = 3.2f + projDist * 0.035f;
+            // 巨大車両のサイズ（幅約19m）に合わせて適度に照準吸い付き範囲を確保
+            float thresholdRadius = 6.0f + projDist * 0.04f;
 
             if (offsetDist < thresholdRadius) {
                 float score = offsetDist / thresholdRadius;
@@ -851,10 +858,17 @@ void Player::UpdateReticleAndAimAssist(const std::list<std::unique_ptr<Enemy>>& 
 void Player::Move(float gameSpeed) {
     if (!input_) return;
 
-    
     // 回避（バレルロール）判定：Qキーで左回避、Eキーで右回避（単押しで即座に発動）
-    if (!isRolling_) {
-        if (input_->TriggerKey(DIK_Q)) {
+    if (isInputEnabled_ && !isRolling_) {
+        if (isDemoInputActive_) {
+            if (demoRollTrigger_) {
+                demoRollTrigger_ = false;
+                isRolling_ = true;
+                rollTimer_ = 0.0f;
+                rollDirection_ = demoRollDir_;
+                isDodgeTriggered_ = true;
+            }
+        } else if (input_->TriggerKey(DIK_Q)) {
             isRolling_ = true;
             rollTimer_ = 0.0f;
             rollDirection_ = -1.0f; 
@@ -874,8 +888,8 @@ void Player::Move(float gameSpeed) {
         }
     }
 
-    // ブーストキー判定
-    bool boostKeyPressed = input_->PushKey(DIK_LSHIFT);
+    // ブーストキー判定（入力無効時は強制OFF）
+    bool boostKeyPressed = isInputEnabled_ ? input_->PushKey(DIK_LSHIFT) : false;
     
     // オーバーヒートからの復帰判定（25%まで回復したら再使用可能）
     if (isBoostOverheated_) {
@@ -903,7 +917,7 @@ void Player::Move(float gameSpeed) {
         }
     }
 
-    bool isBraking = input_->PushKey(DIK_LCONTROL);
+    bool isBraking = isInputEnabled_ ? input_->PushKey(DIK_LCONTROL) : false;
     
     float targetZ = 0.0f; 
     if (isBoosting_) {
@@ -917,17 +931,24 @@ void Player::Move(float gameSpeed) {
     float currentSpeed = speed_;
     if (isBoosting_) currentSpeed *= 1.4f;
 
-    // スティック / キー入力の検出
+    // スティック / キー入力の検出（入力無効時は0、デモプレイ時は自動操縦値を使用）
     float inputX = 0.0f;
     float inputY = 0.0f;
-    if (input_->PushKey(DIK_A) || input_->PushKey(DIK_LEFT))  inputX -= 1.0f;
-    if (input_->PushKey(DIK_D) || input_->PushKey(DIK_RIGHT)) inputX += 1.0f;
-    if (input_->PushKey(DIK_W) || input_->PushKey(DIK_UP))    inputY += 1.0f;
-    if (input_->PushKey(DIK_S) || input_->PushKey(DIK_DOWN))  inputY -= 1.0f;
+    if (isInputEnabled_) {
+        if (isDemoInputActive_) {
+            inputX = std::clamp(demoInputX_, -1.0f, 1.0f);
+            inputY = std::clamp(demoInputY_, -1.0f, 1.0f);
+        } else {
+            if (input_->PushKey(DIK_A) || input_->PushKey(DIK_LEFT))  inputX -= 1.0f;
+            if (input_->PushKey(DIK_D) || input_->PushKey(DIK_RIGHT)) inputX += 1.0f;
+            if (input_->PushKey(DIK_W) || input_->PushKey(DIK_UP))    inputY += 1.0f;
+            if (input_->PushKey(DIK_S) || input_->PushKey(DIK_DOWN))  inputY -= 1.0f;
+        }
+    }
 
     // 回避・ロールキー押下時の横ブースト
     float currentSpeedX = currentSpeed;
-    if (input_->PushKey(DIK_Q) || input_->PushKey(DIK_E)) {
+    if (isInputEnabled_ && (input_->PushKey(DIK_Q) || input_->PushKey(DIK_E))) {
         currentSpeedX *= 1.4f;
     }
 
@@ -1028,16 +1049,15 @@ void Player::Move(float gameSpeed) {
     reticle_->SetRotation(Vector3(0.0f, 0.0f, reticleRoll));
     reticle_->Update();
 
-    // スクリーン基準の回転を機体のローカル座標へマッピング
-    float visualPitch = currentPitch_ * std::cos(finalBank) + currentYaw_ * std::sin(finalBank);
-    float visualYaw   = -currentPitch_ * std::sin(finalBank) + currentYaw_ * std::cos(finalBank);
+    // クォータニオンを用いた姿勢合成（ローカルZ軸ロール -> ピッチ -> ヨー）
+    Quaternion qOffset = Quaternion::FromEuler(modelRotOffset_);
+    Quaternion qRoll   = Quaternion::FromAxisAngle({ 0.0f, 0.0f, 1.0f }, baseRotation_.z + finalBank);
+    Quaternion qPitch  = Quaternion::FromAxisAngle({ 1.0f, 0.0f, 0.0f }, baseRotation_.x + currentPitch_);
+    Quaternion qYaw    = Quaternion::FromAxisAngle({ 0.0f, 1.0f, 0.0f }, baseRotation_.y + currentYaw_);
+    Quaternion finalQuat = Quaternion::Multiply(qYaw, Quaternion::Multiply(qPitch, Quaternion::Multiply(qRoll, qOffset)));
 
     object_->SetScale(playerScale_);
-    object_->SetRotation(Vector3(
-        baseRotation_.x + visualPitch + modelRotOffset_.x,
-        baseRotation_.y + visualYaw   + modelRotOffset_.y,
-        baseRotation_.z + finalBank   + modelRotOffset_.z
-    ));
+    object_->SetRotationQuaternion(finalQuat);
     object_->SetTranslate(Vector3(
         logicalPosition_.x + modelPosOffset_.x, 
         logicalPosition_.y + modelPosOffset_.y, 
@@ -1061,7 +1081,10 @@ void Player::Move(float gameSpeed) {
 
 // プレイヤーの攻撃（弾・ミサイル発射）処理
 void Player::Attack(std::list<std::unique_ptr<PlayerBullet>>& bullets, std::list<std::unique_ptr<PlayerMissile>>& missiles, const std::list<std::unique_ptr<Enemy>>& enemies, Object3d* parentCamera, float gameSpeed, ArmoredTrainBoss* boss) {
-    if (!input_) return;
+    if (!input_ || !isInputEnabled_) return;
+
+    // 処刑フィニッシャー中（ExecutionMode）は通常弾やサブ武器の発射を完全に抑制
+    if (isExecutionMode_) return;
 
     // 武器管理システム（メモリシステム）に攻撃処理を委譲
     weaponManager_.Attack(input_, bullets, missiles, enemies, boss, parentCamera, gameSpeed);
@@ -1178,7 +1201,9 @@ void Player::SaveSettings(const std::string& filepath) {
 
 // プレイヤー関連のUI描画処理
 void Player::DrawUI() {
-    weaponManager_.DrawUI();
+    if (!isExecutionMode_) {
+        weaponManager_.DrawUI();
+    }
 #ifdef USE_IMGUI
     ImGui::Begin("Player Editor");
     DrawImGuiContent();

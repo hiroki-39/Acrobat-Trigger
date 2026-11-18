@@ -48,15 +48,41 @@ public:
     /// </summary>
     void SetCutsceneOverride(bool active, const Vector3& localPos = { 0.0f, 0.0f, 0.0f }, const Vector3& localRot = { 0.0f, 0.0f, 0.0f }) {
         isCutsceneActive_ = active;
+        isCutsceneUseQuat_ = false;
         cutscenePos_ = localPos;
         cutsceneRot_ = localRot;
         if (active) {
             logicalPosition_ = localPos;
             baseRotation_ = localRot;
+            invincibilityTimer_ = 0.0f;
         } else {
             // カットシーン終了・スキップ時：位置・基本姿勢・動的姿勢変数を水平巡航状態へリセット
             logicalPosition_ = { 0.0f, 0.0f, 0.0f };
             baseRotation_ = { 0.0f, 0.0f, 0.0f };
+            cutsceneQuat_ = Quaternion::Identity();
+            currentPitch_ = 0.0f;
+            currentYaw_ = 0.0f;
+            currentBank_ = 0.0f;
+            velocity_ = { 0.0f, 0.0f };
+            reticlePosition_ = { 0.0f, 0.0f, dynamicReticleDistance_ };
+            Update3DObjectOnly();
+        }
+    }
+    /// <summary>
+    /// クォータニオンによるカットシーン演出用オーバーライド設定
+    /// </summary>
+    void SetCutsceneOverrideQuaternion(bool active, const Vector3& localPos, const Quaternion& localRotQuat) {
+        isCutsceneActive_ = active;
+        isCutsceneUseQuat_ = active;
+        cutscenePos_ = localPos;
+        cutsceneQuat_ = localRotQuat.Normalized();
+        if (active) {
+            logicalPosition_ = localPos;
+            invincibilityTimer_ = 0.0f;
+        } else {
+            logicalPosition_ = { 0.0f, 0.0f, 0.0f };
+            baseRotation_ = { 0.0f, 0.0f, 0.0f };
+            cutsceneQuat_ = Quaternion::Identity();
             currentPitch_ = 0.0f;
             currentYaw_ = 0.0f;
             currentBank_ = 0.0f;
@@ -66,6 +92,23 @@ public:
         }
     }
     bool IsCutsceneActive() const { return isCutsceneActive_; }
+    bool IsCutsceneUsingQuaternion() const { return isCutsceneUseQuat_; }
+    const Quaternion& GetCutsceneQuaternion() const { return cutsceneQuat_; }
+
+    /// <summary>
+    /// デモプレイ用の自動操縦入力オーバーライド設定
+    /// </summary>
+    void SetDemoInputOverride(bool active, float moveX = 0.0f, float moveY = 0.0f, bool triggerRoll = false, float rollDir = 1.0f) {
+        isDemoInputActive_ = active;
+        demoInputX_ = moveX;
+        demoInputY_ = moveY;
+        if (active && triggerRoll) {
+            demoRollTrigger_ = true;
+            demoRollDir_ = (rollDir >= 0.0f) ? 1.0f : -1.0f;
+        } else if (!active) {
+            demoRollTrigger_ = false;
+        }
+    }
 
     void ResetPosture() {
         baseRotation_ = { 0.0f, 0.0f, 0.0f };
@@ -93,11 +136,17 @@ public:
         }
         if (object_) {
             object_->SetScale(playerScale_);
-            object_->SetRotation(Vector3(
-                baseRotation_.x + modelRotOffset_.x,
-                baseRotation_.y + modelRotOffset_.y,
-                baseRotation_.z + modelRotOffset_.z
-            ));
+            if (isCutsceneUseQuat_) {
+                Quaternion finalQuat = Quaternion::Multiply(cutsceneQuat_, Quaternion::FromEuler(modelRotOffset_));
+                object_->SetRotationQuaternion(finalQuat);
+            } else {
+                Quaternion finalQuat = Quaternion::FromEuler(Vector3(
+                    baseRotation_.x + modelRotOffset_.x,
+                    baseRotation_.y + modelRotOffset_.y,
+                    baseRotation_.z + modelRotOffset_.z
+                ));
+                object_->SetRotationQuaternion(finalQuat);
+            }
             object_->SetTranslate(Vector3(
                 logicalPosition_.x + modelPosOffset_.x, 
                 logicalPosition_.y + modelPosOffset_.y, 
@@ -107,7 +156,7 @@ public:
             
             if (colliderObject_) {
                 colliderObject_->SetTranslate(object_->GetTranslate());
-                colliderObject_->SetRotation(object_->GetRotation());
+                colliderObject_->SetRotationQuaternion(object_->GetRotationQuaternion());
                 colliderObject_->Update();
             }
             for (int i = 0; i < 4; ++i) { 
@@ -229,6 +278,33 @@ public:
         }
         return logicalPosition_;
     }
+    Vector3 GetWorldForward() const {
+        if (object_) {
+            const Matrix4x4& wMat = object_->GetmatWorld();
+            Vector3 f = { wMat.m[2][0], wMat.m[2][1], wMat.m[2][2] };
+            float len = f.Length();
+            if (len > 0.0001f) return f / len;
+        }
+        return { 0.0f, 0.0f, 1.0f };
+    }
+    Vector3 GetWorldUp() const {
+        if (object_) {
+            const Matrix4x4& wMat = object_->GetmatWorld();
+            Vector3 u = { wMat.m[1][0], wMat.m[1][1], wMat.m[1][2] };
+            float len = u.Length();
+            if (len > 0.0001f) return u / len;
+        }
+        return { 0.0f, 1.0f, 0.0f };
+    }
+    Vector3 GetWorldRight() const {
+        if (object_) {
+            const Matrix4x4& wMat = object_->GetmatWorld();
+            Vector3 r = { wMat.m[0][0], wMat.m[0][1], wMat.m[0][2] };
+            float len = r.Length();
+            if (len > 0.0001f) return r / len;
+        }
+        return { 1.0f, 0.0f, 0.0f };
+    }
 
     // 動的移動制限（ソフトリミット）
     void SetTargetMoveLimits(float limitX, float limitYMin, float limitYMax) {
@@ -253,6 +329,14 @@ public:
     Vector3 GetLeftWingPosition() const;
     Vector3 GetRightWingPosition() const;
     float GetFinalBank() const { return finalBank_; }
+
+    // 入力有効・無効切り替え（タイムオーバー拘束演出時など）
+    void SetEnableInput(bool enable) { isInputEnabled_ = enable; }
+    bool IsInputEnabled() const { return isInputEnabled_; }
+
+    // 処刑フィニッシャーモード設定（通常弾を抑制し、処刑ミサイル発射に専念）
+    void SetExecutionMode(bool active) { isExecutionMode_ = active; }
+    bool IsExecutionMode() const { return isExecutionMode_; }
 
 private:
     
@@ -291,6 +375,8 @@ private:
 
     Object3dCommon* object3dCommon_ = nullptr; 
     Input* input_ = nullptr;
+    bool isInputEnabled_ = true; // 操作入力フラグ（タイムオーバー時はfalseで移動不能に拘束）
+    bool isExecutionMode_ = false; // 処刑フィニッシャー中フラグ（通常弾発射を抑制）
     
     uint32_t skyboxTexIndex_ = 0; 
 
@@ -421,8 +507,17 @@ private:
 
     // カットシーン演出用
     bool isCutsceneActive_ = false;
+    bool isCutsceneUseQuat_ = false;
     bool isCutsceneBoosting_ = false;
     Vector3 cutscenePos_ = { 0.0f, 0.0f, 0.0f };
     Vector3 cutsceneRot_ = { 0.0f, 0.0f, 0.0f };
+    Quaternion cutsceneQuat_ = Quaternion::Identity();
+
+    // デモプレイ自動操縦用
+    bool isDemoInputActive_ = false;
+    float demoInputX_ = 0.0f;
+    float demoInputY_ = 0.0f;
+    bool demoRollTrigger_ = false;
+    float demoRollDir_ = 1.0f;
 };
 

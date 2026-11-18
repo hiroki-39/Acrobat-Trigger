@@ -20,6 +20,7 @@
 #include "Game/System/RailCameraController.h"
 #include "Game/Actor/Enemy/Enemy.h"
 #include "Game/Actor/Enemy/ArmoredTrainBoss.h"
+#include "Game/Sequence/BossFinisherSequence.h"
 #include "Game/Actor/Obstacle/Obstacle.h"
 #include "Game/Actor/Item/EnhanceRing.h"
 #include "Game/Actor/Item/MemoryItem.h"
@@ -112,6 +113,21 @@ private:
     ParticleEffect trailEffect_;      
     ParticleEffect missileSmokeEffect_; 
     ParticleEffect ringEffect_;
+
+    // ミサイル着弾時のサイバーボクセルブロック粒子
+    struct VoxelHitParticle {
+        std::unique_ptr<Object3d> obj;
+        Vector3 position;
+        Vector3 velocity;
+        Vector3 rotation;
+        Vector3 rotSpeed;
+        Vector3 scale;
+        Vector4 color;
+        float life = 0.0f;
+        float maxLife = 0.6f;
+    };
+    std::vector<VoxelHitParticle> voxelHitParticles_;
+    void SpawnVoxelHitParticles(const Vector3& worldPos, int count = 28, float minSize = 1.2f, float maxSize = 2.5f);
     ParticleEffect healRingEffect_; // リング取得時のキラキラエフェクト
     ParticleEffect windEffect_;     // 気流線（風の筋）エフェクト
 
@@ -150,6 +166,9 @@ private:
     std::unique_ptr<ArmoredTrainBoss> armoredTrainBoss_;
     bool isBossSpawned_ = false;
 
+    // 電脳フィニッシャー（クリア演出シークエンス）
+    std::unique_ptr<BossFinisherSequence> bossFinisherSequence_;
+
     // ボス戦進行ステップ
     enum class BossBattleStep {
         NOT_ACTIVE,        // 通常道中
@@ -169,11 +188,16 @@ private:
     float bossWarningSirenTimer_ = 0.0f;
 
     // ボス戦制限時間 & タイムオーバー即死攻撃用
-    float bossTimeLimit_ = 90.0f;       // ボス戦制限時間（秒）
-    float bossRemainingTime_ = 90.0f;   // ボス戦残り時間（秒）
+    float bossTimeLimit_ = 120.0f;       // ボス戦制限時間（秒）: 2分
+    float bossRemainingTime_ = 120.0f;   // ボス戦残り時間（秒）: 2分
     float bossTimeOverTimer_ = 0.0f;    // 即死攻撃シークエンス用タイマー
-    const float kBossTimeOverDuration = 3.5f; // 即死攻撃シークエンス時間
+    const float kBossTimeOverDuration = 4.0f; // 即死攻撃シークエンス時間（UI消滅後に発射・撃墜）
     bool isBossTimeOverFired_ = false;  // 即死攻撃発射フラグ
+    bool isTimeOverDebugNonLethal_ = true; // デバッグテスト用：演出完了後に死なず何度でも再確認可能にする
+    bool isTimeOverDebugLoop_ = false;     // デバッグテスト用：演出完了後に自動ループ再生
+    void TriggerTimeOverCannonSequence(bool nonLethal = true); // タイムオーバー大砲演出を即座に開始
+    std::unique_ptr<Object3d> bossTimeOverChargeSphere_; // タイムオーバー大砲チャージエネルギー球
+    std::unique_ptr<Object3d> bossTimeOverBeam_;         // タイムオーバー大砲の極大砲撃ビーム
 
     // ボス戦専用UIスプライト
     std::unique_ptr<Sprite> bossHpBarBgSprite_;
@@ -209,6 +233,12 @@ private:
     int enemyKillShakeFrames_ = 0; // 敵撃破時の微小カメラシェイク（1〜2フレーム）
     float lastLoadTimeMs_ = 0.0f;
     int score_ = 0;
+
+    // 戦績評価（リザルトパネル）用トラッキングデータ
+    int totalEnemiesCount_ = 0;
+    int killedEnemiesCount_ = 0;
+    float stageElapsedTime_ = 0.0f;
+    float bossElapsedTime_ = 0.0f;
 
     // 敵撃破時の3Dスコア加算ポップ演出
     struct ScorePopup {
@@ -316,7 +346,8 @@ private:
     // ゲームクリア演出（GameClear Sequence）
     enum class ClearStep {
         ASCENDING,      // 自機が上空へ急上昇・飛び去る（カメラ停止、スラスター噴射）
-        SHOW_UI         // 「MISSION COMPLETE」、スコア表示、SPACEでタイトルへ戻る入力待ち
+        SHOW_UI,        // フェーズ4 (5.2s〜7.5s): シアン発光ブラケット枠付き「MISSION ACCOMPLISHED / 任務完了」
+        RESULT_PANEL    // フェーズ⑦: 半透明ホログラムウィンドウ（リザルトパネル）展開＆SPACEでタイトル復帰
     };
     ClearStep clearStep_ = ClearStep::ASCENDING;
     float clearTimer_ = 0.0f;
@@ -324,6 +355,9 @@ private:
     Vector3 clearStartPlayerPos_ = { 0.0f, 0.0f, 0.0f };
     Vector3 clearPlayerAscentPos_ = { 0.0f, 0.0f, 0.0f };
     Vector3 clearPlayerAscentRot_ = { 0.0f, 0.0f, 0.0f };
+    bool clearUseQuat_ = false;
+    Quaternion clearQuat_ = Quaternion::Identity();
+    Vector3 clearMoveDir_ = { 0.0f, 0.45f, 0.89f };
     float clearAscentSpeed_ = 0.0f;
 
     void StartClearSequence();

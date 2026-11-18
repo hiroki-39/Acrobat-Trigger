@@ -1,4 +1,4 @@
-﻿#define NOMINMAX
+#define NOMINMAX
 #include "GamePlayScene.h"
 #include "KHEngine/Core/Services/EngineServices.h"
 #include "KHEngine/Core/Utility/Log/Logger.h"
@@ -401,6 +401,19 @@ void GamePlayScene::Initialize()
 	camera->SetRotation({ 0.0f, 0.0f, 0.0f });
 
 
+	bossTimeOverChargeSphere_ = std::make_unique<Object3d>();
+	bossTimeOverChargeSphere_->Initialize(object3dCommon);
+	bossTimeOverChargeSphere_->SetModel("collider_sphere_enemy.obj");
+	bossTimeOverChargeSphere_->SetEnableLighting(false);
+	bossTimeOverChargeSphere_->SetColor({ 1.0f, 0.25f, 0.1f, 1.0f });
+
+	bossTimeOverBeam_ = std::make_unique<Object3d>();
+	bossTimeOverBeam_->Initialize(object3dCommon);
+	bossTimeOverBeam_->SetModel("beam_enemy.obj");
+	bossTimeOverBeam_->SetSelectLightings(6);
+	bossTimeOverBeam_->SetEnableLighting(false);
+	bossTimeOverBeam_->SetColor({ 1.0f, 0.95f, 0.35f, 1.0f });
+
 	debugCamera_ = std::make_unique<Camera>();
 	debugCamera_->SetTranslate({ 0.0f, 6.0f, -20.0f });
 	debugCamera_->SetRotation({ 0.0f, 0.0f, 0.0f });
@@ -434,6 +447,8 @@ void GamePlayScene::Initialize()
 	ModelManager::GetInstance()->LoadModel("cube.obj");
 	ModelManager::GetInstance()->LoadModel("player.obj");
 	ModelManager::GetInstance()->LoadModel("memory.obj");
+	ModelManager::GetInstance()->LoadModel("beam_enemy.obj");
+	ModelManager::GetInstance()->LoadModel("collider_sphere_enemy.obj");
 
 
 	texManager->LoadTexture("uvChecker.png");
@@ -682,6 +697,7 @@ void GamePlayScene::Initialize()
 
 	missileSmokeEffect_.Initialize(dxCommon, srvManager);
 	missileSmokeEffect_.LoadFromJson("missile_smoke.json");
+	ModelManager::GetInstance()->LoadModel("cube.obj");
 
 	ringEffect_.Initialize(dxCommon, srvManager);
 	ringEffect_.LoadFromJson("ring.json");
@@ -864,6 +880,89 @@ void GamePlayScene::Initialize()
 			bossDefeated.isVisible = false;
 			textMgr->RegisterText(bossDefeated, "GAMEPLAY");
 		}
+		if (!textMgr->HasLoadedFromFile())
+		{
+			if (!textMgr->HasTextItem("ExecuteCritical", "GAMEPLAY"))
+			{
+				UITextItem item;
+				item.id = "ExecuteCritical";
+				item.text = "[ CRITICAL // EXECUTE READY ]";
+				item.position = { 640.0f, 160.0f };
+				item.fontSize = 28.0f;
+				item.fontType = ImGuiManager::FontType::Japanese_MPLUS;
+				item.color = { 1.0f, 0.15f, 0.2f, 1.0f };
+				item.hasOutline = true;
+				item.outlineThickness = 2.0f;
+				item.align = UITextAlign::Center;
+				item.isVisible = false;
+				textMgr->RegisterText(item, "GAMEPLAY");
+			}
+			if (!textMgr->HasTextItem("ExecuteGuide", "GAMEPLAY"))
+			{
+				UITextItem item;
+				item.id = "ExecuteGuide";
+				item.text = "[ HOLD SPACE TO LOCK ON ]";
+				item.position = { 640.0f, 520.0f };
+				item.fontSize = 22.0f;
+				item.fontType = ImGuiManager::FontType::Japanese_MPLUS;
+				item.color = { 0.0f, 0.95f, 1.0f, 1.0f };
+				item.hasOutline = true;
+				item.outlineThickness = 2.0f;
+				item.align = UITextAlign::Center;
+				item.isVisible = false;
+				textMgr->RegisterText(item, "GAMEPLAY");
+			}
+			if (!textMgr->HasTextItem("MissionAccomplishedTitle", "GAMEPLAY"))
+			{
+				UITextItem item;
+				item.id = "MissionAccomplishedTitle";
+				item.text = "MISSION ACCOMPLISHED";
+				item.position = { 640.0f, 290.0f };
+				item.fontSize = 38.0f;
+				item.fontType = ImGuiManager::FontType::Japanese_MPLUS;
+				item.color = { 0.95f, 1.0f, 1.0f, 1.0f };
+				item.hasOutline = true;
+				item.outlineThickness = 3.0f;
+				item.hasShadow = true;
+				item.align = UITextAlign::Center;
+				item.isVisible = false;
+				textMgr->RegisterText(item, "GAMEPLAY");
+			}
+			if (!textMgr->HasTextItem("MissionAccomplishedSub", "GAMEPLAY"))
+			{
+				UITextItem item;
+				item.id = "MissionAccomplishedSub";
+				item.text = "- 任務完了 // TARGET PURGED -";
+				item.position = { 640.0f, 335.0f };
+				item.fontSize = 18.0f;
+				item.fontType = ImGuiManager::FontType::Japanese_MPLUS;
+				item.color = { 0.0f, 0.9f, 1.0f, 1.0f };
+				item.hasOutline = true;
+				item.outlineThickness = 2.0f;
+				item.align = UITextAlign::Center;
+				item.isVisible = false;
+				textMgr->RegisterText(item, "GAMEPLAY");
+			}
+		}
+
+		// シーン開始時に処刑・クリア関連テキストを確実に非表示にリセット
+		textMgr->SetVisible("ExecuteCritical", false, "GAMEPLAY");
+		textMgr->SetVisible("ExecuteGuide", false, "GAMEPLAY");
+		textMgr->SetVisible("MissionAccomplishedTitle", false, "GAMEPLAY");
+		textMgr->SetVisible("MissionAccomplishedSub", false, "GAMEPLAY");
+	}
+
+	// 電脳フィニッシャー（クリア演出シークエンス）の初期化
+	bossFinisherSequence_ = std::make_unique<BossFinisherSequence>();
+	if (bossFinisherSequence_)
+	{
+		uint32_t skyTex = skybox_ ? skybox_->GetCubemapSrvIndex() : 0;
+		bossFinisherSequence_->Initialize(services->GetObject3dCommon(), camera.get(), railCameraController_.get(), skyTex);
+		bossFinisherSequence_->SetTerrainObjects(&modelInstances);
+		bossFinisherSequence_->SetOnVoxelHit([this](const Vector3& pos, int count, float minSz, float maxSz) {
+			SpawnVoxelHitParticles(pos, count, minSz, maxSz);
+		});
+		bossFinisherSequence_->Reset(player_.get());
 	}
 }
 
@@ -929,6 +1028,11 @@ void GamePlayScene::ReloadLevel()
 		}
 		ApplyVirtualSpaceStyle();
 		OutputDebugStringA("LevelLoader: Successfully reloaded objects.\n");
+
+		totalEnemiesCount_ = static_cast<int>(enemies_.size());
+		killedEnemiesCount_ = 0;
+		stageElapsedTime_ = 0.0f;
+		bossElapsedTime_ = 0.0f;
 
 		// BossRailが存在する場合、マップからの指定がなければ始点近傍のメインレール進行度を自動算出
 		if (bossRail_ && bossRail_->IsValid() && !mainRails_.empty() && mainRails_[0]->IsValid())
@@ -1187,6 +1291,7 @@ void GamePlayScene::SeamlessResetForRetry()
 	reconstructShards_.clear();
 	thrusterEffect_.ClearParticles();
 	explosionEffect_.ClearParticles();
+	voxelHitParticles_.clear();
 	hitEffect_.ClearParticles();
 	dodgeEffect_.ClearParticles();
 	for (auto& shard : gameOverShards_)
@@ -1280,6 +1385,11 @@ void GamePlayScene::Finalize()
 	SoundManager::GetInstance()->StopBGM();
 	SoundManager::GetInstance()->StopAllSE();
 
+	if (bossFinisherSequence_)
+	{
+		bossFinisherSequence_->Reset(player_.get());
+	}
+
 	sprites.clear();
 	modelInstances.clear();
 
@@ -1345,57 +1455,87 @@ void GamePlayScene::Update()
 		SoundManager::GetInstance()->ToggleMasterMute();
 	}
 
-	// デモプレイ中：スタート演出（地形展開・自機マテリアライズ）完了後、通常飛行中に敵弾が飛来して直撃し、HP0でゲームオーバーへ突入
+	// デモプレイ中：ゲームクリア＆処刑フィニッシャー演出を自動進行する
 	if (services && services->IsDemoMode())
 	{
+		if (player_)
+		{
+			player_->SetGodMode(true);
+		}
 		if (gamePhase_ == GamePhase::PLAYING)
 		{
-			demoSurvivalTimer_ += dt;
-
-			// 1. 通常飛行に入って約1.6秒後：自機前方から敵弾が高速飛来
-			if (demoSurvivalTimer_ >= 1.6f && !demoBulletSpawned_)
+			// 生き生きとした自動飛行（左右・上下へのスウェー移動＋バレルロール回避）
+			if (player_)
 			{
-				demoBulletSpawned_ = true;
-				if (player_ && services->GetObject3dCommon())
+				bool inFinisher = (bossFinisherSequence_ && bossFinisherSequence_->IsActive());
+				float moveAmpX = inFinisher ? 0.45f : 0.85f;
+				float moveAmpY = inFinisher ? 0.25f : 0.45f;
+				float moveX = std::sin(demoTimer_ * 2.2f) * moveAmpX;
+				float moveY = std::sin(demoTimer_ * 1.5f + 0.6f) * moveAmpY;
+				bool rollNow = false;
+				if (!inFinisher && bossBattleStep_ == BossBattleStep::BATTLE && armoredTrainBoss_ && armoredTrainBoss_->IsCloseToPlayer() && !demoHitTriggered_ && demoSurvivalTimer_ >= 0.5f)
 				{
-					Vector3 pPos = player_->GetWorldPosition();
-					Vector3 spawnPos = pPos + Vector3{ 2.5f, 1.5f, 75.0f };
-					Vector3 toPlayer = pPos - spawnPos;
-					float len = std::sqrt(toPlayer.x * toPlayer.x + toPlayer.y * toPlayer.y + toPlayer.z * toPlayer.z);
-					Vector3 vel = { 0.0f, 0.0f, -80.0f };
-					if (len > 0.001f)
+					demoHitTriggered_ = true; // デモ用バレルロール1回トリガーとして使用
+					rollNow = true;
+				}
+				player_->SetDemoInputOverride(true, moveX, moveY, rollNow, 1.0f);
+			}
+			demoTimer_ += dt;
+
+			if (bossBattleStep_ == BossBattleStep::NOT_ACTIVE)
+			{
+				// 39%位置から開始後、すぐにボス戦へ移行
+				demoSurvivalTimer_ += dt;
+				if (demoSurvivalTimer_ >= 0.45f)
+				{
+					demoSurvivalTimer_ = 0.0f;
+					StartBossWarningSequence();
+				}
+			}
+			else if (bossBattleStep_ == BossBattleStep::BATTLE && armoredTrainBoss_ && armoredTrainBoss_->IsActive() &&
+				(!bossFinisherSequence_ || (!bossFinisherSequence_->IsActive() && !bossFinisherSequence_->IsCompleted())))
+			{
+				// ボスがカメラ前方（並走位置）にしっかり映ってからタイマーを進める
+				if (armoredTrainBoss_->IsCloseToPlayer())
+				{
+					demoSurvivalTimer_ += dt;
+				}
+				// ボスがカメラ前に現れてから1.2秒後（ロール回避後）に先頭車両へ向けて通常弾を発射（1発命中でHP1処刑条件へ移行）
+				if (demoSurvivalTimer_ >= 1.2f && !demoBulletSpawned_)
+				{
+					demoBulletSpawned_ = true;
+					demoSurvivalTimer_ = 1.0f; // 万一外れた場合は0.5秒後に再射撃
+					if (player_ && services->GetObject3dCommon())
 					{
-						vel = { (toPlayer.x / len) * 90.0f, (toPlayer.y / len) * 90.0f, (toPlayer.z / len) * 90.0f };
+						Vector3 pPos = player_->GetWorldPosition();
+						Vector3 targetPos = armoredTrainBoss_->GetCarriagePosition(0) + Vector3{ 0.0f, 7.0f, 0.0f };
+						Vector3 dir = targetPos - pPos;
+						float len = dir.Length();
+						Vector3 vel = (len > 0.001f) ? (dir / len) * 12.0f : Vector3{ 0.0f, 0.0f, 12.0f };
+						auto b = std::make_unique<PlayerBullet>();
+						b->Initialize(services->GetObject3dCommon(), pPos, vel, nullptr);
+						bullets_.push_back(std::move(b));
+						SoundManager::GetInstance()->PlaySE("shot.wav", 0.5f);
 					}
-					auto b = std::make_unique<EnemyBullet>();
-					b->Initialize(services->GetObject3dCommon(), spawnPos, vel, false, player_.get());
-					enemyBullets_.push_back(std::move(b));
 				}
-			}
-
-			// 2. 通常飛行に入って約2.3秒後：敵弾が直撃してHPが0になりゲームオーバー演出開始！
-			if (demoSurvivalTimer_ >= 2.3f && !demoHitTriggered_)
-			{
-				demoHitTriggered_ = true;
-				if (player_)
+				if (demoBulletSpawned_ && demoSurvivalTimer_ >= 1.5f)
 				{
-					// 直撃した敵弾を消去
-					enemyBullets_.clear();
-
-					// ユーザー要望により被弾時のパーティクルエフェクトは一旦非表示
-					// hitEffect_.SetPosition(pPos); hitEffect_.Play();
-					// explosionEffect_.SetPosition(pPos); explosionEffect_.Play();
-
-					SoundManager::GetInstance()->PlaySE("explosion.mp3", 0.85f);
-					cameraShakeTimer_ = 8.0f;
-					player_->SetHp(0);
-					StartGameOverSequence();
+					demoBulletSpawned_ = false;
 				}
 			}
+		}
+		else if (player_)
+		{
+			player_->SetDemoInputOverride(false);
 		}
 	}
 	else
 	{
+		if (player_)
+		{
+			if (player_->IsGodMode()) player_->SetGodMode(false);
+			player_->SetDemoInputOverride(false);
+		}
 		demoSurvivalTimer_ = 0.0f;
 		demoBulletSpawned_ = false;
 		demoHitTriggered_ = false;
@@ -1602,9 +1742,26 @@ void GamePlayScene::Update()
 					railCameraController_->SetSpeedMultiplier(0.0f);
 				}
 			}
-			else if (missionStartTextTimer_ > 0.0f)
+			else if (gamePhase_ == GamePhase::PLAYING)
 			{
-				missionStartTextTimer_ -= dt;
+				if (missionStartTextTimer_ > 0.0f)
+				{
+					missionStartTextTimer_ -= dt;
+				}
+				// ステージ全体経過時間の計測（処刑ムービー突入前まで）
+				if (bossFinisherSequence_ && bossFinisherSequence_->IsMoviePhase())
+				{
+					// 電脳処刑フィニッシャーの黒帯ムービー中はレール進行を完全停止し、カメラを一切動かさない
+					unscaledGameSpeed = 0.0f;
+					if (railCameraController_)
+					{
+						railCameraController_->SetSpeedMultiplier(0.0f);
+					}
+				}
+				else
+				{
+					stageElapsedTime_ += dt;
+				}
 			}
 
 			// ブースト時の動的FOV拡大演出（通常66度 → ブースト時76度へ滑らかに補間）
@@ -1651,9 +1808,9 @@ void GamePlayScene::Update()
 			if (railCameraController_)
 			{
 				Vector3 cameraTrackPos = player_->GetTranslate();
-				if (gamePhase_ == GamePhase::CLEAR)
+				if (gamePhase_ == GamePhase::CLEAR || (bossFinisherSequence_ && bossFinisherSequence_->IsMoviePhase()))
 				{
-					// クリア演出中は自機が上空奥へ離脱するため、レールカメラ更新用の自機位置を固定して過度な追従を防止
+					// クリア演出・処刑ムービー中は自機が移動してもレールカメラを動かさない
 					cameraTrackPos = clearStartPlayerPos_;
 				}
 				railCameraController_->Update(gameSpeed_, cameraTrackPos);
@@ -1815,7 +1972,7 @@ void GamePlayScene::Update()
 			enemy->Update(cameraPos, cameraForward, player_.get(), enemyBullets_, gameSpeed_);
 		}
 
-		if (armoredTrainBoss_ && isBossSpawned_)
+		if (armoredTrainBoss_ && (isBossSpawned_ || (bossFinisherSequence_ && bossFinisherSequence_->IsActive())))
 		{
 			Vector3 camPos = activeCamera_ ? activeCamera_->GetTranslate() : Vector3{ 0,0,0 };
 			float playerSpeed = 50.0f;
@@ -1823,7 +1980,10 @@ void GamePlayScene::Update()
 			{
 				playerSpeed = railCameraController_->GetBaseSpeed() * railCameraController_->GetSpeedMultiplier();
 			}
-			armoredTrainBoss_->Update(camPos, cameraForward, playerSpeed, player_.get(), enemyBullets_, gameSpeed_);
+			// 処刑ムービー中はレール進行停止のため gameSpeed_ が 0 になるが、
+			// ボスのグリッチ演出と瀕死パーティクル（criticalParticles_）は動かし続ける
+			float bossGameSpeed = (bossFinisherSequence_ && bossFinisherSequence_->IsMoviePhase()) ? (dt * 60.0f) : gameSpeed_;
+			armoredTrainBoss_->Update(camPos, cameraForward, playerSpeed, player_.get(), enemyBullets_, bossGameSpeed);
 		}
 
 		#if 1
@@ -1904,10 +2064,14 @@ void GamePlayScene::Update()
 
 		colCtx.hitEffect = &hitEffect_;
 		colCtx.explosionEffect = &explosionEffect_;
+		colCtx.onSpawnVoxelHit = [this](const Vector3& pos, int count, float minSz, float maxSz) {
+			SpawnVoxelHitParticles(pos, count, minSz, maxSz);
+		};
 		colCtx.dodgeEffect = &dodgeEffect_;
 		colCtx.ringEffect = &ringEffect_;
 		colCtx.healRingEffect = &healRingEffect_;
 
+		colCtx.isDemoMode = (services && services->IsDemoMode());
 		colCtx.score = &score_;
 		colCtx.cameraShakeTimer = &cameraShakeTimer_;
 		colCtx.isJustDodgeActive = &isJustDodgeActive_;
@@ -1928,6 +2092,7 @@ void GamePlayScene::Update()
 		};
 
 		colCtx.onEnemyKilled = [this](const Vector3& pos, int addScore) {
+			++killedEnemiesCount_;
 			// 1. 敵撃破時のごくわずかな微小カメラシェイク（1〜2フレームだけ数ピクセル振動）
 			enemyKillShakeFrames_ = 2;
 			// 2. 敵撃破座標にスコア加算ポップアップ演出を登録
@@ -2209,9 +2374,9 @@ void GamePlayScene::Update()
 					thrusterEffect_.SetBaseColor({ 1.0f, 0.55f, 0.1f, 1.0f });
 				}
 			}
-			else if (gamePhase_ == GamePhase::PLAYING)
+			else if (gamePhase_ == GamePhase::PLAYING || (gamePhase_ == GamePhase::CLEAR && player_->IsVisible()))
 			{
-				// 通常プレイ時
+				// 通常プレイ時およびクリア演出・リザルト背景飛行時
 				shouldEmitThruster = true;
 				// 巡航時はクールな高エネルギーシアンブルー、ブースト時やロール回避時はブレイジングオレンジ
 				if (player_->IsBoosting() || player_->IsRolling())
@@ -2245,6 +2410,34 @@ void GamePlayScene::Update()
 		dodgeEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
 		trailEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
 		missileSmokeEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
+		for (auto it = voxelHitParticles_.begin(); it != voxelHitParticles_.end(); )
+		{
+			auto& vp = *it;
+			vp.life += dt;
+			if (vp.life >= vp.maxLife)
+			{
+				it = voxelHitParticles_.erase(it);
+				continue;
+			}
+			vp.position = vp.position + vp.velocity * dt;
+			vp.rotation = vp.rotation + vp.rotSpeed * dt;
+			vp.velocity.x *= (1.0f - 2.6f * dt);
+			vp.velocity.y *= (1.0f - 2.6f * dt);
+			vp.velocity.z *= (1.0f - 2.6f * dt);
+			float lifeRatio = std::clamp(vp.life / vp.maxLife, 0.0f, 1.0f);
+			// くすみを防ぐためアルファは1.0fを保ち、スケール縮小のみで消滅させる
+			float scaleFade = 1.0f - lifeRatio * lifeRatio;
+			vp.color.w = 1.0f;
+			if (vp.obj)
+			{
+				vp.obj->SetTranslate(vp.position);
+				vp.obj->SetRotation(vp.rotation);
+				vp.obj->SetColor(vp.color);
+				vp.obj->SetScale({ vp.scale.x * scaleFade, vp.scale.y * scaleFade, vp.scale.z * scaleFade });
+				vp.obj->Update();
+			}
+			++it;
+		}
 		ringEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
 		healRingEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
 
@@ -2382,9 +2575,9 @@ void GamePlayScene::Update()
 		}
 		UITextManager::GetInstance()->SetHudAlpha(hudAlpha);
 	}
-	else if (gamePhase_ == GamePhase::GAMEOVER || gamePhase_ == GamePhase::CLEAR)
+	else if (gamePhase_ == GamePhase::GAMEOVER || gamePhase_ == GamePhase::CLEAR || (bossFinisherSequence_ && bossFinisherSequence_->IsMoviePhase()))
 	{
-		// ゲームオーバー・ゲームクリア中はゲーム中HUDを完全非表示
+		// ゲームオーバー・ゲームクリア・処刑黒帯ムービー中はゲーム中HUDを完全非表示
 		UITextManager::GetInstance()->SetHudAlpha(0.0f);
 	}
 	else
@@ -2395,9 +2588,10 @@ void GamePlayScene::Update()
 	// UIテキストの動的更新 (スコア、ロックオン数、HP)
 	if (player_)
 	{
-		if (gamePhase_ == GamePhase::GAMEOVER || gamePhase_ == GamePhase::CLEAR || gamePhase_ == GamePhase::START_CUTSCENE)
+		bool isFinisherMovie = (bossFinisherSequence_ && bossFinisherSequence_->IsMoviePhase());
+		if (gamePhase_ == GamePhase::GAMEOVER || gamePhase_ == GamePhase::CLEAR || gamePhase_ == GamePhase::START_CUTSCENE || isFinisherMovie)
 		{
-			// ゲームオーバー・ゲームクリア・スタート演出中はHUDテキストをクリア（非表示）
+			// ゲームオーバー・ゲームクリア・スタート演出中・処刑ムービー中は通常HUDテキストをクリア（非表示）
 			UITextManager::GetInstance()->SetText("Score", "");
 			UITextManager::GetInstance()->SetText("LockOn", "");
 			UITextManager::GetInstance()->SetText("PlayerHP", "");
@@ -2412,38 +2606,47 @@ void GamePlayScene::Update()
 			char weaponStr[64] = "";
 			Vector4 weaponColor = { 1.0f, 1.0f, 1.0f, 1.0f };
 
-			MemoryType memType = player_->GetEquippedMemoryType();
-			int currentAmmo = player_->GetWeaponAmmo();
-			int maxAmmo = player_->GetWeaponMaxAmmo();
-
-			switch (memType)
+			if (bossFinisherSequence_ && bossFinisherSequence_->IsActive() && bossFinisherSequence_->IsRedMemoryAbsorbed())
 			{
-			case MemoryType::BOMB:
-				snprintf(weaponStr, sizeof(weaponStr), "ボム: %d/%d", currentAmmo, maxAmmo);
-				weaponColor = { 1.0f, 0.2f, 0.2f, 1.0f }; // ネオンレッド
-				break;
-			case MemoryType::CYBER_BIT:
-			case MemoryType::FUNNEL:
-				snprintf(weaponStr, sizeof(weaponStr), "ファンネル: %d/%d", currentAmmo, maxAmmo);
-				weaponColor = { 1.0f, 0.65f, 0.12f, 1.0f }; // エレクトリックオレンジ/ゴールド
-				break;
-			case MemoryType::SPREAD:
-				snprintf(weaponStr, sizeof(weaponStr), "拡散弾: %d/%d", currentAmmo, maxAmmo);
-				weaponColor = { 0.2f, 1.0f, 0.35f, 1.0f }; // ネオングリーン
-				break;
-			case MemoryType::CHARGE_SHOT:
-				snprintf(weaponStr, sizeof(weaponStr), "チャージ: %d/%d", currentAmmo, maxAmmo);
-				weaponColor = { 1.0f, 0.95f, 0.15f, 1.0f }; // ネオンイエロー
-				break;
-			case MemoryType::LASER_BEAM:
-				snprintf(weaponStr, sizeof(weaponStr), "レーザー: %d/%d", currentAmmo, maxAmmo);
-				weaponColor = { 0.2f, 0.6f, 1.0f, 1.0f }; // ディープブルー
-				break;
-			case MemoryType::NONE:
-			default:
-				snprintf(weaponStr, sizeof(weaponStr), "通常弾: ∞/∞");
-				weaponColor = { 0.4f, 0.9f, 1.0f, 1.0f }; // ネオンシアン
-				break;
+				int execAmmo = bossFinisherSequence_->HasFiredMissiles() ? 0 : 4;
+				snprintf(weaponStr, sizeof(weaponStr), "処刑弾: %d/4", execAmmo);
+				weaponColor = { 1.0f, 0.15f, 0.35f, 1.0f }; // 処刑赤メモリカラー
+			}
+			else
+			{
+				MemoryType memType = player_->GetEquippedMemoryType();
+				int currentAmmo = player_->GetWeaponAmmo();
+				int maxAmmo = player_->GetWeaponMaxAmmo();
+
+				switch (memType)
+				{
+				case MemoryType::BOMB:
+					snprintf(weaponStr, sizeof(weaponStr), "ボム: %d/%d", currentAmmo, maxAmmo);
+					weaponColor = { 1.0f, 0.2f, 0.2f, 1.0f }; // ネオンレッド
+					break;
+				case MemoryType::CYBER_BIT:
+				case MemoryType::FUNNEL:
+					snprintf(weaponStr, sizeof(weaponStr), "ファンネル: %d/%d", currentAmmo, maxAmmo);
+					weaponColor = { 1.0f, 0.65f, 0.12f, 1.0f }; // エレクトリックオレンジ/ゴールド
+					break;
+				case MemoryType::SPREAD:
+					snprintf(weaponStr, sizeof(weaponStr), "拡散弾: %d/%d", currentAmmo, maxAmmo);
+					weaponColor = { 0.2f, 1.0f, 0.35f, 1.0f }; // ネオングリーン
+					break;
+				case MemoryType::CHARGE_SHOT:
+					snprintf(weaponStr, sizeof(weaponStr), "チャージ: %d/%d", currentAmmo, maxAmmo);
+					weaponColor = { 1.0f, 0.95f, 0.15f, 1.0f }; // ネオンイエロー
+					break;
+				case MemoryType::LASER_BEAM:
+					snprintf(weaponStr, sizeof(weaponStr), "レーザー: %d/%d", currentAmmo, maxAmmo);
+					weaponColor = { 0.2f, 0.6f, 1.0f, 1.0f }; // ディープブルー
+					break;
+				case MemoryType::NONE:
+				default:
+					snprintf(weaponStr, sizeof(weaponStr), "通常弾: ∞/∞");
+					weaponColor = { 0.4f, 0.9f, 1.0f, 1.0f }; // ネオンシアン
+					break;
+				}
 			}
 
 			UITextManager::GetInstance()->SetText("LockOn", weaponStr);
@@ -2504,6 +2707,16 @@ void GamePlayScene::Update()
 		if (ImGui::Button("全画面プレイ (F1)", ImVec2(-1, 28)))
 		{
 			EngineServices::GetInstance()->SetEditorMode(false);
+		}
+		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.85f, 0.22f, 0.22f, 1.0f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 0.35f, 0.35f, 1.0f));
+		if (ImGui::Button("★ 大砲演出テスト (TimeOver Cannon)", ImVec2(-1, 28)))
+		{
+			TriggerTimeOverCannonSequence(true);
+		}
+		ImGui::PopStyleColor(2);
+		if (false)
+		{
 		}
 
 		// オーディオ・ミュートコントロール
@@ -2633,6 +2846,72 @@ void GamePlayScene::Update()
 					ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.2f, 1.0f), "クリア進行中 (Timer: %.2fs)", clearTotalTimer_);
 				}
 
+				ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.55f, 0.12f, 0.35f, 1.0f));
+				ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.75f, 0.20f, 0.50f, 1.0f));
+				if (ImGui::Button("【処刑テスト】ボスHPを1にする（処刑可能化 & プレイヤー射撃へ）", ImVec2(380, 34)))
+				{
+					isPlaying_ = true;
+					services->SetGamePlaying(true);
+
+					// オープニングカットシーン中だった場合も即座に全地形・自機を実体化
+					terrainMaterializeProgress_ = 1.0f;
+					playerReconstructAlpha_ = 1.0f;
+					reconstructShards_.clear();
+					for (auto& model : modelInstances) { if (model) model->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f }); }
+					for (auto& obstacle : obstacles_) { if (obstacle && obstacle->GetObject3d()) obstacle->GetObject3d()->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f }); }
+					if (player_)
+					{
+						player_->SetDead(false);
+						player_->SetCutsceneOverride(false);
+						player_->SetCutsceneBoosting(false);
+						player_->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+						player_->SetVisible(true);
+					}
+					if (railCameraController_)
+					{
+						railCameraController_->SetCinematicCamera(false, { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f }, 0.0f);
+						railCameraController_->SetBaseSpeed(50.0f);
+						railCameraController_->SetSpeedMultiplier(1.0f);
+					}
+
+					gamePhase_ = GamePhase::PLAYING;
+					bool wasNotSpawned = (!isBossSpawned_ || bossBattleStep_ == BossBattleStep::NOT_ACTIVE);
+					isBossSpawned_ = true;
+					bossBattleStep_ = BossBattleStep::BATTLE;
+					bossRemainingTime_ = bossTimeLimit_;
+
+					if (armoredTrainBoss_)
+					{
+						if (wasNotSpawned)
+						{
+							armoredTrainBoss_->ResetChaseState();
+							if (bossRail_ && bossRail_->IsValid())
+							{
+								if (railCameraController_ && railCameraController_->GetProgress() < bossSpawnProgressThreshold_)
+								{
+									railCameraController_->SetProgress(bossSpawnProgressThreshold_);
+								}
+								armoredTrainBoss_->SetRail(bossRail_.get());
+								armoredTrainBoss_->SetRailProgress(0.12f);
+							}
+							else if (railCameraController_ && !mainRails_.empty())
+							{
+								float bCurProg = railCameraController_->GetProgress();
+								float bossProg = (std::min)(0.98f, bCurProg + 0.08f);
+								armoredTrainBoss_->SetRail(mainRails_[0].get());
+								armoredTrainBoss_->SetRailProgress(bossProg);
+							}
+						}
+						armoredTrainBoss_->SetHpToOneForExecution();
+						armoredTrainBoss_->SetActive(true);
+					}
+					if (bossFinisherSequence_)
+					{
+						bossFinisherSequence_->StartSequence(armoredTrainBoss_.get(), player_.get());
+					}
+				}
+				ImGui::PopStyleColor(2);
+
 				ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.45f, 0.20f, 0.20f, 1.0f));
 				ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.65f, 0.25f, 0.25f, 1.0f));
 				if (ImGui::Button("ゲームオーバー演出を再生 (Test GameOver)", ImVec2(240, 34)))
@@ -2740,6 +3019,11 @@ void GamePlayScene::Update()
 				if (doReset)
 				{
 					isPlaying_ = false;
+					gamePhase_ = GamePhase::PLAYING;
+					if (bossFinisherSequence_)
+					{
+						bossFinisherSequence_->Reset(player_.get());
+					}
 					if (railCameraController_)
 					{
 						railCameraController_->Reset();
@@ -2867,6 +3151,58 @@ void GamePlayScene::Update()
 		else if (currentNavIndex == 2)
 		{
 			ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "■ エネミー・装甲列車ボス (Enemy & Boss)");
+			ImGui::Separator();
+
+			// タイムオーバー演出テスト用パネル
+			if (ImGui::CollapsingHeader("【演出デバッグ】巨大主砲タイムオーバー砲撃テスト", ImGuiTreeNodeFlags_DefaultOpen))
+			{
+				ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.2f, 1.0f), "★ 自機拘束 -> 巨大主砲照準 -> チャージ球 -> 極太ビーム直撃爆破を再生");
+				
+				ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.85f, 0.2f, 0.2f, 1.0f));
+				ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 0.35f, 0.35f, 1.0f));
+				ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.7f, 0.1f, 0.1f, 1.0f));
+				if (ImGui::Button("【演出再生】タイムオーバー巨大砲撃を開始 (何度でも押せます)", ImVec2(-1, 38)))
+				{
+					TriggerTimeOverCannonSequence(isTimeOverDebugNonLethal_);
+				}
+				ImGui::PopStyleColor(3);
+
+				ImGui::Checkbox("非致死テスト（演出完了後に死なず、何度でも再確認可能）", &isTimeOverDebugNonLethal_);
+				ImGui::Checkbox("自動ループ再生（演出完了後に最初から自動リピート）", &isTimeOverDebugLoop_);
+
+				if (bossBattleStep_ == BossBattleStep::TIME_OVER_ATTACK)
+				{
+					float progress = std::clamp(bossTimeOverTimer_ / kBossTimeOverDuration, 0.0f, 1.0f);
+					char buf[64];
+					snprintf(buf, sizeof(buf), "砲撃演出再生中: %.1f秒 / %.1f秒", bossTimeOverTimer_, kBossTimeOverDuration);
+					ImGui::ProgressBar(progress, ImVec2(-1, 24), buf);
+
+					if (ImGui::Button("演出を中断して通常戦闘に戻す (Cancel & Resume)", ImVec2(-1, 28)))
+					{
+						bossBattleStep_ = BossBattleStep::BATTLE;
+						bossRemainingTime_ = 60.0f;
+						bossTimeOverTimer_ = 0.0f;
+						isBossTimeOverFired_ = false;
+						isTimeOverDebugLoop_ = false;
+						if (player_)
+						{
+							player_->SetDead(false);
+							player_->SetHp(player_->GetMaxHp());
+							player_->SetEnableInput(true);
+						}
+					}
+				}
+			}
+			ImGui::Spacing();
+			ImGui::Separator();
+
+			// 電脳処刑フィニッシャー（クリア演出）デバッグUI
+			if (bossFinisherSequence_)
+			{
+				bossFinisherSequence_->DrawImGuiDebug(armoredTrainBoss_.get(), player_.get());
+			}
+
+			ImGui::Spacing();
 			ImGui::Separator();
 
 			if (ImGui::CollapsingHeader("装甲列車（中ボス）制御 (Armored Train Boss)", ImGuiTreeNodeFlags_DefaultOpen))
@@ -3025,7 +3361,15 @@ void GamePlayScene::Update()
 						bossWarningTimer_ = 0.0f;
 						bossDefeatTimer_ = 0.0f;
 						bossDisplayedHpRate_ = 1.0f;
-						if (armoredTrainBoss_) armoredTrainBoss_->SetActive(false);
+						if (armoredTrainBoss_)
+						{
+							armoredTrainBoss_->ResetChaseState();
+							armoredTrainBoss_->SetActive(false);
+						}
+						if (bossFinisherSequence_)
+						{
+							bossFinisherSequence_->Reset(player_.get());
+						}
 					}
 
 					if (armoredTrainBoss_)
@@ -3562,6 +3906,8 @@ void GamePlayScene::Update()
 			{
 				isPlaying_ = false;
 				services->SetGamePlaying(false);
+				gamePhase_ = GamePhase::PLAYING;
+				if (bossFinisherSequence_) bossFinisherSequence_->Reset(player_.get());
 				if (railCameraController_) railCameraController_->Reset();
 				ReloadEnemiesOnly();
 			}
@@ -3875,11 +4221,16 @@ void GamePlayScene::Draw()
 		}
 		enemy->Draw();
 	}
-	if (armoredTrainBoss_ && isBossSpawned_ && gameOverStep_ != GameOverStep::RETRY_DEMATERIALIZE)
+	if (armoredTrainBoss_ && (isBossSpawned_ || (bossFinisherSequence_ && bossFinisherSequence_->IsActive())) && gameOverStep_ != GameOverStep::RETRY_DEMATERIALIZE)
 	{
 		if (gamePhase_ != GamePhase::START_CUTSCENE || IsMaterializedAt(armoredTrainBoss_->GetPosition()))
 		{
 			armoredTrainBoss_->Draw();
+			if (bossBattleStep_ == BossBattleStep::TIME_OVER_ATTACK)
+			{
+				if (bossTimeOverChargeSphere_) bossTimeOverChargeSphere_->Draw();
+				if (bossTimeOverBeam_) bossTimeOverBeam_->Draw();
+			}
 		}
 	}
 	for (auto& obstacle : obstacles_)
@@ -4079,6 +4430,17 @@ void GamePlayScene::Draw()
 	dodgeEffect_.Draw();
 	trailEffect_.Draw();
 	missileSmokeEffect_.Draw();
+	if (!voxelHitParticles_.empty())
+	{
+		if (object3dCommon) object3dCommon->SetCommonDrawSetting();
+		for (const auto& vp : voxelHitParticles_)
+		{
+			if (vp.obj && vp.color.w > 0.01f)
+			{
+				vp.obj->Draw();
+			}
+		}
+	}
 	ringEffect_.Draw();
 	healRingEffect_.Draw();
 	// スピードライン（プレイヤーが前進飛行している時のみ描画）
@@ -4097,6 +4459,17 @@ void GamePlayScene::Draw()
 	{
 		TerrainCollisionDebugger::GetInstance()->SetDebugEnabled(false);
 	}
+
+	// 電脳フィニッシャー演出（弱点コア、ミサイル、崩壊シャード等）の3D描画
+	if (bossFinisherSequence_ && bossFinisherSequence_->IsActive())
+	{
+		auto services = EngineServices::GetInstance();
+		auto obj3dCommon = services ? services->GetObject3dCommon() : nullptr;
+		if (obj3dCommon) obj3dCommon->SetCommonDrawSetting();
+		auto srvMgr = services ? services->GetSrvManager() : nullptr;
+		if (srvMgr) srvMgr->PreDraw();
+		bossFinisherSequence_->Draw3D();
+	}
 }
 
 void GamePlayScene::DrawUI()
@@ -4107,8 +4480,9 @@ void GamePlayScene::DrawUI()
 	auto srvManager = services->GetSrvManager();
 	if (srvManager) srvManager->PreDraw();
 
-	// 通常プレイ時のみHPバー、ブーストバー、強化リングアイコンを描画（スタート演出中・ゲームオーバー・クリア時は非表示）
-	if (gamePhase_ == GamePhase::PLAYING)
+	// 通常プレイ時のみHPバー、ブーストバー、強化リングアイコンを描画（スタート演出中・ゲームオーバー・クリア時・処刑ムービー中は非表示）
+	bool isFinisherMovie = (bossFinisherSequence_ && bossFinisherSequence_->IsMoviePhase());
+	if (gamePhase_ == GamePhase::PLAYING && !isFinisherMovie)
 	{
 		// 強化リング獲得アイコン（ブーストゲージの上部に横2つ配置）
 		// 描画順: 中身 (ringGet_icon.png) を先に描き、その上から枠 (ringGet_icon_outline.png) を重ねて描画
@@ -4175,6 +4549,12 @@ void GamePlayScene::DrawUI()
 
 	// ポーズメニューUIの描画
 	DrawPauseUI();
+
+	// 電脳フィニッシャー演出用UIの描画
+	if (bossFinisherSequence_)
+	{
+		bossFinisherSequence_->DrawUI();
+	}
 }
 
 void GamePlayScene::StartOpeningCutscene()
@@ -4184,6 +4564,19 @@ void GamePlayScene::StartOpeningCutscene()
 	missionStartTextTimer_ = 0.0f;
 	terrainMaterializeProgress_ = 0.0f;
 	playerReconstructAlpha_ = 0.0f;
+
+	// 再スタート時に処刑演出およびクリア関連UIテキストを確実にリセット
+	if (bossFinisherSequence_)
+	{
+		bossFinisherSequence_->Reset(player_.get());
+	}
+	if (auto textMgr = UITextManager::GetInstance())
+	{
+		textMgr->SetVisible("ExecuteCritical", false, "GAMEPLAY");
+		textMgr->SetVisible("ExecuteGuide", false, "GAMEPLAY");
+		textMgr->SetVisible("MissionAccomplishedTitle", false, "GAMEPLAY");
+		textMgr->SetVisible("MissionAccomplishedSub", false, "GAMEPLAY");
+	}
 
 	// ポリゴン破片モデルのロード
 	auto modelMgr = ModelManager::GetInstance();
@@ -4340,6 +4733,13 @@ void GamePlayScene::StartOpeningCutscene()
 	// 初期カメラ：地面スレスレの超ローアングルから、眼前を走る光の波を見送るドラマチックな構図！
 	if (railCameraController_)
 	{
+		if (services && services->IsDemoMode())
+		{
+			// デモプレイ時はレールの進行度を 39% の位置から開始し、ミッションスタート直後にボス戦へ移行
+			railCameraController_->SetProgress(0.39f);
+			railCameraController_->Update(0.0f, { 0.0f, 0.0f, 0.0f });
+			if (player_) player_->SetGodMode(true);
+		}
 		Vector3 camLocalPos = { 2.0f, 0.45f, -12.0f };
 		Vector3 lookTarget = { 0.0f, 1.5f, 35.0f };
 		railCameraController_->SetCinematicCamera(true, camLocalPos, lookTarget, 1.0f);
@@ -4842,7 +5242,8 @@ void GamePlayScene::DrawCutsceneUI()
 	if (scale < 0.3f) scale = 0.3f;
 
 	// ===== 弾道予告ガイドライン（手前照準 / 銃口 -> 奥照準） =====
-	if (gamePhase_ == GamePhase::PLAYING && player_ && !player_->IsDead() && activeCamera_)
+	bool isFinisherMovie = (bossFinisherSequence_ && bossFinisherSequence_->IsMoviePhase());
+	if (gamePhase_ == GamePhase::PLAYING && !isFinisherMovie && player_ && !player_->IsDead() && activeCamera_)
 	{
 		Vector3 pStart = player_->GetFrontReticleWorldPosition();
 		Vector3 pEnd = player_->GetReticleWorldPosition();
@@ -6519,22 +6920,145 @@ void GamePlayScene::DrawGameOverUI()
 #endif
 }
 
+void GamePlayScene::SpawnVoxelHitParticles(const Vector3& worldPos, int count, float minSize, float maxSize)
+{
+	auto services = EngineServices::GetInstance();
+	Object3dCommon* object3dCommon = services ? services->GetObject3dCommon() : nullptr;
+	if (!object3dCommon) return;
+
+	// ボス（紫・マゼンタ・赤系）と明確に区別できるプレイヤー専用シアン／アイスブルーカラーのみを使用
+	auto PickPlayerCyberColor = [](int idx) -> Vector4 {
+		int p = idx % 3;
+		if (p == 0) return { 0.05f, 0.95f, 1.0f, 1.0f }; // 鮮烈ネオンシアン
+		if (p == 1) return { 0.40f, 0.94f, 1.0f, 1.0f }; // クリスタルアイスブルー
+		return { 0.85f, 0.98f, 1.0f, 1.0f };             // アイスホワイト
+	};
+
+	// カメラ向きの基底ベクトル（ボクセルで作るリング円がカメラから正面に見えやすいようにする）
+	Vector3 ringNormal = { 0.0f, 0.0f, -1.0f };
+	if (activeCamera_)
+	{
+		const Matrix4x4& cMat = activeCamera_->GetWorldMatrix();
+		Vector3 toCam = { cMat.m[3][0] - worldPos.x, cMat.m[3][1] - worldPos.y, cMat.m[3][2] - worldPos.z };
+		float len = toCam.Length();
+		if (len > 0.001f) ringNormal = toCam / len;
+	}
+	Vector3 upRef = (std::abs(ringNormal.y) < 0.9f) ? Vector3{ 0.0f, 1.0f, 0.0f } : Vector3{ 1.0f, 0.0f, 0.0f };
+	Vector3 ringRight = Vector3::Cross(upRef, ringNormal).Normalize();
+	Vector3 ringUp = Vector3::Cross(ringNormal, ringRight).Normalize();
+
+	// 1. ボクセルブロックで作る円形リング（着弾点から放射状に弾け広がる）
+	int ringCount = (count >= 24) ? 18 : 12;
+	float ringSpeed = (maxSize > 1.8f) ? 30.0f : 18.0f;
+	for (int i = 0; i < ringCount; ++i)
+	{
+		if (voxelHitParticles_.size() >= 420) break;
+		float theta = (6.2831853f * static_cast<float>(i)) / static_cast<float>(ringCount);
+		Vector3 radialDir = (ringRight * std::cos(theta) + ringUp * std::sin(theta)).Normalize();
+
+		VoxelHitParticle vp;
+		vp.obj = std::make_unique<Object3d>();
+		vp.obj->Initialize(object3dCommon);
+		vp.obj->SetModel("cube.obj");
+		vp.color = PickPlayerCyberColor(i);
+		vp.obj->SetColor(vp.color);
+		vp.obj->SetEnableLighting(false);
+		vp.obj->SetEnvironmentCoefficient(0.0f);
+		vp.obj->SetSelectLightings(10);
+
+		float sz = minSize * 0.85f;
+		vp.scale = { sz, sz, sz };
+		vp.obj->SetScale(vp.scale);
+		vp.position = worldPos + radialDir * 1.2f;
+		vp.velocity = radialDir * ringSpeed;
+		vp.rotation = { 0.0f, 0.0f, theta };
+		vp.rotSpeed = { 4.0f, 6.0f, 4.0f };
+		vp.life = 0.0f;
+		vp.maxLife = 0.50f;
+		vp.obj->SetTranslate(vp.position);
+		vp.obj->SetRotation(vp.rotation);
+		vp.obj->Update();
+		voxelHitParticles_.push_back(std::move(vp));
+	}
+
+	// 2. その周りから全方向へ花火のように弾けるボクセルブロック
+	int burstCount = count;
+	float minSpd = (maxSize > 1.8f) ? 16.0f : 10.0f;
+	float maxSpd = (maxSize > 1.8f) ? 44.0f : 26.0f;
+	for (int i = 0; i < burstCount; ++i)
+	{
+		if (voxelHitParticles_.size() >= 420) break;
+		float phi = static_cast<float>(rand() % 628) * 0.01f;
+		float cosT = (static_cast<float>(rand() % 200) - 100.0f) * 0.01f;
+		float sinT = std::sqrt((std::max)(0.0f, 1.0f - cosT * cosT));
+		Vector3 dir = { sinT * std::cos(phi), cosT, sinT * std::sin(phi) };
+
+		VoxelHitParticle vp;
+		vp.obj = std::make_unique<Object3d>();
+		vp.obj->Initialize(object3dCommon);
+		vp.obj->SetModel("cube.obj");
+		vp.color = PickPlayerCyberColor(rand());
+		vp.obj->SetColor(vp.color);
+		vp.obj->SetEnableLighting(false);
+		vp.obj->SetEnvironmentCoefficient(0.0f);
+		vp.obj->SetSelectLightings(10);
+
+		float tSz = static_cast<float>(rand() % 100) / 100.0f;
+		float sz = minSize + (maxSize - minSize) * tSz;
+		vp.scale = { sz, sz, sz };
+		vp.obj->SetScale(vp.scale);
+
+		float spd = minSpd + (maxSpd - minSpd) * (static_cast<float>(rand() % 100) / 100.0f);
+		vp.position = worldPos + dir * 0.8f;
+		vp.velocity = dir * spd;
+		vp.rotation = { (rand() % 628) * 0.01f, (rand() % 628) * 0.01f, (rand() % 628) * 0.01f };
+		vp.rotSpeed = {
+			((rand() % 100) - 50) * 0.14f,
+			((rand() % 100) - 50) * 0.14f,
+			((rand() % 100) - 50) * 0.14f
+		};
+		vp.life = 0.0f;
+		vp.maxLife = 0.48f + (rand() % 10) * 0.04f;
+		vp.obj->SetTranslate(vp.position);
+		vp.obj->SetRotation(vp.rotation);
+		vp.obj->Update();
+		voxelHitParticles_.push_back(std::move(vp));
+	}
+}
+
 void GamePlayScene::StartClearSequence()
 {
 	if (gamePhase_ != GamePhase::PLAYING) return;
 
+	bool fromFinisher = (bossFinisherSequence_ && bossFinisherSequence_->IsCompleted());
+
 	gamePhase_ = GamePhase::CLEAR;
-	clearStep_ = ClearStep::ASCENDING;
+	// 処刑フィニッシャー演出完了時は既に自機がカメラを横切って上空へ飛び立っているため、即座にクリアUI表示へ移行
+	clearStep_ = fromFinisher ? ClearStep::SHOW_UI : ClearStep::ASCENDING;
 	clearTimer_ = 0.0f;
 	clearTotalTimer_ = 0.0f;
-	clearAscentSpeed_ = 10.0f; // 上昇初速
+	clearAscentSpeed_ = fromFinisher ? 18.0f : 8.0f; // 上空へ高く上昇する初速
 
 	if (player_)
 	{
 		clearStartPlayerPos_ = player_->GetTranslate();
 		clearPlayerAscentPos_ = clearStartPlayerPos_;
 		clearPlayerAscentRot_ = player_->GetRotation();
-		player_->SetCutsceneOverride(true, clearPlayerAscentPos_, clearPlayerAscentRot_);
+		if (fromFinisher && player_->IsCutsceneUsingQuaternion())
+		{
+			// フィニッシャー演出のクォータニオン姿勢と上昇方向をそのまま引き継ぎ、切り替わり瞬間の一瞬傾きを防止
+			clearUseQuat_ = true;
+			clearQuat_ = player_->GetCutsceneQuaternion();
+			Matrix4x4 rotM = clearQuat_.ToMatrix();
+			Vector3 fwd = { rotM.m[2][0], rotM.m[2][1], rotM.m[2][2] };
+			clearMoveDir_ = (fwd.Length() > 0.001f) ? fwd.Normalize() : Vector3{ 0.0f, 0.45f, 0.89f };
+			player_->SetCutsceneOverrideQuaternion(true, clearPlayerAscentPos_, clearQuat_);
+		}
+		else
+		{
+			clearUseQuat_ = false;
+			player_->SetCutsceneOverride(true, clearPlayerAscentPos_, clearPlayerAscentRot_);
+		}
 		player_->Update3DObjectOnly();
 	}
 
@@ -6545,10 +7069,12 @@ void GamePlayScene::StartClearSequence()
 	if (railCameraController_)
 	{
 		railCameraController_->SetSpeedMultiplier(0.0f);
-		// 初期シネマティックカメラを設定（通常カメラ位置・注視点からシームレスに開始）
-		Vector3 camPos = { 0.0f, 2.5f, -8.0f };
-		Vector3 lookTarget = { 0.0f, clearStartPlayerPos_.y, clearStartPlayerPos_.z };
-		railCameraController_->SetCinematicCamera(true, camPos, lookTarget, 1.0f);
+		if (!railCameraController_->IsCinematicActive())
+		{
+			Vector3 camPos = { 0.0f, 2.5f, -8.0f };
+			Vector3 lookTarget = { 0.0f, clearStartPlayerPos_.y, clearStartPlayerPos_.z };
+			railCameraController_->SetCinematicCamera(true, camPos, lookTarget, 1.0f);
+		}
 	}
 
 	// 画面揺れ停止
@@ -6560,6 +7086,8 @@ void GamePlayScene::UpdateClearSequence(float dt)
 	clearTimer_ += dt;
 	clearTotalTimer_ += dt;
 
+	bool fromFinisher = (bossFinisherSequence_ && bossFinisherSequence_->IsCompleted());
+
 	// カメラ前進は完全停止を維持
 	if (railCameraController_)
 	{
@@ -6568,59 +7096,84 @@ void GamePlayScene::UpdateClearSequence(float dt)
 		retryStartRailIndex_ = railCameraController_->GetCurrentRailIndex();
 	}
 
-	// 自機の上昇・加速・姿勢制御
-	clearAscentSpeed_ += 40.0f * dt; // ぐんぐん加速
-	// 機首を上向きに傾ける（-0.5rad ≒ -28度）
-	clearPlayerAscentRot_.x += (-0.5f - clearPlayerAscentRot_.x) * (3.0f * dt);
-	// ロールとヨーを水平に復元
-	clearPlayerAscentRot_.y += (0.0f - clearPlayerAscentRot_.y) * (4.0f * dt);
-	clearPlayerAscentRot_.z += (0.0f - clearPlayerAscentRot_.z) * (4.0f * dt);
-
-	// 位置更新（上空＋前方へ加速上昇）
-	clearPlayerAscentPos_.y += (clearAscentSpeed_ * 0.85f) * dt;
-	clearPlayerAscentPos_.z += (clearAscentSpeed_ * 1.35f) * dt;
-
-	if (player_)
+	// 自機の上昇・加速・姿勢制御（ある程度上昇したら上昇を止めて非表示にする）
+	const float kAscentHideTime = fromFinisher ? 3.2f : 4.5f;
+	if (clearTotalTimer_ >= kAscentHideTime)
 	{
-		player_->SetCutsceneOverride(true, clearPlayerAscentPos_, clearPlayerAscentRot_);
-		player_->Update3DObjectOnly();
-
-		// スラスターエフェクト（ジェット排気）を自機後方に噴射
-		Vector3 pWorld = player_->GetWorldPosition();
-		thrusterEffect_.SetPosition(pWorld);
-		thrusterEffect_.Play();
+		if (player_)
+		{
+			player_->SetVisible(false);
+		}
+	}
+	else
+	{
+		clearAscentSpeed_ += 4.5f * dt;
+		if (clearUseQuat_)
+		{
+			clearPlayerAscentPos_ = clearPlayerAscentPos_ + clearMoveDir_ * (clearAscentSpeed_ * dt);
+			if (player_)
+			{
+				player_->SetCutsceneOverrideQuaternion(true, clearPlayerAscentPos_, clearQuat_);
+				player_->Update3DObjectOnly();
+			}
+		}
+		else
+		{
+			clearPlayerAscentRot_.x += (-0.5f - clearPlayerAscentRot_.x) * (3.0f * dt);
+			clearPlayerAscentRot_.y += (0.0f - clearPlayerAscentRot_.y) * (4.0f * dt);
+			clearPlayerAscentRot_.z += (0.0f - clearPlayerAscentRot_.z) * (4.0f * dt);
+			clearPlayerAscentPos_.y += (clearAscentSpeed_ * 0.65f) * dt;
+			clearPlayerAscentPos_.z += (clearAscentSpeed_ * 1.15f) * dt;
+			if (player_)
+			{
+				player_->SetCutsceneOverride(true, clearPlayerAscentPos_, clearPlayerAscentRot_);
+				player_->Update3DObjectOnly();
+			}
+		}
 	}
 
-	// === クリア演出のカメラワーク ===
-	// 自機の上昇に合わせてカメラも少し持ち上げ、見上げるが、ある程度（見上げ角度約-18度）上がったら回転・移動を完全に停止・固定する
 	if (railCameraController_)
 	{
-		// カメラ位置: 初期位置 {0, 2.5, -8} から自機の上昇に合わせて少し上 {0, 4.0, -9.0} へ滑らかに持ち上げる（通算タイマーで計算し、UI表示時も巻き戻らない！）
-		float camRiseT = std::clamp(clearTotalTimer_ / 0.8f, 0.0f, 1.0f);
-		float smoothRise = camRiseT * camRiseT * (3.0f - 2.0f * camRiseT); // SmoothStep
-		Vector3 camPos = {
-			0.0f,
-			2.5f + 1.5f * smoothRise,  // 2.5m -> 4.0m に少し上昇
-			-8.0f - 1.0f * smoothRise  // わずかに引いて飛び去る機体を綺麗に画角に収める
-		};
+		if (fromFinisher)
+		{
+			// 処刑フィニッシャー完了時（SHOW_UI 〜 RESULT_PANEL）：
+			// 上昇していく自機をそのままのカメラ位置・向きから見送り続ける
+			Vector3 curCam = railCameraController_->GetCinematicLocalPos();
+			Vector3 curLook = railCameraController_->GetCinematicLookAt();
+			railCameraController_->SetCinematicCamera(true, curCam, curLook, 1.0f);
+		}
+		else
+		{
+			float camRiseT = std::clamp(clearTotalTimer_ / 1.1f, 0.0f, 1.0f);
+			float smoothRise = camRiseT * camRiseT * (3.0f - 2.0f * camRiseT); // SmoothStep
 
-		// 注視点: 自機の上昇に合わせて上を向くが、上限（初期Y + 8.5m）に達したらピタッと停止して固定！
-		float maxLookUpY = clearStartPlayerPos_.y + 8.5f;
-		float maxLookZ = clearStartPlayerPos_.z + 12.0f;
-		float currentLookY = std::min(maxLookUpY, clearStartPlayerPos_.y + (clearPlayerAscentPos_.y - clearStartPlayerPos_.y) * 0.7f);
-		float currentLookZ = std::min(maxLookZ, clearStartPlayerPos_.z + (clearPlayerAscentPos_.z - clearStartPlayerPos_.z) * 0.35f);
+			Vector3 targetCamPos = {
+				0.0f,
+				2.5f + 1.5f * smoothRise,
+				-8.0f - 1.0f * smoothRise
+			};
 
-		Vector3 lookTarget = { 0.0f, currentLookY, currentLookZ };
+			float maxLookUpY = clearStartPlayerPos_.y + 9.5f;
+			float maxLookZ = clearStartPlayerPos_.z + 12.0f;
+			float currentLookY = (std::min)(maxLookUpY, clearStartPlayerPos_.y + (clearPlayerAscentPos_.y - clearStartPlayerPos_.y) * 0.72f);
+			float currentLookZ = (std::min)(maxLookZ, clearStartPlayerPos_.z + (clearPlayerAscentPos_.z - clearStartPlayerPos_.z) * 0.35f);
+			Vector3 targetLook = { 0.0f, currentLookY, currentLookZ };
 
-		// シネマティックカメラとして適用（ブレンド率1.0で完全制御）
-		railCameraController_->SetCinematicCamera(true, camPos, lookTarget, 1.0f);
+			Vector3 curCam = railCameraController_->GetCinematicLocalPos();
+			Vector3 curLook = railCameraController_->GetCinematicLookAt();
+			float lerpRate = std::clamp(dt * 5.5f, 0.0f, 1.0f);
+			Vector3 nextCam = curCam + (targetCamPos - curCam) * lerpRate;
+			Vector3 nextLook = curLook + (targetLook - curLook) * lerpRate;
+
+			railCameraController_->SetCinematicCamera(true, nextCam, nextLook, 1.0f);
+		}
 	}
 
 	switch (clearStep_)
 	{
 	case ClearStep::ASCENDING:
 	{
-		// 1.5秒ほど上昇したらUI表示ステップへ
+		// 1.5秒ほど上昇したら「任務完了」UI表示ステップへ
 		if (clearTimer_ >= 1.5f)
 		{
 			clearStep_ = ClearStep::SHOW_UI;
@@ -6630,19 +7183,41 @@ void GamePlayScene::UpdateClearSequence(float dt)
 	}
 	case ClearStep::SHOW_UI:
 	{
-		// UI表示後、0.5秒の余韻を置いてからSPACE / ENTER 入力受付
-		if (clearTimer_ >= 0.5f)
+		// フェーズ4（5.2s〜7.5s）：約2.3秒間「MISSION ACCOMPLISHED / 任務完了」を表示後、リザルトパネルへ
+		if (clearTimer_ >= 2.3f)
+		{
+			clearStep_ = ClearStep::RESULT_PANEL;
+			clearTimer_ = 0.0f;
+			SoundManager::GetInstance()->PlaySE("select.mp3", 0.75f);
+		}
+		break;
+	}
+	case ClearStep::RESULT_PANEL:
+	{
+		// 総合ランク確定スタンプ演出SE（1.35sに1回再生）
+		static bool s_rankStampPlayed = false;
+		if (clearTimer_ < 0.1f) s_rankStampPlayed = false;
+		if (clearTimer_ >= 1.35f && !s_rankStampPlayed)
+		{
+			s_rankStampPlayed = true;
+			SoundManager::GetInstance()->PlaySE("button.mp3", 0.85f);
+		}
+
+		// 全項目＆ランク表示後、SPACE / ENTER / パッドAでシャットダウン遷移（CRT_Off）してタイトルへ復帰
+		// デモプレイ時はリザルト表示後（4.2秒後）に自動でタイトルへ復帰
+		auto services = EngineServices::GetInstance();
+		bool isDemoAutoReturn = (services && services->IsDemoMode() && clearTimer_ >= 4.2f);
+		if (clearTimer_ >= 1.65f)
 		{
 			auto sceneManager = GetSceneManager();
 			if (sceneManager && !sceneManager->IsTransitioning())
 			{
-				auto input = EngineServices::GetInstance()->GetInput();
-				if (input)
+				auto input = services ? services->GetInput() : nullptr;
+				if (isDemoAutoReturn || (input && (input->TriggerKey(DIK_SPACE) || input->TriggerKey(DIK_RETURN) || input->TriggerPadButton(XINPUT_GAMEPAD_A))))
 				{
-					if (input->TriggerKey(DIK_SPACE) || input->TriggerKey(DIK_RETURN))
-					{
-						sceneManager->ChangeScene("TITLE", 0.6f);
-					}
+					SoundManager::GetInstance()->StopBGM();
+					SoundManager::GetInstance()->PlaySE("button.mp3", 0.7f);
+					sceneManager->ChangeScene("TITLE", 0.90f, { 0.0f, 0.0f, 0.0f, 1.0f }, TransitionType::CRT_Off);
 				}
 			}
 		}
@@ -6719,11 +7294,23 @@ void GamePlayScene::DrawClearUI()
 	if (scale < 0.3f) scale = 0.3f;
 
 	// === 上下の映画風黒帯（シネマスコープ・レターボックス） ===
+	// ※黒帯が出ているムービー中（ASCENDING）はUIを一切表示せず、UI表示ステップ（SHOW_UI）で黒帯を収納
 	float barHeightMax = screenH * 0.12f;
 	float barProgress = 1.0f;
 	if (clearStep_ == ClearStep::ASCENDING)
 	{
-		barProgress = std::clamp(clearTimer_ / 0.8f, 0.0f, 1.0f);
+		bool fromFinisher = (bossFinisherSequence_ && bossFinisherSequence_->IsCompleted());
+		barProgress = fromFinisher ? 1.0f : std::clamp(clearTimer_ / 0.4f, 0.0f, 1.0f);
+	}
+	else if (clearStep_ == ClearStep::SHOW_UI)
+	{
+		// 任務完了のUIが出ている間は黒帯を出したまま維持
+		barProgress = 1.0f;
+	}
+	else if (clearStep_ == ClearStep::RESULT_PANEL)
+	{
+		// リザルト画面時は黒帯なし
+		barProgress = 0.0f;
 	}
 	float barHeight = barHeightMax * barProgress;
 	if (barHeight > 0.5f)
@@ -6732,101 +7319,284 @@ void GamePlayScene::DrawClearUI()
 		drawList->AddRectFilled(ImVec2(viewPos.x, viewPos.y + screenH - barHeight), ImVec2(viewPos.x + screenW, viewPos.y + screenH), IM_COL32(0, 0, 0, static_cast<int>(255 * transitionAlpha)));
 	}
 
+	auto imguiManager = EngineServices::GetInstance()->GetImGuiManager();
+	ImFont* fontMplus = imguiManager ? imguiManager->GetFont(ImGuiManager::FontType::Japanese_MPLUS) : ImGui::GetFont();
+	if (!fontMplus) fontMplus = ImGui::GetFont();
+	ImFont* fontMono = imguiManager ? imguiManager->GetFont(ImGuiManager::FontType::English_FiraMono) : fontMplus;
+	if (!fontMono) fontMono = fontMplus;
+
 	if (clearStep_ == ClearStep::SHOW_UI)
 	{
-		auto imguiManager = EngineServices::GetInstance()->GetImGuiManager();
-		auto textMgr = UITextManager::GetInstance();
+		// =====================================================================
+		// フェーズ4：任務完了UI展開 (5.2s 〜 7.5s)
+		// 暗い横帯ではなく、シアン発光の角括弧（ブラケット枠 [ ] ）付きで
+		// 「MISSION ACCOMPLISHED / 任務完了」をコンパクトに展開
+		// =====================================================================
+		float fadeIn = std::clamp(clearTimer_ / 0.30f, 0.0f, 1.0f);
+		float closeT = (clearTimer_ > 1.95f) ? std::clamp((clearTimer_ - 1.95f) / 0.25f, 0.0f, 1.0f) : 0.0f;
+		float easeClose = 1.0f - (1.0f - closeT) * (1.0f - closeT) * (1.0f - closeT);
+		float closeAlpha = (clearTimer_ > 2.15f) ? std::clamp(1.0f - (clearTimer_ - 2.15f) / 0.12f, 0.0f, 1.0f) : 1.0f;
+		float uiAlpha = fadeIn * closeAlpha * transitionAlpha;
+		float textFadeOut = (clearTimer_ > 1.95f) ? std::clamp(1.0f - (clearTimer_ - 1.95f) / 0.14f, 0.0f, 1.0f) : 1.0f;
+		float textAlpha = fadeIn * textFadeOut * transitionAlpha;
 
-		// フェードイン率 (0.0 -> 1.0, 0.6秒)
-		float fadeAlpha = std::clamp(clearTimer_ / 0.6f, 0.0f, 1.0f);
+		if (uiAlpha > 0.001f)
+		{
+			float cx = viewPos.x + screenW * 0.5f;
+			float cy = viewPos.y + screenH * 0.44f;
 
-		// 画面中央に濃い黒帯バナーを敷いて視認性を大幅強化（裏側が透けないよう不透明度を245に向上）
-		float centerY = viewPos.y + screenH * 0.44f;
-		float bannerH = 190.0f * scale;
-		drawList->AddRectFilled(
-			ImVec2(viewPos.x, centerY - bannerH * 0.5f),
-			ImVec2(viewPos.x + screenW, centerY + bannerH * 0.5f),
-			IM_COL32(4, 6, 12, static_cast<int>(245.0f * fadeAlpha * transitionAlpha))
-		);
+			// ブラケット枠 [ ] の展開・収納アニメーション（開く時と同じくパッと閉じる）
+			float openT = std::clamp(clearTimer_ / 0.35f, 0.0f, 1.0f);
+			float easeOpen = 1.0f - (1.0f - openT) * (1.0f - openT) * (1.0f - openT);
+			float widthRatio = easeOpen * (1.0f - easeClose);
+			float halfW = (20.0f + 255.0f * widthRatio) * scale;
+			float halfH = 48.0f * scale;
+			float armLen = 22.0f * scale;
+			float thick = 2.8f * scale;
 
-		// 汎用アイテム描画ラムダ（UITextManager設定に完全同期）
-		auto renderTextItem = [&](const UITextItem* item, float alpha, float customScale = 1.0f, const std::string& overrideText = "") {
-			if (!item || item->text.empty() || alpha <= 0.001f) return;
-			ImFont* font = imguiManager ? imguiManager->GetFont(item->fontType) : ImGui::GetFont();
-			if (!font) font = ImGui::GetFont();
+			// 淡いホログラム背景（横帯ではなくブラケット内部のみのコンパクトな枠）
+			drawList->AddRectFilled(
+				ImVec2(cx - halfW, cy - halfH),
+				ImVec2(cx + halfW, cy + halfH),
+				IM_COL32(4, 24, 38, static_cast<int>(115.0f * uiAlpha)),
+				4.0f * scale
+			);
 
-			float fSize = item->fontSize * scale * customScale;
-			const std::string& str = overrideText.empty() ? item->text : overrideText;
-			ImVec2 tSize = font->CalcTextSizeA(fSize, FLT_MAX, -1.0f, str.c_str());
+			// シアン発光グロー＆角括弧 [ ]
+			ImU32 glowCol = IM_COL32(0, 235, 255, static_cast<int>(70.0f * uiAlpha));
+			ImU32 bracketCol = IM_COL32(0, 245, 255, static_cast<int>(255.0f * uiAlpha));
 
-			float posX = viewPos.x + item->position.x * (screenW / 1280.0f);
-			float posY = viewPos.y + item->position.y * (screenH / 720.0f);
-			ImVec2 tPos(posX, posY);
-			if (item->align == UITextAlign::Center)
-			{
-				tPos.x -= tSize.x * 0.5f;
-			}
-			else if (item->align == UITextAlign::Right)
-			{
-				tPos.x -= tSize.x;
-			}
+			// 左括弧 [
+			drawList->AddLine(ImVec2(cx - halfW + armLen, cy - halfH), ImVec2(cx - halfW, cy - halfH), glowCol, thick * 2.5f);
+			drawList->AddLine(ImVec2(cx - halfW, cy - halfH), ImVec2(cx - halfW, cy + halfH), glowCol, thick * 2.5f);
+			drawList->AddLine(ImVec2(cx - halfW, cy + halfH), ImVec2(cx - halfW + armLen, cy + halfH), glowCol, thick * 2.5f);
 
-			if (item->hasShadow)
-			{
-				ImU32 shadowCol = ImColor(item->shadowColor.x, item->shadowColor.y, item->shadowColor.z, item->shadowColor.w * alpha);
-				ImVec2 sPos(tPos.x + item->shadowOffset.x * scale, tPos.y + item->shadowOffset.y * scale);
-				drawList->AddText(font, fSize, sPos, shadowCol, str.c_str());
-			}
+			drawList->AddLine(ImVec2(cx - halfW + armLen, cy - halfH), ImVec2(cx - halfW, cy - halfH), bracketCol, thick);
+			drawList->AddLine(ImVec2(cx - halfW, cy - halfH), ImVec2(cx - halfW, cy + halfH), bracketCol, thick);
+			drawList->AddLine(ImVec2(cx - halfW, cy + halfH), ImVec2(cx - halfW + armLen, cy + halfH), bracketCol, thick);
 
-			if (item->hasOutline)
-			{
-				ImU32 outlineCol = ImColor(item->outlineColor.x, item->outlineColor.y, item->outlineColor.z, item->outlineColor.w * alpha);
-				float thick = item->outlineThickness * scale;
-				const float offsets[8][2] = {
-					{ -thick, -thick }, { 0.0f, -thick }, { thick, -thick },
-					{ -thick, 0.0f },                     { thick, 0.0f },
-					{ -thick, thick },  { 0.0f, thick },  { thick, thick }
-				};
-				for (int k = 0; k < 8; ++k)
-				{
-					drawList->AddText(font, fSize, ImVec2(tPos.x + offsets[k][0], tPos.y + offsets[k][1]), outlineCol, str.c_str());
+			// 右括弧 ]
+			drawList->AddLine(ImVec2(cx + halfW - armLen, cy - halfH), ImVec2(cx + halfW, cy - halfH), glowCol, thick * 2.5f);
+			drawList->AddLine(ImVec2(cx + halfW, cy - halfH), ImVec2(cx + halfW, cy + halfH), glowCol, thick * 2.5f);
+			drawList->AddLine(ImVec2(cx + halfW, cy + halfH), ImVec2(cx + halfW - armLen, cy + halfH), glowCol, thick * 2.5f);
+
+			drawList->AddLine(ImVec2(cx + halfW - armLen, cy - halfH), ImVec2(cx + halfW, cy - halfH), bracketCol, thick);
+			drawList->AddLine(ImVec2(cx + halfW, cy - halfH), ImVec2(cx + halfW, cy + halfH), bracketCol, thick);
+			drawList->AddLine(ImVec2(cx + halfW, cy + halfH), ImVec2(cx + halfW - armLen, cy + halfH), bracketCol, thick);
+
+			// テキスト描画（UITextManagerで編集された文言・位置・サイズ・色・スタイルをそのまま反映。削除・空文字の場合は描画しない）
+			auto DrawManagedClearText = [&](const char* itemId) {
+				if (textAlpha <= 0.001f) return;
+				auto textMgr = UITextManager::GetInstance();
+				UITextItem* item = textMgr ? textMgr->GetTextItem(itemId, "GAMEPLAY") : nullptr;
+				if (!item || item->text.empty()) return;
+
+				const char* txt = item->text.c_str();
+				ImFont* font = fontMplus;
+				if (imguiManager) {
+					ImFont* f = imguiManager->GetFont(item->fontType);
+					if (f) font = f;
 				}
-			}
+				float fSize = item->fontSize * scale;
+				if (fSize < 6.0f) fSize = 6.0f;
 
-			ImU32 textCol = ImColor(item->color.x, item->color.y, item->color.z, item->color.w * alpha);
-			drawList->AddText(font, fSize, tPos, textCol, str.c_str());
-		};
+				ImVec2 tSz = font->CalcTextSizeA(fSize, FLT_MAX, -1.0f, txt);
+				float scaleX = screenW / 1280.0f;
+				float scaleY = screenH / 720.0f;
+				ImVec2 tPos(viewPos.x + item->position.x * scaleX, viewPos.y + item->position.y * scaleY);
+				if (item->align == UITextAlign::Center) tPos.x -= tSz.x * 0.5f;
+				else if (item->align == UITextAlign::Right) tPos.x -= tSz.x;
 
-		// 1. "MISSION COMPLETE" タイトル描画（ポップアップ演出）
-		const UITextItem* titleItem = textMgr ? textMgr->GetTextItem("ClearTitle", "GAMEPLAY") : nullptr;
-		if (titleItem)
+				if (item->hasShadow) {
+					ImU32 shCol = ImGui::ColorConvertFloat4ToU32(ImVec4(item->shadowColor.x, item->shadowColor.y, item->shadowColor.z, item->shadowColor.w * textAlpha));
+					drawList->AddText(font, fSize, ImVec2(tPos.x + item->shadowOffset.x * scale, tPos.y + item->shadowOffset.y * scale), shCol, txt);
+				}
+				if (item->hasOutline) {
+					float thickOut = item->outlineThickness * scale;
+					Vector4 oc = item->outlineColor;
+					ImU32 outCol = ImGui::ColorConvertFloat4ToU32(ImVec4(oc.x, oc.y, oc.z, oc.w * textAlpha));
+					drawList->AddText(font, fSize, ImVec2(tPos.x - thickOut, tPos.y), outCol, txt);
+					drawList->AddText(font, fSize, ImVec2(tPos.x + thickOut, tPos.y), outCol, txt);
+					drawList->AddText(font, fSize, ImVec2(tPos.x, tPos.y - thickOut), outCol, txt);
+					drawList->AddText(font, fSize, ImVec2(tPos.x, tPos.y + thickOut), outCol, txt);
+				}
+				Vector4 mc = item->color;
+				ImU32 mainCol = ImGui::ColorConvertFloat4ToU32(ImVec4(mc.x, mc.y, mc.z, mc.w * textAlpha));
+				drawList->AddText(font, fSize, tPos, mainCol, txt);
+			};
+
+			DrawManagedClearText("MissionAccomplishedTitle");
+			DrawManagedClearText("MissionAccomplishedSub");
+		}
+	}
+	else if (clearStep_ == ClearStep::RESULT_PANEL)
+	{
+		// =====================================================================
+		// フェーズ⑦：リザルトUI展開（上昇中の自機を背景に即座に展開）
+		// =====================================================================
+		float resT = clearTimer_;
+		float openT = std::clamp(resT / 0.35f, 0.0f, 1.0f);
+		float easeOpen = 1.0f - (1.0f - openT) * (1.0f - openT) * (1.0f - openT);
+		float uiAlpha = openT * transitionAlpha;
+
+		float cx = viewPos.x + screenW * 0.5f;
+		float cy = viewPos.y + screenH * 0.50f;
+		float panelW = screenW;
+		float panelH = (48.0f * scale) + (screenH - 48.0f * scale) * easeOpen;
+
+		ImVec2 pMin(cx - panelW * 0.5f, cy - panelH * 0.5f);
+		ImVec2 pMax(cx + panelW * 0.5f, cy + panelH * 0.5f);
+
+		// 半透明ダークホログラム背景（背景の自機が透けて見える全画面サイズ）
+		drawList->AddRectFilled(pMin, pMax, IM_COL32(4, 16, 30, static_cast<int>(180.0f * uiAlpha)), 0.0f);
+		drawList->AddRect(pMin, pMax, IM_COL32(0, 225, 255, static_cast<int>(190.0f * uiAlpha)), 0.0f, 0, 2.2f * scale);
+
+		// 内部スキャンライン（ホログラム質感）
+		for (float y = pMin.y + 4.0f * scale; y < pMax.y; y += 6.0f * scale)
 		{
-			float popScale = 1.0f + 0.15f * (1.0f - fadeAlpha);
-			renderTextItem(titleItem, fadeAlpha, popScale);
+			drawList->AddLine(ImVec2(pMin.x, y), ImVec2(pMax.x, y), IM_COL32(0, 235, 255, static_cast<int>(14.0f * uiAlpha)), 1.0f);
 		}
 
-		// 2. 最終スコア描画
-		if (clearTimer_ >= 0.3f)
-		{
-			float scoreFade = std::clamp((clearTimer_ - 0.3f) / 0.4f, 0.0f, 1.0f);
-			const UITextItem* scoreItem = textMgr ? textMgr->GetTextItem("ClearScore", "GAMEPLAY") : nullptr;
-			if (scoreItem)
-			{
-				char scoreBuf[64];
-				snprintf(scoreBuf, sizeof(scoreBuf), "SCORE: %06d", score_);
-				renderTextItem(scoreItem, scoreFade, 1.0f, scoreBuf);
-			}
-		}
+		// 四隅のシアン発光L字アクセント
+		float cornerLen = 18.0f * scale;
+		ImU32 cornerCol = IM_COL32(0, 255, 255, static_cast<int>(255.0f * uiAlpha));
+		float cThick = 3.0f * scale;
+		drawList->AddLine(pMin, ImVec2(pMin.x + cornerLen, pMin.y), cornerCol, cThick);
+		drawList->AddLine(pMin, ImVec2(pMin.x, pMin.y + cornerLen), cornerCol, cThick);
+		drawList->AddLine(ImVec2(pMax.x, pMin.y), ImVec2(pMax.x - cornerLen, pMin.y), cornerCol, cThick);
+		drawList->AddLine(ImVec2(pMax.x, pMin.y), ImVec2(pMax.x, pMin.y + cornerLen), cornerCol, cThick);
+		drawList->AddLine(ImVec2(pMin.x, pMax.y), ImVec2(pMin.x + cornerLen, pMax.y), cornerCol, cThick);
+		drawList->AddLine(ImVec2(pMin.x, pMax.y), ImVec2(pMin.x, pMax.y - cornerLen), cornerCol, cThick);
+		drawList->AddLine(pMax, ImVec2(pMax.x - cornerLen, pMax.y), cornerCol, cThick);
+		drawList->AddLine(pMax, ImVec2(pMax.x, pMax.y - cornerLen), cornerCol, cThick);
 
-		// 3. タイトルへ戻る案内（呼吸点滅）
-		if (clearTimer_ >= 0.6f)
+		if (openT > 0.65f)
 		{
-			float guideFade = std::clamp((clearTimer_ - 0.6f) / 0.4f, 0.0f, 1.0f);
-			float pulse = 0.8f + 0.2f * std::sin(clearTimer_ * 5.0f);
-			const UITextItem* returnItem = textMgr ? textMgr->GetTextItem("ClearReturn", "GAMEPLAY") : nullptr;
-			if (returnItem)
+			float contentAlpha = std::clamp((openT - 0.65f) / 0.35f, 0.0f, 1.0f) * transitionAlpha;
+
+			// ヘッダー
+			const char* headerStr = "MISSION RESULT // 戦績評価ログ";
+			float headerSize = 30.0f * scale;
+			drawList->AddText(fontMplus, headerSize, ImVec2(pMin.x + 56.0f * scale, pMin.y + 32.0f * scale), IM_COL32(0, 240, 255, static_cast<int>(255.0f * contentAlpha)), headerStr);
+			drawList->AddLine(ImVec2(pMin.x + 48.0f * scale, pMin.y + 82.0f * scale), ImVec2(pMax.x - 48.0f * scale, pMin.y + 82.0f * scale), IM_COL32(0, 200, 240, static_cast<int>(130.0f * contentAlpha)), 1.6f * scale);
+
+			// 戦績データの算出
+			int totalEnemies = (std::max)(1, totalEnemiesCount_);
+			int killedEnemies = std::clamp(killedEnemiesCount_, 0, totalEnemies);
+			int killPct = static_cast<int>(std::round((static_cast<float>(killedEnemies) / static_cast<float>(totalEnemies)) * 100.0f));
+
+			int hp = player_ ? player_->GetHp() : 100;
+			int maxHp = (player_ && player_->GetMaxHp() > 0) ? player_->GetMaxHp() : 100;
+			int integrityPct = std::clamp(static_cast<int>(std::round((static_cast<float>(hp) / static_cast<float>(maxHp)) * 100.0f)), 0, 100);
+			int damagePct = 100 - integrityPct;
+
+			// 総合スコアからランク算出 (S / A / B / C)
+			float rankScore = integrityPct * 0.45f + killPct * 0.35f;
+			if (stageElapsedTime_ < 120.0f) rankScore += 20.0f;
+			else if (stageElapsedTime_ < 180.0f) rankScore += 12.0f;
+			else rankScore += 5.0f;
+
+			const char* rankChar = "C";
+			ImU32 rankColor = IM_COL32(190, 210, 225, static_cast<int>(255.0f * transitionAlpha));
+			if (rankScore >= 85.0f) { rankChar = "S"; rankColor = IM_COL32(255, 215, 40, static_cast<int>(255.0f * transitionAlpha)); }
+			else if (rankScore >= 65.0f) { rankChar = "A"; rankColor = IM_COL32(0, 245, 255, static_cast<int>(255.0f * transitionAlpha)); }
+			else if (rankScore >= 45.0f) { rankChar = "B"; rankColor = IM_COL32(80, 255, 160, static_cast<int>(255.0f * transitionAlpha)); }
+
+			// 時間フォーマットヘルパー
+			auto formatTime = [](float sec, char* outBuf, size_t bufSz) {
+				if (sec < 0.0f) sec = 0.0f;
+				int mins = static_cast<int>(sec) / 60;
+				float rem = sec - static_cast<float>(mins * 60);
+				snprintf(outBuf, bufSz, "%02d:%05.2f", mins, rem);
+			};
+
+			// 各行描画ラムダ（高速カウントアップ演出付き）
+			float startX = pMin.x + 64.0f * scale;
+			float rowY = pMin.y + 115.0f * scale;
+			float rowStep = 112.0f * scale;
+
+			auto drawStatRow = [&](int idx, float startDelay, const char* jpLabel, const char* enLabel, const char* valStr) {
+				if (resT < startDelay) return;
+				float rowT = std::clamp((resT - startDelay) / 0.25f, 0.0f, 1.0f);
+				float y = rowY + idx * rowStep;
+
+				drawList->AddText(fontMplus, 26.0f * scale, ImVec2(startX, y), IM_COL32(220, 245, 255, static_cast<int>(255.0f * rowT * transitionAlpha)), jpLabel);
+				drawList->AddText(fontMono, 16.0f * scale, ImVec2(startX, y + 32.0f * scale), IM_COL32(0, 200, 235, static_cast<int>(200.0f * rowT * transitionAlpha)), enLabel);
+
+				drawList->AddText(fontMono, 36.0f * scale, ImVec2(startX + 410.0f * scale, y + 10.0f * scale), IM_COL32(255, 255, 255, static_cast<int>(255.0f * rowT * transitionAlpha)), valStr);
+				drawList->AddLine(ImVec2(startX, y + 76.0f * scale), ImVec2(startX + 740.0f * scale, y + 76.0f * scale), IM_COL32(0, 180, 220, static_cast<int>(65.0f * rowT * transitionAlpha)), 1.4f);
+			};
+
+			// 1. 敵撃破数
 			{
-				renderTextItem(returnItem, guideFade * pulse);
+				float countT = std::clamp((resT - 0.15f) / 0.35f, 0.0f, 1.0f);
+				int dispKill = static_cast<int>(killedEnemies * countT);
+				int dispPct = static_cast<int>(killPct * countT);
+				char buf[64];
+				snprintf(buf, sizeof(buf), "%d / %d (%d%%)", dispKill, totalEnemies, dispPct);
+				drawStatRow(0, 0.15f, "敵撃破数", "ENEMIES DESTROYED", buf);
+			}
+			// 2. クリアタイム（ステージ全体）
+			{
+				float countT = std::clamp((resT - 0.45f) / 0.35f, 0.0f, 1.0f);
+				char buf[64];
+				formatTime(stageElapsedTime_ * countT, buf, sizeof(buf));
+				drawStatRow(1, 0.45f, "クリアタイム（ステージ全体）", "TOTAL MISSION TIME", buf);
+			}
+			// 3. クリアタイム（ボス戦）
+			{
+				float countT = std::clamp((resT - 0.75f) / 0.35f, 0.0f, 1.0f);
+				char buf[64];
+				formatTime(bossElapsedTime_ * countT, buf, sizeof(buf));
+				drawStatRow(2, 0.75f, "クリアタイム（ボス戦）", "BOSS ENGAGEMENT TIME", buf);
+			}
+			// 4. 被弾率 / 残存装甲率
+			{
+				float countT = std::clamp((resT - 1.05f) / 0.35f, 0.0f, 1.0f);
+				int dispDmg = static_cast<int>(damagePct * countT);
+				int dispInt = static_cast<int>(integrityPct * countT);
+				char buf[64];
+				snprintf(buf, sizeof(buf), "%d%% (INTEGRITY: %d%%)", dispDmg, dispInt);
+				drawStatRow(3, 1.05f, "被弾率 / 残存装甲率", "DAMAGE RATE / INTEGRITY", buf);
+			}
+
+			// 右側：総合評価ランク枠 & ネオン発光スタンプ演出
+			float rankBoxX = pMax.x - 350.0f * scale;
+			float rankBoxY = pMin.y + 120.0f * scale;
+			float rankBoxW = 290.0f * scale;
+			float rankBoxH = 390.0f * scale;
+			drawList->AddRectFilled(ImVec2(rankBoxX, rankBoxY), ImVec2(rankBoxX + rankBoxW, rankBoxY + rankBoxH), IM_COL32(2, 12, 24, static_cast<int>(180.0f * contentAlpha)), 6.0f * scale);
+			drawList->AddRect(ImVec2(rankBoxX, rankBoxY), ImVec2(rankBoxX + rankBoxW, rankBoxY + rankBoxH), IM_COL32(0, 220, 255, static_cast<int>(130.0f * contentAlpha)), 6.0f * scale, 0, 1.6f * scale);
+
+			const char* evalStr = "EVALUATION RANK";
+			ImVec2 evSz = fontMono->CalcTextSizeA(20.0f * scale, FLT_MAX, -1.0f, evalStr);
+			drawList->AddText(fontMono, 20.0f * scale, ImVec2(rankBoxX + (rankBoxW - evSz.x) * 0.5f, rankBoxY + 22.0f * scale), IM_COL32(0, 235, 255, static_cast<int>(230.0f * contentAlpha)), evalStr);
+
+			const char* evalJp = "総合評価";
+			ImVec2 evJpSz = fontMplus->CalcTextSizeA(22.0f * scale, FLT_MAX, -1.0f, evalJp);
+			drawList->AddText(fontMplus, 22.0f * scale, ImVec2(rankBoxX + (rankBoxW - evJpSz.x) * 0.5f, rankBoxY + 52.0f * scale), IM_COL32(210, 240, 255, static_cast<int>(210.0f * contentAlpha)), evalJp);
+
+			if (resT >= 1.35f)
+			{
+				float stampT = std::clamp((resT - 1.35f) / 0.18f, 0.0f, 1.0f);
+				float stampScale = 2.2f - 1.2f * (stampT * stampT * (3.0f - 2.0f * stampT));
+				float rFontSize = 190.0f * scale * stampScale;
+				ImVec2 rSz = fontMplus->CalcTextSizeA(rFontSize, FLT_MAX, -1.0f, rankChar);
+				ImVec2 rPos(rankBoxX + (rankBoxW - rSz.x) * 0.5f, rankBoxY + 115.0f * scale + (190.0f * scale - rSz.y) * 0.5f);
+
+				// 発光シャドウ
+				drawList->AddText(fontMplus, rFontSize, ImVec2(rPos.x + 3.0f * scale, rPos.y + 3.0f * scale), IM_COL32(0, 0, 0, static_cast<int>(220.0f * stampT * transitionAlpha)), rankChar);
+				drawList->AddText(fontMplus, rFontSize, rPos, rankColor, rankChar);
+			}
+
+			// 下部：タイトル復帰ガイド（呼吸点滅）
+			if (resT >= 1.65f)
+			{
+				float pulse = 0.65f + 0.35f * std::sin((resT - 1.65f) * 5.0f);
+				const char* guideStr = "[ PRESS SPACE TO RETURN TITLE ]";
+				float gFontSize = 24.0f * scale;
+				ImVec2 gSz = fontMono->CalcTextSizeA(gFontSize, FLT_MAX, -1.0f, guideStr);
+				drawList->AddText(fontMono, gFontSize, ImVec2(cx - gSz.x * 0.5f, pMax.y - 54.0f * scale), IM_COL32(0, 245, 255, static_cast<int>(255.0f * pulse * transitionAlpha)), guideStr);
 			}
 		}
 	}
@@ -6844,6 +7614,45 @@ void GamePlayScene::DrawClearUI()
 
 	drawList->PopClipRect();
 #endif
+}
+
+void GamePlayScene::TriggerTimeOverCannonSequence(bool nonLethal)
+{
+	isTimeOverDebugNonLethal_ = nonLethal;
+	isBossSpawned_ = true;
+	bossBattleStep_ = BossBattleStep::TIME_OVER_ATTACK;
+	bossRemainingTime_ = 0.0f;
+	bossTimeOverTimer_ = 0.0f;
+	isBossTimeOverFired_ = false;
+	cameraShakeTimer_ = 0.8f;
+	gamePhase_ = GamePhase::PLAYING;
+
+	if (player_)
+	{
+		player_->SetDead(false);
+		player_->SetHp(player_->GetMaxHp());
+		player_->SetEnableInput(false); // タイムオーバー時：移動キーを完全無効化し拘束！
+	}
+
+	if (armoredTrainBoss_)
+	{
+		if (!armoredTrainBoss_->IsActive())
+		{
+			if (bossRail_ && bossRail_->IsValid())
+			{
+				armoredTrainBoss_->SetRail(bossRail_.get());
+				armoredTrainBoss_->SetRailProgress(0.0f);
+			}
+			else if (railCameraController_ && !mainRails_.empty())
+			{
+				float bCurProg = railCameraController_->GetProgress();
+				float bossProg = (std::min)(1.0f, bCurProg + 0.15f);
+				armoredTrainBoss_->SetRailProgress(bossProg);
+				armoredTrainBoss_->SetRail(mainRails_[0].get());
+			}
+			armoredTrainBoss_->SetActive(true);
+		}
+	}
 }
 
 void GamePlayScene::StartBossWarningSequence()
@@ -6886,6 +7695,23 @@ void GamePlayScene::StartBossWarningSequence()
 
 void GamePlayScene::UpdateBossBattle(float dt)
 {
+	// 電脳処刑フィニッシャーが進行中の場合、最優先でフィニッシャーに処理を委譲
+	if (bossFinisherSequence_ && bossFinisherSequence_->IsActive())
+	{
+		isBossSpawned_ = true;
+		if (bossBattleStep_ == BossBattleStep::NOT_ACTIVE)
+		{
+			bossBattleStep_ = BossBattleStep::BATTLE;
+		}
+		bossFinisherSequence_->Update(dt, armoredTrainBoss_.get(), player_.get(), gameSpeed_);
+		if (bossFinisherSequence_->IsCompleted())
+		{
+			bossBattleStep_ = BossBattleStep::FINISHED;
+			StartClearSequence();
+		}
+		return;
+	}
+
 	if (bossBattleStep_ == BossBattleStep::NOT_ACTIVE) return;
 
 	if (bossBattleStep_ == BossBattleStep::WARNING_ALERT)
@@ -6914,6 +7740,32 @@ void GamePlayScene::UpdateBossBattle(float dt)
 			}
 			if (armoredTrainBoss_)
 			{
+				auto services = EngineServices::GetInstance();
+				if (services && services->IsDemoMode() && player_)
+				{
+					Vector3 pPos = player_->GetWorldPosition();
+					Rail* targetRail = (bossRail_ && bossRail_->IsValid()) ? bossRail_.get() : (!mainRails_.empty() ? mainRails_[0].get() : nullptr);
+					if (targetRail && targetRail->IsValid())
+					{
+						float closestProg = targetRail->GetClosestProgress(pPos);
+						Vector3 railClosestPos = targetRail->GetPosition(closestProg);
+						float dx = railClosestPos.x - pPos.x;
+						float dy = railClosestPos.y - pPos.y;
+						float dz = railClosestPos.z - pPos.z;
+						float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+						// bossRail_ がプレイヤーから遠すぎる場合はメインレール上に配置して即座に視界へ出す
+						if (dist > 150.0f && !mainRails_.empty() && mainRails_[0] && mainRails_[0]->IsValid())
+						{
+							targetRail = mainRails_[0].get();
+							closestProg = targetRail->GetClosestProgress(pPos);
+						}
+						float totalLen = (std::max)(1.0f, targetRail->GetTotalLength());
+						// 先頭車両がプレイヤーの前方約90m（最後尾が横〜後方）になる位置から一気に追い抜いて登場させる
+						float spawnProg = (std::clamp)(closestProg + (90.0f / totalLen), 0.0f, 0.95f);
+						armoredTrainBoss_->SetRail(targetRail);
+						armoredTrainBoss_->SetRailProgress(spawnProg);
+					}
+				}
 				armoredTrainBoss_->SetActive(true);
 			}
 			SoundManager::GetInstance()->PlaySE("explosion.mp3", 0.9f);
@@ -6929,8 +7781,9 @@ void GamePlayScene::UpdateBossBattle(float dt)
 			reachRailEnd = true;
 		}
 
-		// 2. ボス戦制限時間のカウントダウン
+		// 2. ボス戦制限時間のカウントダウン & ボス戦経過時間計測
 		bossRemainingTime_ -= dt;
+		bossElapsedTime_ += dt;
 
 		// 残り10秒以下でのサイレン警告演出
 		if (bossRemainingTime_ <= 10.0f && bossRemainingTime_ > 0.0f)
@@ -6971,43 +7824,185 @@ void GamePlayScene::UpdateBossBattle(float dt)
 			{
 				bossDisplayedHpRate_ = currentHpRate;
 			}
+
+			// ★ 電脳処刑フィニッシャーへの自動移行（HP1耐え：総HP率が5%以下または撃破判定時）
+			if ((currentHpRate <= 0.05f || armoredTrainBoss_->IsDefeated()) &&
+				bossFinisherSequence_ && !bossFinisherSequence_->IsActive() && !bossFinisherSequence_->IsCompleted())
+			{
+				bullets_.clear();
+				missiles_.clear();
+				bossFinisherSequence_->StartSequence(armoredTrainBoss_.get(), player_.get());
+			}
 		}
 	}
 	else if (bossBattleStep_ == BossBattleStep::TIME_OVER_ATTACK)
 	{
 		bossTimeOverTimer_ += dt;
 
-		// タイムオーバー即死攻撃チャージ中（激しいカメラ振動・チャージ予兆）
-		float chargeRatio = std::clamp(bossTimeOverTimer_ / 1.4f, 0.0f, 1.0f);
-		cameraShakeTimer_ = 0.25f + 0.5f * chargeRatio;
-
-		// 即死攻撃発射（1.4秒後：大閃光・極大爆発直撃）
-		if (bossTimeOverTimer_ >= 1.4f && !isBossTimeOverFired_)
+		// プレイヤーの移動操作入力を完全遮断し拘束
+		if (player_)
 		{
-			isBossTimeOverFired_ = true;
-			SoundManager::GetInstance()->PlaySE("explosion.mp3", 1.0f);
-			cameraShakeTimer_ = 1.8f;
+			player_->SetEnableInput(false);
+		}
 
-			// プレイヤー位置に特大爆発エフェクトを発生（即座にHP0にせず、爆発演出をしっかり見せる）
-			if (player_ && player_->GetObject3d())
+		// 自機の正真正銘のワールド座標を取得（カメラローカル座標ではなくGetWorldPosition）
+		Vector3 playerPos = player_ ? player_->GetWorldPosition() : Vector3(0.0f, 5.0f, 0.0f);
+
+		// 1. 3両目の超巨大主砲をプレイヤーへ正確に旋回・照準
+		if (armoredTrainBoss_)
+		{
+			armoredTrainBoss_->UpdateTimeOverCannon(playerPos, bossTimeOverTimer_, dt);
+		}
+
+		// 砲口（マズル）のワールド位置を取得
+		Vector3 muzzlePos = armoredTrainBoss_ ? armoredTrainBoss_->GetBigCannonMuzzlePosition() : Vector3(0.0f, 15.0f, -60.0f);
+
+		// 2. 砲撃照準ロックオン演出（0.0s 〜 2.2s：タイムオーバーUI表示〜消滅中）
+		if (bossTimeOverTimer_ < 2.2f)
+		{
+			float chargeRatio = std::clamp(bossTimeOverTimer_ / 2.2f, 0.0f, 1.0f);
+			cameraShakeTimer_ = 0.20f + 0.50f * chargeRatio;
+
+			// チャージ球の収縮・脈動は不要なため非表示に設定
+			if (bossTimeOverChargeSphere_)
 			{
-				Vector3 pPos = player_->GetObject3d()->GetTranslate();
-				explosionEffect_.SetPosition(pPos);
+				bossTimeOverChargeSphere_->SetScale({ 0.0f, 0.0f, 0.0f });
+				bossTimeOverChargeSphere_->Update();
+			}
+
+			// 照準レーザー線（UI表示中、砲口からプレイヤーへ細いロックオンレーザーを照射）
+			if (bossTimeOverBeam_)
+			{
+				Vector3 aimVec = playerPos - muzzlePos;
+				float aimDist = aimVec.Length();
+				if (aimDist > 0.01f)
+				{
+					Vector3 aimDir = aimVec.Normalize();
+					Vector3 aimCenter = muzzlePos + aimDir * (aimDist * 0.5f);
+					float rotY = std::atan2(aimDir.x, aimDir.z);
+					float xzLen = std::sqrt(aimDir.x * aimDir.x + aimDir.z * aimDir.z);
+					float rotX = std::atan2(-aimDir.y, (std::max)(xzLen, 0.001f));
+
+					// 発射直前（UI消滅時）に向けて徐々に赤熱化
+					float aimWidth = 0.45f + 0.25f * chargeRatio;
+					bossTimeOverBeam_->SetTranslate(aimCenter);
+					bossTimeOverBeam_->SetRotation({ rotX, rotY, 0.0f });
+					bossTimeOverBeam_->SetScale({ aimWidth, aimWidth, aimDist / 2.2f });
+					bossTimeOverBeam_->SetColor({ 1.0f, 0.2f * (1.0f - chargeRatio), 0.2f * (1.0f - chargeRatio), 0.85f });
+					bossTimeOverBeam_->Update();
+				}
+			}
+		}
+		else
+		{
+			// 3. タイムオーバーUIが完全に消滅してから極太主砲発射！（2.2s 〜 3.4s）
+			if (!isBossTimeOverFired_)
+			{
+				isBossTimeOverFired_ = true;
+				cameraShakeTimer_ = 3.0f; // 画面超大激震
+
+				// プレイヤーHPをゼロにして死亡
+				if (player_)
+				{
+					player_->SetHp(0);
+				}
+
+				// プレイヤー位置に特大爆発エフェクトを発生
+				explosionEffect_.SetPosition(playerPos);
+				explosionEffect_.Play();
+			}
+
+			// 極大主砲ビームの接続描画（砲口からプレイヤーを完全に貫通・直撃）
+			Vector3 beamVec = playerPos - muzzlePos;
+			float distToPlayer = beamVec.Length();
+			if (distToPlayer > 0.01f)
+			{
+				Vector3 beamDir = beamVec.Normalize();
+				float totalBeamLen = distToPlayer + 80.0f; // プレイヤーを大きく貫通
+				Vector3 beamCenter = muzzlePos + beamDir * (totalBeamLen * 0.5f);
+
+				float rotY = std::atan2(beamDir.x, beamDir.z);
+				float xzLen = std::sqrt(beamDir.x * beamDir.x + beamDir.z * beamDir.z);
+				float rotX = std::atan2(-beamDir.y, (std::max)(xzLen, 0.001f));
+
+				float beamFade = std::clamp((3.4f - bossTimeOverTimer_) / 1.2f, 0.0f, 1.0f);
+				float beamThickness = (15.0f + 2.0f * std::sin(bossTimeOverTimer_ * 50.0f)) * beamFade; // 直径15m以上の超極太レールガン光柱
+
+				if (bossTimeOverBeam_)
+				{
+					bossTimeOverBeam_->SetTranslate(beamCenter);
+					bossTimeOverBeam_->SetRotation({ rotX, rotY, 0.0f });
+					bossTimeOverBeam_->SetScale({ beamThickness, beamThickness, totalBeamLen / 2.2f });
+					bossTimeOverBeam_->SetColor({ 1.0f, 0.95f, 0.35f, beamFade });
+					bossTimeOverBeam_->Update();
+				}
+
+				// 発射時：プレイヤー位置に直撃している巨大エネルギー球頭
+				if (bossTimeOverChargeSphere_)
+				{
+					float hitSphereSize = 18.0f * beamFade;
+					bossTimeOverChargeSphere_->SetTranslate(playerPos);
+					bossTimeOverChargeSphere_->SetScale({ hitSphereSize, hitSphereSize, hitSphereSize });
+					bossTimeOverChargeSphere_->SetColor({ 1.0f, 0.98f, 0.6f, beamFade });
+					bossTimeOverChargeSphere_->Update();
+				}
+			}
+
+			// プレイヤー位置で連続大爆発（ビーム照射中）
+			static float timeOverExpSubTimer = 0.0f;
+			timeOverExpSubTimer += dt;
+			if (timeOverExpSubTimer >= 0.08f && bossTimeOverTimer_ < 3.4f)
+			{
+				timeOverExpSubTimer = 0.0f;
+				Vector3 jitter = {
+					(static_cast<float>(rand() % 100) / 100.0f - 0.5f) * 9.0f,
+					(static_cast<float>(rand() % 100) / 100.0f - 0.5f) * 9.0f,
+					(static_cast<float>(rand() % 100) / 100.0f - 0.5f) * 9.0f
+				};
+				explosionEffect_.SetPosition(playerPos + jitter);
 				explosionEffect_.Play();
 			}
 		}
-
-		// 即死演出完了後（3.5秒後）、HPをゼロにしてスムーズにゲームオーバー画面へ移行
 		if (bossTimeOverTimer_ >= kBossTimeOverDuration)
 		{
-			bossBattleStep_ = BossBattleStep::FINISHED;
-			if (player_)
+			if (isTimeOverDebugLoop_)
 			{
-				player_->SetHp(0);
+				// ループデバッグ：再度最初から即座にリプレイ
+				bossTimeOverTimer_ = 0.0f;
+				isBossTimeOverFired_ = false;
+				cameraShakeTimer_ = 0.8f;
+				if (player_)
+				{
+					player_->SetDead(false);
+					player_->SetHp(player_->GetMaxHp());
+					player_->SetEnableInput(false);
+				}
 			}
-			if (gamePhase_ == GamePhase::PLAYING)
+			else if (isTimeOverDebugNonLethal_)
 			{
-				StartGameOverSequence();
+				// 非致死デバッグ：演出完了後、プレイヤーの操作を復帰させて通常戦闘へ戻す（何度でも再確認可能）
+				bossBattleStep_ = BossBattleStep::BATTLE;
+				bossRemainingTime_ = 60.0f;
+				bossTimeOverTimer_ = 0.0f;
+				isBossTimeOverFired_ = false;
+				if (player_)
+				{
+					player_->SetDead(false);
+					player_->SetHp(player_->GetMaxHp());
+					player_->SetEnableInput(true);
+				}
+			}
+			else
+			{
+				bossBattleStep_ = BossBattleStep::FINISHED;
+				if (player_)
+				{
+					player_->SetHp(0);
+				}
+				if (gamePhase_ == GamePhase::PLAYING)
+				{
+					StartGameOverSequence();
+				}
 			}
 		}
 	}
@@ -7058,6 +8053,9 @@ void GamePlayScene::UpdateBossBattle(float dt)
 void GamePlayScene::DrawBossUI()
 {
 #ifdef USE_IMGUI
+	// 処刑ミサイル発射後のムービー演出中はボスHPゲージ等の戦闘UIをすべて非表示
+	if (bossFinisherSequence_ && bossFinisherSequence_->IsMoviePhase()) return;
+
 	if (ImGui::GetCurrentContext() == nullptr) return;
 	ImGuiViewport* viewport = ImGui::GetMainViewport();
 	if (!viewport) return;
@@ -7392,60 +8390,6 @@ void GamePlayScene::DrawBossUI()
 				}
 			}
 			drawList->AddText(timerFont, tFontSize, tPos, timerCol, fullTimerStr.c_str());
-		}
-
-		// 5. タイムオーバー即死攻撃時の全画面警告アナウンス（JSON設定連動）
-		if (bossBattleStep_ == BossBattleStep::TIME_OVER_ATTACK)
-		{
-			float pulse = 0.5f + 0.5f * std::sin(bossTimeOverTimer_ * 18.0f);
-			int flashA = static_cast<int>(40.0f + 50.0f * pulse);
-			drawList->AddRectFilled(viewPos, ImVec2(viewPos.x + screenW, viewPos.y + screenH), IM_COL32(255, 10, 10, flashA));
-
-			const UITextItem* toTitleItem = textMgr ? textMgr->GetTextItem("BossTimeOverTitle", "GAMEPLAY") : nullptr;
-			const char* toTitle = (toTitleItem && !toTitleItem->text.empty()) ? toTitleItem->text.c_str() : "TIME OVER";
-			float toFontSize = (toTitleItem ? toTitleItem->fontSize : 68.0f) * scale;
-			ImFont* toTitleFont = (toTitleItem && imguiManager) ? imguiManager->GetFont(toTitleItem->fontType) : fontMplus;
-			if (!toTitleFont) toTitleFont = fontMplus;
-
-			ImVec2 toSize = toTitleFont->CalcTextSizeA(toFontSize, FLT_MAX, -1.0f, toTitle);
-			float toX = viewPos.x + (screenW - toSize.x) * 0.5f;
-			float toY = viewPos.y + screenH * 0.38f - toSize.y * 0.5f;
-			if (toTitleItem)
-			{
-				toX = viewPos.x + toTitleItem->position.x * (screenW / 1280.0f) - toSize.x * 0.5f;
-				toY = viewPos.y + toTitleItem->position.y * (screenH / 720.0f) - toSize.y * 0.5f;
-			}
-			ImVec2 toPos(toX, toY);
-
-			for (float ox = -3.0f; ox <= 3.0f; ox += 3.0f)
-			{
-				for (float oy = -3.0f; oy <= 3.0f; oy += 3.0f)
-				{
-					drawList->AddText(toTitleFont, toFontSize, ImVec2(toPos.x + ox, toPos.y + oy), IM_COL32(0, 0, 0, 255), toTitle);
-				}
-			}
-			ImU32 toTitleCol = toTitleItem ? (ImU32)ImColor(toTitleItem->color.x, toTitleItem->color.y, toTitleItem->color.z, toTitleItem->color.w) : IM_COL32(255, 30, 30, 255);
-			drawList->AddText(toTitleFont, toFontSize, toPos, toTitleCol, toTitle);
-
-			const UITextItem* toSubItem = textMgr ? textMgr->GetTextItem("BossTimeOverSub", "GAMEPLAY") : nullptr;
-			const char* toSub = (toSubItem && !toSubItem->text.empty()) ? toSubItem->text.c_str() : "CRITICAL ANNIHILATION ATTACK INCOMING";
-			float toSubSize = (toSubItem ? toSubItem->fontSize : 22.0f) * scale;
-			ImFont* toSubFont = (toSubItem && imguiManager) ? imguiManager->GetFont(toSubItem->fontType) : fontMplus;
-			if (!toSubFont) toSubFont = fontMplus;
-
-			ImVec2 toSubS = toSubFont->CalcTextSizeA(toSubSize, FLT_MAX, -1.0f, toSub);
-			float toSubX = viewPos.x + (screenW - toSubS.x) * 0.5f;
-			float toSubY = toPos.y + toSize.y + 10.0f * scale;
-			if (toSubItem)
-			{
-				toSubX = viewPos.x + toSubItem->position.x * (screenW / 1280.0f) - toSubS.x * 0.5f;
-				toSubY = viewPos.y + toSubItem->position.y * (screenH / 720.0f);
-			}
-			ImVec2 toSubPos(toSubX, toSubY);
-
-			drawList->AddText(toSubFont, toSubSize, ImVec2(toSubPos.x + 1.5f, toSubPos.y + 1.5f), IM_COL32(0, 0, 0, 255), toSub);
-			ImU32 toSubCol = toSubItem ? (ImU32)ImColor(toSubItem->color.x, toSubItem->color.y, toSubItem->color.z, toSubItem->color.w) : IM_COL32(255, 220, 50, 255);
-			drawList->AddText(toSubFont, toSubSize, toSubPos, toSubCol, toSub);
 		}
 
 		// 6. 撃破演出中の「TARGET DESTROYED」テキスト表示（JSON設定連動）

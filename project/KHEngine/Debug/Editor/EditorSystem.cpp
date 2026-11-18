@@ -195,6 +195,7 @@ namespace {
     {
         auto services = EngineServices::GetInstance();
         if (!drawList || !services) return;
+        if (UITextManager::GetInstance()->GetHudAlpha() <= 0.05f) return;
 
         bool isDemo = services->IsDemoMode();
         const char* badgeText = isDemo ? "DEMO PLAY MODE | Press [1] to Play" : "PLAY MODE (MANUAL) | Press [1] for Demo";

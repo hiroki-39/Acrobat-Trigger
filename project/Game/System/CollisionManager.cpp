@@ -69,11 +69,16 @@ void CollisionManager::CheckPlayerAttacksVsEnemies(CollisionContext& ctx)
                 bullet->OnCollision();
                 (*it)->OnCollision(bullet->GetDamage());
 
+                if (ctx.onSpawnVoxelHit)
+                {
+                    ctx.onSpawnVoxelHit(bulletSphere.center, 8, 0.45f, 0.95f);
+                }
                 if (ctx.hitEffect)
                 {
                     ctx.hitEffect->SetPosition(bulletSphere.center);
                     ctx.hitEffect->Play();
                 }
+                SoundManager::GetInstance()->PlaySE("small_explosion.mp3", 0.35f);
             }
         }
 
@@ -110,12 +115,11 @@ void CollisionManager::CheckPlayerAttacksVsEnemies(CollisionContext& ctx)
                 missile->OnCollision();
                 (*it)->Kill();
 
-                if (ctx.hitEffect)
+                if (ctx.onSpawnVoxelHit)
                 {
-                    ctx.hitEffect->SetPosition(missileSphere.center);
-                    ctx.hitEffect->Play();
+                    ctx.onSpawnVoxelHit(missileSphere.center, 16, 0.6f, 1.3f);
                 }
-                if (ctx.explosionEffect)
+                else if (ctx.explosionEffect)
                 {
                     ctx.explosionEffect->SetPosition(missileSphere.center);
                     ctx.explosionEffect->Play();
@@ -154,16 +158,40 @@ void CollisionManager::CheckPlayerAttacksVsBoss(CollisionContext& ctx)
         if (bullet->IsDead()) continue;
         Sphere bulletSphere = { bullet->GetPosition(), 1.5f };
         int hitCarIdx = -1;
-        if (ctx.boss->CheckCollision(bulletSphere, &hitCarIdx))
+        BossPartType hitPartType = BossPartType::Carriage;
+        int hitPartIdx = -1;
+        Vector3 hitPos = bulletSphere.center;
+
+        if (ctx.boss->CheckCollision(bulletSphere, &hitCarIdx, &hitPartType, &hitPartIdx, &hitPos))
         {
             bullet->OnCollision();
-            ctx.boss->OnDamaged(hitCarIdx, 1);
+            if (ctx.isDemoMode && !ctx.boss->IsDefeated())
+            {
+                // デモプレイ中：通常弾が1発当たったら即座に処刑条件（HP1）へ移行
+                ctx.boss->SetHpToOneForExecution();
+            }
+            else
+            {
+                ctx.boss->OnDamaged(hitCarIdx, 1, hitPartType, hitPartIdx);
+            }
+            if (ctx.onSpawnVoxelHit)
+            {
+                ctx.onSpawnVoxelHit(hitPos, 8, 0.45f, 0.95f);
+            }
             if (ctx.hitEffect)
             {
-                ctx.hitEffect->SetPosition(bulletSphere.center);
+                ctx.hitEffect->SetPosition(hitPos);
                 ctx.hitEffect->Play();
             }
-            if (ctx.score) *ctx.score += 50;
+            SoundManager::GetInstance()->PlaySE("small_explosion.mp3", 0.35f);
+            if (hitPartType != BossPartType::Carriage)
+            {
+                if (ctx.score) *ctx.score += 150; // 部位攻撃ボーナス
+            }
+            else
+            {
+                if (ctx.score) *ctx.score += 50;
+            }
         }
     }
 
@@ -171,23 +199,72 @@ void CollisionManager::CheckPlayerAttacksVsBoss(CollisionContext& ctx)
     for (auto& missile : *ctx.playerMissiles)
     {
         if (missile->IsDead()) continue;
-        Sphere missileSphere = { missile->GetPosition(), 2.0f };
+        Sphere missileSphere = { missile->GetPosition(), 2.2f };
         int hitCarIdx = -1;
-        if (ctx.boss->CheckCollision(missileSphere, &hitCarIdx))
+        BossPartType hitPartType = BossPartType::Carriage;
+        int hitPartIdx = -1;
+        Vector3 hitPos = missileSphere.center;
+
+        bool isHit = ctx.boss->CheckCollision(missileSphere, &hitCarIdx, &hitPartType, &hitPartIdx, &hitPos);
+
+        // ミサイルのすり抜け防止レイキャスト判定
+        if (!isHit)
+        {
+            Vector3 prev = missile->GetPreviousPosition();
+            Vector3 curr = missile->GetPosition();
+            Vector3 diff = { curr.x - prev.x, curr.y - prev.y, curr.z - prev.z };
+            float moveLen = std::sqrt(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z);
+            if (moveLen > 0.0001f)
+            {
+                Ray moveRay = { prev, { diff.x / moveLen, diff.y / moveLen, diff.z / moveLen } };
+                float hitDist = 0.0f;
+                if (ctx.boss->CheckRaycast(moveRay, &hitDist, &hitCarIdx, &hitPartType, &hitPartIdx))
+                {
+                    if (hitDist <= moveLen + 2.2f)
+                    {
+                        isHit = true;
+                        hitPos = { prev.x + moveRay.direction.x * hitDist, prev.y + moveRay.direction.y * hitDist, prev.z + moveRay.direction.z * hitDist };
+                    }
+                }
+            }
+        }
+
+        if (isHit)
         {
             missile->OnCollision();
-            ctx.boss->OnDamaged(hitCarIdx, 4);
-            if (ctx.hitEffect)
+            ctx.boss->OnDamaged(hitCarIdx, 4, hitPartType, hitPartIdx);
+            // 巨大ボス車体に埋もれて見えないのを防ぐため、着弾時のミサイル位置からカメラ方向・上方向へ引き出す
+            Vector3 fxPos = (hitPartType == BossPartType::Carriage) ? missile->GetPreviousPosition() : hitPos;
+            if (ctx.cameraObject)
             {
-                ctx.hitEffect->SetPosition(missileSphere.center);
-                ctx.hitEffect->Play();
+                const Matrix4x4& cMat = ctx.cameraObject->GetmatWorld();
+                Vector3 toCam = { cMat.m[3][0] - fxPos.x, cMat.m[3][1] - fxPos.y, cMat.m[3][2] - fxPos.z };
+                float len = std::sqrt(toCam.x * toCam.x + toCam.y * toCam.y + toCam.z * toCam.z);
+                if (len > 0.001f)
+                {
+                    float pull = (hitPartType == BossPartType::Carriage) ? 9.0f : 3.5f;
+                    fxPos.x += (toCam.x / len) * pull;
+                    fxPos.y += (toCam.y / len) * pull + 2.5f;
+                    fxPos.z += (toCam.z / len) * pull;
+                }
             }
-            if (ctx.explosionEffect)
+            if (ctx.onSpawnVoxelHit)
             {
-                ctx.explosionEffect->SetPosition(missileSphere.center);
+                ctx.onSpawnVoxelHit(fxPos, 30, 1.2f, 2.5f);
+            }
+            else if (ctx.explosionEffect)
+            {
+                ctx.explosionEffect->SetPosition(fxPos);
                 ctx.explosionEffect->Play();
             }
-            if (ctx.score) *ctx.score += 200;
+            if (hitPartType != BossPartType::Carriage)
+            {
+                if (ctx.score) *ctx.score += 300; // 部位破壊ボーナス
+            }
+            else
+            {
+                if (ctx.score) *ctx.score += 200;
+            }
         }
     }
 
@@ -246,18 +323,28 @@ void CollisionManager::CheckEnemyBullets(CollisionContext& ctx)
             // 2. 地形・建物メッシュ（terrainModels）との衝突判定
             if (!isHit && ctx.terrainModels)
             {
-                Vector3 mid = { (prev.x + curr.x) * 0.5f, (prev.y + curr.y) * 0.5f, (prev.z + curr.z) * 0.5f };
-                Sphere midSphere = { mid, 1.2f };
-
-                for (const auto& modelObj : *ctx.terrainModels)
+                // ボス戦中の超高速カリング：
+                // ボス戦では30〜50発の敵弾・ミサイルが空中で交錯するため、
+                // 全弾に対して毎フレーム全地形メッシュ（数十万ポリゴン）の総当たり判定を行うとFPSが壊滅する。
+                // ボス戦中は空中戦のため、地面下（Y <= 0.0f）に突入した場合のみ地面衝突として処理する。
+                if (ctx.isBossSpawned)
                 {
-                    if (!modelObj) continue;
-
-                    if (modelObj->CheckCollisionWithSphere(bulletSphere, nullptr) ||
-                        modelObj->CheckCollisionWithSphere(midSphere, nullptr))
+                    if (curr.y <= 0.0f)
                     {
                         isHit = true;
-                        break;
+                    }
+                }
+                else
+                {
+                    for (const auto& modelObj : *ctx.terrainModels)
+                    {
+                        if (!modelObj || !modelObj->IsCollisionEnabled()) continue;
+
+                        if (modelObj->CheckCollisionWithSphere(bulletSphere, nullptr))
+                        {
+                            isHit = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -273,13 +360,84 @@ void CollisionManager::CheckEnemyBullets(CollisionContext& ctx)
             }
         }
 
+        // 3. 撃墜可能ミサイル（インターセプト）判定：プレイヤーの通常弾やミサイルで撃ち落とせる
+        if (!(*it)->IsDead() && (*it)->IsDestructible())
+        {
+            Vector3 mPos = (*it)->GetPosition();
+            Sphere missileSphere = { mPos, (*it)->GetRadius() };
+
+            if (ctx.playerBullets)
+            {
+                for (auto& pb : *ctx.playerBullets)
+                {
+                    if (pb->IsDead()) continue;
+                    Sphere pbSphere = { pb->GetPosition(), 1.2f };
+                    if (CollisionMath::IsCollision(missileSphere, pbSphere))
+                    {
+                        pb->OnCollision();
+                        (*it)->OnDamaged(1);
+                        if ((*it)->IsDead())
+                        {
+                            if (ctx.explosionEffect)
+                            {
+                                ctx.explosionEffect->SetPosition(mPos);
+                                ctx.explosionEffect->Play();
+                            }
+                            SoundManager::GetInstance()->PlaySE("explosion.mp3", 0.75f);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!(*it)->IsDead() && ctx.playerMissiles)
+            {
+                for (auto& pm : *ctx.playerMissiles)
+                {
+                    if (pm->IsDead()) continue;
+                    Sphere pmSphere = { pm->GetPosition(), 1.6f };
+                    if (CollisionMath::IsCollision(missileSphere, pmSphere))
+                    {
+                        pm->OnCollision();
+                        (*it)->OnDamaged(3);
+                        if ((*it)->IsDead())
+                        {
+                            if (ctx.explosionEffect)
+                            {
+                                ctx.explosionEffect->SetPosition(mPos);
+                                ctx.explosionEffect->Play();
+                            }
+                            SoundManager::GetInstance()->PlaySE("explosion.mp3", 0.85f);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         // 自機との衝突判定
         if (!(*it)->IsDead() && ctx.player && !ctx.player->IsDead())
         {
-            Sphere bulletSphere = { (*it)->GetPosition(), 1.0f };
+            Vector3 currPos = (*it)->GetPosition();
+            Vector3 prevPos = (*it)->GetPreviousPosition();
+            float hitRadius = (*it)->GetRadius();
+            Sphere bulletSphere = { currPos, hitRadius };
             OBB playerOBB = ctx.player->GetWorldOBB();
 
-            if (CollisionMath::IsCollision(bulletSphere, playerOBB))
+            // 現在位置、または前フレームとの中間位置での判定（高速移動時のすり抜け防止）
+            bool hitPlayer = CollisionMath::IsCollision(bulletSphere, playerOBB);
+            if (!hitPlayer)
+            {
+                Vector3 midPos = {
+                    (currPos.x + prevPos.x) * 0.5f,
+                    (currPos.y + prevPos.y) * 0.5f,
+                    (currPos.z + prevPos.z) * 0.5f
+                };
+                Sphere midSphere = { midPos, hitRadius };
+                hitPlayer = CollisionMath::IsCollision(midSphere, playerOBB);
+            }
+
+            if (hitPlayer)
             {
                 if (ctx.player->IsRolling() && ctx.player->GetRollTimer() < 15.0f)
                 {
@@ -417,11 +575,16 @@ void CollisionManager::CheckPlayerAttacksVsObstacles(CollisionContext& ctx)
                 bullet->OnCollision();
                 (*it)->OnCollision(bullet->GetDamage());
 
+                if (ctx.onSpawnVoxelHit)
+                {
+                    ctx.onSpawnVoxelHit(bulletSphere.center, 8, 0.45f, 0.95f);
+                }
                 if (ctx.hitEffect)
                 {
                     ctx.hitEffect->SetPosition(bulletSphere.center);
                     ctx.hitEffect->Play();
                 }
+                SoundManager::GetInstance()->PlaySE("small_explosion.mp3", 0.35f);
             }
         }
 
@@ -458,7 +621,11 @@ void CollisionManager::CheckPlayerAttacksVsObstacles(CollisionContext& ctx)
                 missile->OnCollision();
                 (*it)->Kill();
 
-                if (ctx.hitEffect)
+                if (ctx.onSpawnVoxelHit)
+                {
+                    ctx.onSpawnVoxelHit(missileSphere.center, 14, 0.6f, 1.2f);
+                }
+                else if (ctx.hitEffect)
                 {
                     ctx.hitEffect->SetPosition(missileSphere.center);
                     ctx.hitEffect->Play();

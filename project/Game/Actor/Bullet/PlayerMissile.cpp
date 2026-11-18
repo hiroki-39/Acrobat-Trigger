@@ -17,6 +17,10 @@ void PlayerMissile::Initialize(Object3dCommon* object3dCommon, const Vector3& po
     object_ = std::make_unique<Object3d>();
     object_->Initialize(object3dCommon);
     object_->SetModel("missile.obj"); // ユーザー指定の missile.obj を使用
+    object_->SetColor({ 0.15f, 0.92f, 1.0f, 1.0f }); // サイバー仮想空間用ネオンシアン
+    object_->SetEnvironmentCoefficient(0.0f);
+    object_->SetEnableLighting(true);
+    object_->SetSelectLightings(11); // ミサイル専用サイバーシェーダー
     object_->SetTranslate(position_);
     object_->SetRotation(rotation_);
     object_->SetScale(Vector3(0.5f, 0.5f, 0.5f)); // 適切なスケールに調整 (mountedMissiles_ のワールドスケール0.5fと一致させる)

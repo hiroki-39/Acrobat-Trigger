@@ -159,6 +159,9 @@
     <ClCompile Include="Game\Scene\GamePlayScene.cpp">
       <Filter>繧ｽ繝ｼ繧ｹ 繝輔ぃ繧､繝ｫ</Filter>
     </ClCompile>
+    <ClCompile Include="Game\Sequence\BossFinisherSequence.cpp">
+      <Filter>繧ｽ繝ｼ繧ｹ 繝輔ぃ繧､繝ｫ</Filter>
+    </ClCompile>
     <ClCompile Include="Game\Scene\GameSceneFactory.cpp">
       <Filter>繧ｽ繝ｼ繧ｹ 繝輔ぃ繧､繝ｫ</Filter>
     </ClCompile>
@@ -412,6 +415,9 @@
       <Filter>繝倥ャ繝€繝ｼ 繝輔ぃ繧､繝ｫ</Filter>
     </ClInclude>
     <ClInclude Include="Game\Scene\GamePlayScene.h">
+      <Filter>繝倥ャ繝€繝ｼ 繝輔ぃ繧､繝ｫ</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Sequence\BossFinisherSequence.h">
       <Filter>繝倥ャ繝€繝ｼ 繝輔ぃ繧､繝ｫ</Filter>
     </ClInclude>
     <ClInclude Include="Game\Scene\GameSceneFactory.h">

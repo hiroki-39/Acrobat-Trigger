@@ -88,6 +88,8 @@ public:
         cinematicBlend_ = blendWeight;
     }
     bool IsCinematicActive() const { return isCinematicActive_; }
+    const Vector3& GetCinematicLocalPos() const { return cinematicLocalPos_; }
+    const Vector3& GetCinematicLookAt() const { return cinematicLookAt_; }
 
     /// <summary>
     /// ImGuiデバッグUI

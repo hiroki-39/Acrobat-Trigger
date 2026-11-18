@@ -195,7 +195,7 @@ void KHFramework::FrameworkUpdate(float deltaTime)
 			// フルスクリーンプレイ時: ForegroundDrawListでバッジを描画
 			auto drawList = ImGui::GetForegroundDrawList();
 			auto services = EngineServices::GetInstance();
-			if (drawList && services)
+			if (drawList && services && UITextManager::GetInstance()->GetHudAlpha() > 0.05f)
 			{
 				// Use 24px high-visibility font (English_FiraMono)
 				ImFont* font = imguiManager_ ? imguiManager_->GetFont(ImGuiManager::FontType::English_FiraMono) : nullptr;

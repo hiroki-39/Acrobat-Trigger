@@ -126,6 +126,7 @@ public:
 	/// 存在チェック
 	/// </summary>
 	bool HasTextItem(const std::string& id, const std::string& sceneName = "") const;
+	bool HasLoadedFromFile() const { return hasLoadedFromFile_; }
 
 #ifdef USE_IMGUI
 	/// <summary>
@@ -168,4 +169,5 @@ private:
 	int selectedItemIndex_ = -1;
 	bool showGizmo_ = false;
 	float hudAlpha_ = 1.0f;
+	bool hasLoadedFromFile_ = false;
 };
