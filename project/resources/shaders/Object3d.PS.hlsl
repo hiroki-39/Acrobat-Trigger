@@ -191,24 +191,23 @@ PixelShaderOutput main(VertexShaderOutput input)
             break;
         case 6:
             {
-                // ===== ビーム・高エネルギー発光（ホワイトハイライト + ネオンプラズマ） =====
-                // 視線と法線の内積から、中心軸付近に鋭い光芯を入れる
-                float32_t NdotV = saturate(dot(normal, toEye));
+                // ===== ビーム・高エネルギー発光（ホワイトハイライト + 高輝度ネオンプラズマ） =====
+                // 両面・全角度から中心軸付近に鋭い光芯が入るように abs を取る
+                float32_t NdotV = saturate(abs(dot(normal, toEye)));
                 
-                // コア（超高エネルギーハイライト）：中心線を鋭く細くハイライト
-                float32_t core = pow(NdotV, 4.0f);
+                // コア（超高エネルギーハイライト）：中心線を太く力強く白熱させる
+                float32_t core = pow(NdotV, 2.5f);
                 
-                // リム（輪郭のプラズマ膜）：輪郭部にネオン光をまとう
-                float32_t rim = pow(1.0f - NdotV, 2.0f);
+                // リム（輪郭のプラズマ膜）：輪郭部に鮮やかなネオン光をまとう
+                float32_t rim = pow(1.0f - NdotV, 1.8f);
                 
                 // ベースとなるネオンカラー
                 float32_t3 baseColor = gMaterial.color.rgb;
                 
-                // 外周は鮮烈なネオンカラー、中心線にスッと細く白い光芯が通る
-                float32_t3 glowColor = lerp(baseColor, float32_t3(1.0f, 1.0f, 1.0f), core * 0.70f);
-                
-                // 輪郭にプラズマ光を付加
-                glowColor += baseColor * (rim * 0.5f);
+                // 中心線は純白に近く白熱、外周は鮮烈なネオンカラーをブースト発光
+                float32_t3 glowColor = lerp(baseColor * 1.45f, float32_t3(1.0f, 1.0f, 1.0f), core * 0.88f);
+                glowColor += baseColor * (rim * 0.95f);
+                glowColor *= 1.55f;
                 
                 output.color.rgb = glowColor * textureColor.rgb;
                 output.color.a = gMaterial.color.a * textureColor.a;

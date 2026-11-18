@@ -288,9 +288,14 @@ void BossFinisherSequence::UpdatePhase1Transition(float dt, ArmoredTrainBoss* bo
 void BossFinisherSequence::UpdatePhase2AutoLockOn(float dt, ArmoredTrainBoss* boss, Player* player) {
     if (!boss || !player) return;
 
-    auto input = EngineServices::GetInstance()->GetInput();
+    auto services = EngineServices::GetInstance();
+    auto input = services ? services->GetInput() : nullptr;
+    bool isDemoMode = (services && services->IsDemoMode());
     bool isSpaceHolding = false;
-    if (input) {
+    if (isDemoMode) {
+        // デモプレイ中は自動でスペース長押しを行い、全コアロック完了の0.45秒後に自動発射する
+        isSpaceHolding = (spaceHoldTimer_ < kRequiredHoldTime_ + 0.45f);
+    } else if (input) {
         isSpaceHolding = input->PushKey(DIK_SPACE) || input->PushPadButton(XINPUT_GAMEPAD_A);
     }
 
@@ -912,11 +917,17 @@ void BossFinisherSequence::UpdatePhase5MissionAccomplished(float dt, ArmoredTrai
 
         // 固定ルート（ボス進行方向基準）：
         // 前半 (0.0s〜3.5s): ボスの真上（ボスの右+5m, 高さ+11.7m）を一直線に通過し、さらに前方（+60m）まで水平飛行を続ける
-        // 後半 (3.5s〜4.8s): 十分前に進んだあと、ようやく上空（オーロラの夜空）へ上昇して飛び去る
+        // 後半 (3.5s〜4.8s): 前半の水平ベクトル・速度をそのまま接線として引き継ぎ（C1連続）、滑らかに上空へ上昇して飛び去る
         Vector3 shipStart    = bossTailLocal + bossRight * 5.0f + bossUp * 11.7f - bossFwd * 22.0f;
         Vector3 shipOverHead = bossHeadLocal + bossRight * 5.0f + bossUp * 11.7f + bossFwd * 60.0f;
-        Vector3 shipPassMid  = bossHeadLocal + bossRight * 5.0f + bossUp * 24.0f + bossFwd * 78.0f;
-        Vector3 shipSkyEnd   = bossHeadLocal + bossRight * 5.0f + bossUp * 58.0f + bossFwd * 105.0f;
+        Vector3 horizVec = shipOverHead - shipStart;
+        float horizLen = horizVec.Length();
+        Vector3 horizUnit = (horizLen > 0.001f) ? (horizVec / horizLen) : bossFwd;
+        float horizSpeed = horizLen / 3.50f;
+        // 2次ベジェ曲線の t2=0 における接線速度 (2 * |P1 - P0| / 1.30s) を前半の水平速度に一致させる
+        float midTangentDist = (horizSpeed * 1.30f) * 0.5f;
+        Vector3 shipPassMid  = shipOverHead + horizUnit * midTangentDist;
+        Vector3 shipSkyEnd   = shipOverHead + horizUnit * (midTangentDist * 1.65f) + bossUp * 46.3f;
 
         Vector3 shipPos = shipStart;
         Vector3 moveDir = shipOverHead - shipStart;

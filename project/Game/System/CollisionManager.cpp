@@ -69,11 +69,16 @@ void CollisionManager::CheckPlayerAttacksVsEnemies(CollisionContext& ctx)
                 bullet->OnCollision();
                 (*it)->OnCollision(bullet->GetDamage());
 
+                if (ctx.onSpawnVoxelHit)
+                {
+                    ctx.onSpawnVoxelHit(bulletSphere.center, 8, 0.45f, 0.95f);
+                }
                 if (ctx.hitEffect)
                 {
                     ctx.hitEffect->SetPosition(bulletSphere.center);
                     ctx.hitEffect->Play();
                 }
+                SoundManager::GetInstance()->PlaySE("small_explosion.mp3", 0.35f);
             }
         }
 
@@ -160,12 +165,25 @@ void CollisionManager::CheckPlayerAttacksVsBoss(CollisionContext& ctx)
         if (ctx.boss->CheckCollision(bulletSphere, &hitCarIdx, &hitPartType, &hitPartIdx, &hitPos))
         {
             bullet->OnCollision();
-            ctx.boss->OnDamaged(hitCarIdx, 1, hitPartType, hitPartIdx);
+            if (ctx.isDemoMode && !ctx.boss->IsDefeated())
+            {
+                // デモプレイ中：通常弾が1発当たったら即座に処刑条件（HP1）へ移行
+                ctx.boss->SetHpToOneForExecution();
+            }
+            else
+            {
+                ctx.boss->OnDamaged(hitCarIdx, 1, hitPartType, hitPartIdx);
+            }
+            if (ctx.onSpawnVoxelHit)
+            {
+                ctx.onSpawnVoxelHit(hitPos, 8, 0.45f, 0.95f);
+            }
             if (ctx.hitEffect)
             {
                 ctx.hitEffect->SetPosition(hitPos);
                 ctx.hitEffect->Play();
             }
+            SoundManager::GetInstance()->PlaySE("small_explosion.mp3", 0.35f);
             if (hitPartType != BossPartType::Carriage)
             {
                 if (ctx.score) *ctx.score += 150; // 部位攻撃ボーナス
@@ -557,11 +575,16 @@ void CollisionManager::CheckPlayerAttacksVsObstacles(CollisionContext& ctx)
                 bullet->OnCollision();
                 (*it)->OnCollision(bullet->GetDamage());
 
+                if (ctx.onSpawnVoxelHit)
+                {
+                    ctx.onSpawnVoxelHit(bulletSphere.center, 8, 0.45f, 0.95f);
+                }
                 if (ctx.hitEffect)
                 {
                     ctx.hitEffect->SetPosition(bulletSphere.center);
                     ctx.hitEffect->Play();
                 }
+                SoundManager::GetInstance()->PlaySE("small_explosion.mp3", 0.35f);
             }
         }
 

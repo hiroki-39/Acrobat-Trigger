@@ -95,6 +95,21 @@ public:
     bool IsCutsceneUsingQuaternion() const { return isCutsceneUseQuat_; }
     const Quaternion& GetCutsceneQuaternion() const { return cutsceneQuat_; }
 
+    /// <summary>
+    /// デモプレイ用の自動操縦入力オーバーライド設定
+    /// </summary>
+    void SetDemoInputOverride(bool active, float moveX = 0.0f, float moveY = 0.0f, bool triggerRoll = false, float rollDir = 1.0f) {
+        isDemoInputActive_ = active;
+        demoInputX_ = moveX;
+        demoInputY_ = moveY;
+        if (active && triggerRoll) {
+            demoRollTrigger_ = true;
+            demoRollDir_ = (rollDir >= 0.0f) ? 1.0f : -1.0f;
+        } else if (!active) {
+            demoRollTrigger_ = false;
+        }
+    }
+
     void ResetPosture() {
         baseRotation_ = { 0.0f, 0.0f, 0.0f };
         currentPitch_ = 0.0f;
@@ -497,5 +512,12 @@ private:
     Vector3 cutscenePos_ = { 0.0f, 0.0f, 0.0f };
     Vector3 cutsceneRot_ = { 0.0f, 0.0f, 0.0f };
     Quaternion cutsceneQuat_ = Quaternion::Identity();
+
+    // デモプレイ自動操縦用
+    bool isDemoInputActive_ = false;
+    float demoInputX_ = 0.0f;
+    float demoInputY_ = 0.0f;
+    bool demoRollTrigger_ = false;
+    float demoRollDir_ = 1.0f;
 };
 

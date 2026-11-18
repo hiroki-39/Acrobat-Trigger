@@ -19,10 +19,10 @@ void PlayerBullet::Initialize(Object3dCommon* object3dCommon, const Vector3& pos
     object_->SetModel("beam.obj"); // 専用レーザービームモデル
     object_->SetSelectLightings(6); // ビーム発光モード（中心ホワイトハイライト + 外縁プラズマ）
     object_->SetEnableLighting(false); // 自発光
-    object_->SetColor({ 1.0f, 0.12f, 0.65f, 1.0f }); // 背景シアンの補色となる鮮烈なネオンマゼンタ（ピンク）
+    object_->SetColor({ 1.0f, 0.18f, 0.72f, 1.0f }); // 背景シアンの補色となる高輝度ネオンマゼンタ
     object_->SetTranslate(position);
     object_->SetRotation(rotation_);
-    object_->SetScale({ 1.35f, 1.35f, 11.0f }); // 視認性と迫力を高めた大型ビーム形状
+    object_->SetScale({ 2.4f, 2.4f, 16.0f }); // 遠距離・背面視点でもハッキリ視認できる太さと長さ
 
     // 光の尾（ビームトレイル）の生成
     trailObject_ = std::make_unique<Object3d>();
@@ -30,10 +30,10 @@ void PlayerBullet::Initialize(Object3dCommon* object3dCommon, const Vector3& pos
     trailObject_->SetModel("beam.obj");
     trailObject_->SetSelectLightings(6);
     trailObject_->SetEnableLighting(false);
-    trailObject_->SetColor({ 1.0f, 0.25f, 0.75f, 0.50f }); // わずかに透過したピンクの残光
+    trailObject_->SetColor({ 1.0f, 0.35f, 0.85f, 0.65f }); // 鮮やかに尾を引くピンクの残光
     trailObject_->SetTranslate(position);
     trailObject_->SetRotation(rotation_);
-    trailObject_->SetScale({ 1.0f, 1.0f, 16.0f }); // 大型ビームに合わせた力強いロングトレイル
+    trailObject_->SetScale({ 1.8f, 1.8f, 24.0f }); // 大型ビームに合わせた力強いロングトレイル
 
     colliderObject_ = std::make_unique<Object3d>();
     colliderObject_->Initialize(object3dCommon);

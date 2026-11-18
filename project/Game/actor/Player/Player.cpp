@@ -860,7 +860,15 @@ void Player::Move(float gameSpeed) {
 
     // 回避（バレルロール）判定：Qキーで左回避、Eキーで右回避（単押しで即座に発動）
     if (isInputEnabled_ && !isRolling_) {
-        if (input_->TriggerKey(DIK_Q)) {
+        if (isDemoInputActive_) {
+            if (demoRollTrigger_) {
+                demoRollTrigger_ = false;
+                isRolling_ = true;
+                rollTimer_ = 0.0f;
+                rollDirection_ = demoRollDir_;
+                isDodgeTriggered_ = true;
+            }
+        } else if (input_->TriggerKey(DIK_Q)) {
             isRolling_ = true;
             rollTimer_ = 0.0f;
             rollDirection_ = -1.0f; 
@@ -923,14 +931,19 @@ void Player::Move(float gameSpeed) {
     float currentSpeed = speed_;
     if (isBoosting_) currentSpeed *= 1.4f;
 
-    // スティック / キー入力の検出（入力無効時は0）
+    // スティック / キー入力の検出（入力無効時は0、デモプレイ時は自動操縦値を使用）
     float inputX = 0.0f;
     float inputY = 0.0f;
     if (isInputEnabled_) {
-        if (input_->PushKey(DIK_A) || input_->PushKey(DIK_LEFT))  inputX -= 1.0f;
-        if (input_->PushKey(DIK_D) || input_->PushKey(DIK_RIGHT)) inputX += 1.0f;
-        if (input_->PushKey(DIK_W) || input_->PushKey(DIK_UP))    inputY += 1.0f;
-        if (input_->PushKey(DIK_S) || input_->PushKey(DIK_DOWN))  inputY -= 1.0f;
+        if (isDemoInputActive_) {
+            inputX = std::clamp(demoInputX_, -1.0f, 1.0f);
+            inputY = std::clamp(demoInputY_, -1.0f, 1.0f);
+        } else {
+            if (input_->PushKey(DIK_A) || input_->PushKey(DIK_LEFT))  inputX -= 1.0f;
+            if (input_->PushKey(DIK_D) || input_->PushKey(DIK_RIGHT)) inputX += 1.0f;
+            if (input_->PushKey(DIK_W) || input_->PushKey(DIK_UP))    inputY += 1.0f;
+            if (input_->PushKey(DIK_S) || input_->PushKey(DIK_DOWN))  inputY -= 1.0f;
+        }
     }
 
     // 回避・ロールキー押下時の横ブースト

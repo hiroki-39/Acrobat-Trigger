@@ -531,54 +531,6 @@
         },
         {
             "type": "MESH",
-            "name": "enemy.031",
-            "transform": {
-                "translation": [
-                    17.985904693603516,
-                    4542.82763671875,
-                    21.285999298095703
-                ],
-                "rotation": [
-                    0.0,
-                    -0.0,
-                    0.0
-                ],
-                "scale": [
-                    1.0,
-                    1.0,
-                    1.0
-                ]
-            },
-            "is_enemy": true,
-            "enemy_type": "PATROL_H",
-            "is_destructible": true
-        },
-        {
-            "type": "MESH",
-            "name": "enemy.032",
-            "transform": {
-                "translation": [
-                    17.985904693603516,
-                    4542.82763671875,
-                    12.045875549316406
-                ],
-                "rotation": [
-                    0.0,
-                    -0.0,
-                    0.0
-                ],
-                "scale": [
-                    1.0,
-                    1.0,
-                    1.0
-                ]
-            },
-            "is_enemy": true,
-            "enemy_type": "PATROL_H",
-            "is_destructible": true
-        },
-        {
-            "type": "MESH",
             "name": "enemy.033",
             "transform": {
                 "translation": [

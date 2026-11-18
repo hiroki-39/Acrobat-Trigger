@@ -1455,57 +1455,87 @@ void GamePlayScene::Update()
 		SoundManager::GetInstance()->ToggleMasterMute();
 	}
 
-	// デモプレイ中：スタート演出（地形展開・自機マテリアライズ）完了後、通常飛行中に敵弾が飛来して直撃し、HP0でゲームオーバーへ突入
+	// デモプレイ中：ゲームクリア＆処刑フィニッシャー演出を自動進行する
 	if (services && services->IsDemoMode())
 	{
+		if (player_)
+		{
+			player_->SetGodMode(true);
+		}
 		if (gamePhase_ == GamePhase::PLAYING)
 		{
-			demoSurvivalTimer_ += dt;
-
-			// 1. 通常飛行に入って約1.6秒後：自機前方から敵弾が高速飛来
-			if (demoSurvivalTimer_ >= 1.6f && !demoBulletSpawned_)
+			// 生き生きとした自動飛行（左右・上下へのスウェー移動＋バレルロール回避）
+			if (player_)
 			{
-				demoBulletSpawned_ = true;
-				if (player_ && services->GetObject3dCommon())
+				bool inFinisher = (bossFinisherSequence_ && bossFinisherSequence_->IsActive());
+				float moveAmpX = inFinisher ? 0.45f : 0.85f;
+				float moveAmpY = inFinisher ? 0.25f : 0.45f;
+				float moveX = std::sin(demoTimer_ * 2.2f) * moveAmpX;
+				float moveY = std::sin(demoTimer_ * 1.5f + 0.6f) * moveAmpY;
+				bool rollNow = false;
+				if (!inFinisher && bossBattleStep_ == BossBattleStep::BATTLE && armoredTrainBoss_ && armoredTrainBoss_->IsCloseToPlayer() && !demoHitTriggered_ && demoSurvivalTimer_ >= 0.5f)
 				{
-					Vector3 pPos = player_->GetWorldPosition();
-					Vector3 spawnPos = pPos + Vector3{ 2.5f, 1.5f, 75.0f };
-					Vector3 toPlayer = pPos - spawnPos;
-					float len = std::sqrt(toPlayer.x * toPlayer.x + toPlayer.y * toPlayer.y + toPlayer.z * toPlayer.z);
-					Vector3 vel = { 0.0f, 0.0f, -80.0f };
-					if (len > 0.001f)
+					demoHitTriggered_ = true; // デモ用バレルロール1回トリガーとして使用
+					rollNow = true;
+				}
+				player_->SetDemoInputOverride(true, moveX, moveY, rollNow, 1.0f);
+			}
+			demoTimer_ += dt;
+
+			if (bossBattleStep_ == BossBattleStep::NOT_ACTIVE)
+			{
+				// 39%位置から開始後、すぐにボス戦へ移行
+				demoSurvivalTimer_ += dt;
+				if (demoSurvivalTimer_ >= 0.45f)
+				{
+					demoSurvivalTimer_ = 0.0f;
+					StartBossWarningSequence();
+				}
+			}
+			else if (bossBattleStep_ == BossBattleStep::BATTLE && armoredTrainBoss_ && armoredTrainBoss_->IsActive() &&
+				(!bossFinisherSequence_ || (!bossFinisherSequence_->IsActive() && !bossFinisherSequence_->IsCompleted())))
+			{
+				// ボスがカメラ前方（並走位置）にしっかり映ってからタイマーを進める
+				if (armoredTrainBoss_->IsCloseToPlayer())
+				{
+					demoSurvivalTimer_ += dt;
+				}
+				// ボスがカメラ前に現れてから1.2秒後（ロール回避後）に先頭車両へ向けて通常弾を発射（1発命中でHP1処刑条件へ移行）
+				if (demoSurvivalTimer_ >= 1.2f && !demoBulletSpawned_)
+				{
+					demoBulletSpawned_ = true;
+					demoSurvivalTimer_ = 1.0f; // 万一外れた場合は0.5秒後に再射撃
+					if (player_ && services->GetObject3dCommon())
 					{
-						vel = { (toPlayer.x / len) * 90.0f, (toPlayer.y / len) * 90.0f, (toPlayer.z / len) * 90.0f };
+						Vector3 pPos = player_->GetWorldPosition();
+						Vector3 targetPos = armoredTrainBoss_->GetCarriagePosition(0) + Vector3{ 0.0f, 7.0f, 0.0f };
+						Vector3 dir = targetPos - pPos;
+						float len = dir.Length();
+						Vector3 vel = (len > 0.001f) ? (dir / len) * 12.0f : Vector3{ 0.0f, 0.0f, 12.0f };
+						auto b = std::make_unique<PlayerBullet>();
+						b->Initialize(services->GetObject3dCommon(), pPos, vel, nullptr);
+						bullets_.push_back(std::move(b));
+						SoundManager::GetInstance()->PlaySE("shot.wav", 0.5f);
 					}
-					auto b = std::make_unique<EnemyBullet>();
-					b->Initialize(services->GetObject3dCommon(), spawnPos, vel, false, player_.get());
-					enemyBullets_.push_back(std::move(b));
 				}
-			}
-
-			// 2. 通常飛行に入って約2.3秒後：敵弾が直撃してHPが0になりゲームオーバー演出開始！
-			if (demoSurvivalTimer_ >= 2.3f && !demoHitTriggered_)
-			{
-				demoHitTriggered_ = true;
-				if (player_)
+				if (demoBulletSpawned_ && demoSurvivalTimer_ >= 1.5f)
 				{
-					// 直撃した敵弾を消去
-					enemyBullets_.clear();
-
-					// ユーザー要望により被弾時のパーティクルエフェクトは一旦非表示
-					// hitEffect_.SetPosition(pPos); hitEffect_.Play();
-					// explosionEffect_.SetPosition(pPos); explosionEffect_.Play();
-
-					SoundManager::GetInstance()->PlaySE("explosion.mp3", 0.85f);
-					cameraShakeTimer_ = 8.0f;
-					player_->SetHp(0);
-					StartGameOverSequence();
+					demoBulletSpawned_ = false;
 				}
 			}
+		}
+		else if (player_)
+		{
+			player_->SetDemoInputOverride(false);
 		}
 	}
 	else
 	{
+		if (player_)
+		{
+			if (player_->IsGodMode()) player_->SetGodMode(false);
+			player_->SetDemoInputOverride(false);
+		}
 		demoSurvivalTimer_ = 0.0f;
 		demoBulletSpawned_ = false;
 		demoHitTriggered_ = false;
@@ -1950,7 +1980,10 @@ void GamePlayScene::Update()
 			{
 				playerSpeed = railCameraController_->GetBaseSpeed() * railCameraController_->GetSpeedMultiplier();
 			}
-			armoredTrainBoss_->Update(camPos, cameraForward, playerSpeed, player_.get(), enemyBullets_, gameSpeed_);
+			// 処刑ムービー中はレール進行停止のため gameSpeed_ が 0 になるが、
+			// ボスのグリッチ演出と瀕死パーティクル（criticalParticles_）は動かし続ける
+			float bossGameSpeed = (bossFinisherSequence_ && bossFinisherSequence_->IsMoviePhase()) ? (dt * 60.0f) : gameSpeed_;
+			armoredTrainBoss_->Update(camPos, cameraForward, playerSpeed, player_.get(), enemyBullets_, bossGameSpeed);
 		}
 
 		#if 1
@@ -2038,6 +2071,7 @@ void GamePlayScene::Update()
 		colCtx.ringEffect = &ringEffect_;
 		colCtx.healRingEffect = &healRingEffect_;
 
+		colCtx.isDemoMode = (services && services->IsDemoMode());
 		colCtx.score = &score_;
 		colCtx.cameraShakeTimer = &cameraShakeTimer_;
 		colCtx.isJustDodgeActive = &isJustDodgeActive_;
@@ -4699,6 +4733,13 @@ void GamePlayScene::StartOpeningCutscene()
 	// 初期カメラ：地面スレスレの超ローアングルから、眼前を走る光の波を見送るドラマチックな構図！
 	if (railCameraController_)
 	{
+		if (services && services->IsDemoMode())
+		{
+			// デモプレイ時はレールの進行度を 39% の位置から開始し、ミッションスタート直後にボス戦へ移行
+			railCameraController_->SetProgress(0.39f);
+			railCameraController_->Update(0.0f, { 0.0f, 0.0f, 0.0f });
+			if (player_) player_->SetGodMode(true);
+		}
 		Vector3 camLocalPos = { 2.0f, 0.45f, -12.0f };
 		Vector3 lookTarget = { 0.0f, 1.5f, 35.0f };
 		railCameraController_->SetCinematicCamera(true, camLocalPos, lookTarget, 1.0f);
@@ -7163,20 +7204,20 @@ void GamePlayScene::UpdateClearSequence(float dt)
 		}
 
 		// 全項目＆ランク表示後、SPACE / ENTER / パッドAでシャットダウン遷移（CRT_Off）してタイトルへ復帰
+		// デモプレイ時はリザルト表示後（4.2秒後）に自動でタイトルへ復帰
+		auto services = EngineServices::GetInstance();
+		bool isDemoAutoReturn = (services && services->IsDemoMode() && clearTimer_ >= 4.2f);
 		if (clearTimer_ >= 1.65f)
 		{
 			auto sceneManager = GetSceneManager();
 			if (sceneManager && !sceneManager->IsTransitioning())
 			{
-				auto input = EngineServices::GetInstance()->GetInput();
-				if (input)
+				auto input = services ? services->GetInput() : nullptr;
+				if (isDemoAutoReturn || (input && (input->TriggerKey(DIK_SPACE) || input->TriggerKey(DIK_RETURN) || input->TriggerPadButton(XINPUT_GAMEPAD_A))))
 				{
-					if (input->TriggerKey(DIK_SPACE) || input->TriggerKey(DIK_RETURN) || input->TriggerPadButton(XINPUT_GAMEPAD_A))
-					{
-						SoundManager::GetInstance()->StopBGM();
-						SoundManager::GetInstance()->PlaySE("button.mp3", 0.7f);
-						sceneManager->ChangeScene("TITLE", 0.90f, { 0.0f, 0.0f, 0.0f, 1.0f }, TransitionType::CRT_Off);
-					}
+					SoundManager::GetInstance()->StopBGM();
+					SoundManager::GetInstance()->PlaySE("button.mp3", 0.7f);
+					sceneManager->ChangeScene("TITLE", 0.90f, { 0.0f, 0.0f, 0.0f, 1.0f }, TransitionType::CRT_Off);
 				}
 			}
 		}
@@ -7699,6 +7740,32 @@ void GamePlayScene::UpdateBossBattle(float dt)
 			}
 			if (armoredTrainBoss_)
 			{
+				auto services = EngineServices::GetInstance();
+				if (services && services->IsDemoMode() && player_)
+				{
+					Vector3 pPos = player_->GetWorldPosition();
+					Rail* targetRail = (bossRail_ && bossRail_->IsValid()) ? bossRail_.get() : (!mainRails_.empty() ? mainRails_[0].get() : nullptr);
+					if (targetRail && targetRail->IsValid())
+					{
+						float closestProg = targetRail->GetClosestProgress(pPos);
+						Vector3 railClosestPos = targetRail->GetPosition(closestProg);
+						float dx = railClosestPos.x - pPos.x;
+						float dy = railClosestPos.y - pPos.y;
+						float dz = railClosestPos.z - pPos.z;
+						float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+						// bossRail_ がプレイヤーから遠すぎる場合はメインレール上に配置して即座に視界へ出す
+						if (dist > 150.0f && !mainRails_.empty() && mainRails_[0] && mainRails_[0]->IsValid())
+						{
+							targetRail = mainRails_[0].get();
+							closestProg = targetRail->GetClosestProgress(pPos);
+						}
+						float totalLen = (std::max)(1.0f, targetRail->GetTotalLength());
+						// 先頭車両がプレイヤーの前方約90m（最後尾が横〜後方）になる位置から一気に追い抜いて登場させる
+						float spawnProg = (std::clamp)(closestProg + (90.0f / totalLen), 0.0f, 0.95f);
+						armoredTrainBoss_->SetRail(targetRail);
+						armoredTrainBoss_->SetRailProgress(spawnProg);
+					}
+				}
 				armoredTrainBoss_->SetActive(true);
 			}
 			SoundManager::GetInstance()->PlaySE("explosion.mp3", 0.9f);
