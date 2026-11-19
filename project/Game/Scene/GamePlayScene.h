@@ -21,10 +21,18 @@
 #include "Game/Actor/Enemy/Enemy.h"
 #include "Game/Actor/Enemy/ArmoredTrainBoss.h"
 #include "Game/Sequence/BossFinisherSequence.h"
+#include "Game/Sequence/OpeningCutsceneSequence.h"
+#include "Game/Sequence/GameOverSequence.h"
+#include "Game/Sequence/GameClearSequence.h"
+#include "Game/Sequence/PauseMenu.h"
 #include "Game/Actor/Obstacle/Obstacle.h"
 #include "Game/Actor/Item/EnhanceRing.h"
 #include "Game/Actor/Item/MemoryItem.h"
 #include "Game/System/CollisionManager.h"
+#include "Game/System/BossBattleController.h"
+#include "Game/System/GamePlayHUD.h"
+#include "Game/System/GamePlayVfxManager.h"
+#include "Game/Scene/GamePlayEditor.h"
 #include <vector>
 #include <list>
 #include <random>
@@ -32,6 +40,7 @@
 
 class GamePlayScene : public BaseScene
 {
+    friend class GamePlayEditor;
 public:
     void Initialize() override;
     void Update() override;
@@ -106,54 +115,18 @@ private:
     std::mt19937 randomEngine{ seedGenerator() };
 
     
-    ParticleEffect thrusterEffect_;   
-    ParticleEffect explosionEffect_;  
-    ParticleEffect hitEffect_;        
-    ParticleEffect dodgeEffect_;      
-    ParticleEffect trailEffect_;      
-    ParticleEffect missileSmokeEffect_; 
-    ParticleEffect ringEffect_;
+    GamePlayVfxManager vfx_;
 
-    // ミサイル着弾時のサイバーボクセルブロック粒子
-    struct VoxelHitParticle {
-        std::unique_ptr<Object3d> obj;
-        Vector3 position;
-        Vector3 velocity;
-        Vector3 rotation;
-        Vector3 rotSpeed;
-        Vector3 scale;
-        Vector4 color;
-        float life = 0.0f;
-        float maxLife = 0.6f;
-    };
-    std::vector<VoxelHitParticle> voxelHitParticles_;
-    void SpawnVoxelHitParticles(const Vector3& worldPos, int count = 28, float minSize = 1.2f, float maxSize = 2.5f);
-    ParticleEffect healRingEffect_; // リング取得時のキラキラエフェクト
-    ParticleEffect windEffect_;     // 気流線（風の筋）エフェクト
-
-    
     int currentEditEffectIndex_ = 0;
 
     
     std::unique_ptr<Player> player_;
 
-    
-    std::unique_ptr<Sprite> hpBarBgSprite_;
-    std::unique_ptr<Sprite> hpBarSprite_;
-    std::unique_ptr<Sprite> boostBarBgSprite_;
-    std::unique_ptr<Sprite> boostBarSprite_;
+    GamePlayHUD hud_;
     uint32_t whiteTexIndex_ = 0;
-
-    // 強化リング獲得アイコン（ブーストゲージ上部に横2つ配置）
-    static const int kMaxEnhanceRingIcons = 2;
-    std::array<std::unique_ptr<Sprite>, kMaxEnhanceRingIcons> ringGetOutlineSprites_;
-    std::array<std::unique_ptr<Sprite>, kMaxEnhanceRingIcons> ringGetIconSprites_;
     uint32_t ringIconOutlineTex_ = 0;
     uint32_t ringIconTex_ = 0;
-    int acquiredEnhanceRingCount_ = 0;
-    Vector4 ringIconColor_ = { 1.0f, 0.85f, 0.2f, 1.0f };    // 中身アイコン色（視認性の高いゴールド）
-    Vector4 ringOutlineColor_ = { 1.0f, 1.0f, 1.0f, 0.9f }; // 外枠アウトライン色（ホワイト）
-    
+
     std::list<std::unique_ptr<PlayerBullet>> bullets_;
     
     std::list<std::unique_ptr<PlayerMissile>> missiles_;
@@ -169,49 +142,12 @@ private:
     // 電脳フィニッシャー（クリア演出シークエンス）
     std::unique_ptr<BossFinisherSequence> bossFinisherSequence_;
 
-    // ボス戦進行ステップ
-    enum class BossBattleStep {
-        NOT_ACTIVE,        // 通常道中
-        WARNING_ALERT,     // WARNING警告演出中
-        BATTLE,            // ボス戦闘中
-        DEFEATED_SEQUENCE, // 撃破演出中（連続大爆発・スロー）
-        TIME_OVER_ATTACK,  // タイムオーバー即死攻撃中
-        FINISHED           // 撃破完了
-    };
-    BossBattleStep bossBattleStep_ = BossBattleStep::NOT_ACTIVE;
-    float bossSpawnProgressThreshold_ = 0.60f; // 自動出現するレール進行度閾値（60%地点）
-    float bossWarningTimer_ = 0.0f;
-    const float kBossWarningDuration = 2.8f;
-    float bossDefeatTimer_ = 0.0f;
-    const float kBossDefeatDuration = 3.5f;
-    float bossDisplayedHpRate_ = 1.0f; // 遅延追従HPバー用
-    float bossWarningSirenTimer_ = 0.0f;
-
-    // ボス戦制限時間 & タイムオーバー即死攻撃用
-    float bossTimeLimit_ = 120.0f;       // ボス戦制限時間（秒）: 2分
-    float bossRemainingTime_ = 120.0f;   // ボス戦残り時間（秒）: 2分
-    float bossTimeOverTimer_ = 0.0f;    // 即死攻撃シークエンス用タイマー
-    const float kBossTimeOverDuration = 4.0f; // 即死攻撃シークエンス時間（UI消滅後に発射・撃墜）
-    bool isBossTimeOverFired_ = false;  // 即死攻撃発射フラグ
-    bool isTimeOverDebugNonLethal_ = true; // デバッグテスト用：演出完了後に死なず何度でも再確認可能にする
-    bool isTimeOverDebugLoop_ = false;     // デバッグテスト用：演出完了後に自動ループ再生
-    void TriggerTimeOverCannonSequence(bool nonLethal = true); // タイムオーバー大砲演出を即座に開始
-    std::unique_ptr<Object3d> bossTimeOverChargeSphere_; // タイムオーバー大砲チャージエネルギー球
-    std::unique_ptr<Object3d> bossTimeOverBeam_;         // タイムオーバー大砲の極大砲撃ビーム
-
-    // ボス戦専用UIスプライト
-    std::unique_ptr<Sprite> bossHpBarBgSprite_;
-    std::unique_ptr<Sprite> bossHpBarDelaySprite_;
-    std::unique_ptr<Sprite> bossHpBarSprite_;
-    std::unique_ptr<Sprite> bossWarningBandTopSprite_;
-    std::unique_ptr<Sprite> bossWarningBandBottomSprite_;
-    std::unique_ptr<Sprite> bossWarningFlashSprite_;
-
+    // ボス戦進行・タイムオーバー演出・専用UI・設定I/O管理
+    BossBattleController bossBattle_;
+    BossBattleContext BuildBossBattleContext();
+    void TriggerTimeOverCannonSequence(bool nonLethal = true);
     void StartBossWarningSequence();
     void UpdateBossBattle(float dt);
-    void DrawBossUI();
-    void LoadBossSettings();
-    void SaveBossSettings();
 
     std::list<std::unique_ptr<EnemyBullet>> enemyBullets_;
     
@@ -240,15 +176,6 @@ private:
     float stageElapsedTime_ = 0.0f;
     float bossElapsedTime_ = 0.0f;
 
-    // 敵撃破時の3Dスコア加算ポップ演出
-    struct ScorePopup {
-        Vector3 worldPos;     // 敵撃破時の3Dワールド座標
-        int score;            // 加算スコア (+100 など)
-        float timer;          // 経過秒数
-        float duration;       // 表示持続時間
-    };
-    std::vector<ScorePopup> scorePopups_;
-
     // 進行フェーズ
     enum class GamePhase {
         START_CUTSCENE,
@@ -257,111 +184,42 @@ private:
         CLEAR
     };
     GamePhase gamePhase_ = GamePhase::START_CUTSCENE;
-    float cutsceneTimer_ = 0.0f;
-    float missionStartTextTimer_ = 0.0f;
-    const float kCutsceneDuration = 4.7f;
 
-    // スタート演出（仮想空間地形形成 ＆ 自機復元マテリアライズ）用データ構造
-    struct ReconstructShard {
-        std::unique_ptr<Object3d> object = nullptr;
-        Vector3 startPos = { 0.0f, 0.0f, 0.0f };
-        Vector3 targetPos = { 0.0f, 0.0f, 0.0f };
-        Vector3 rotation = { 0.0f, 0.0f, 0.0f };
-        Vector3 rotSpeed = { 0.0f, 0.0f, 0.0f };
-        Vector3 scale = { 0.20f, 0.20f, 0.20f };
-        Vector4 color = { 0.3f, 1.0f, 0.9f, 1.0f };
-    };
-    std::vector<ReconstructShard> reconstructShards_;
+    // スタート演出（仮想空間地形形成 ＆ 自機復元マテリアライズ）用進行度（ゲームオーバー演出でも共有）
     float terrainMaterializeProgress_ = 1.0f;
-    float playerReconstructAlpha_ = 1.0f;
+
+    OpeningCutsceneSequence openingSequence_;
+    OpeningCutsceneContext BuildOpeningContext();
 
     void StartOpeningCutscene();
     void UpdateOpeningCutscene(float dt);
-    void DrawCutsceneUI();
 
     // ポーズメニュー（Pause Menu）
-    enum class PauseMenuOption {
-        Resume = 0,
-        Retry = 1,
-        Title = 2
-    };
-    bool isPaused_ = false;
-    PauseMenuOption pauseSelectedOption_ = PauseMenuOption::Resume;
-    void UpdatePauseMenu();
-    void DrawPauseUI();
-    bool IsPaused() const { return isPaused_; }
+    PauseMenu pauseMenu_;
+    bool IsPaused() const { return pauseMenu_.IsPaused(); }
 
-    // GameOver Sequence
-    enum class GameOverStep {
-        HIT_STOP = 0,             // 0.00 - 0.15s: Critical hit stop
-        POLYGON_SHATTER = 1,      // 0.15 - 1.80s: プリズム四散
-        VOID_DISINTEGRATE = 2,    // 1.80 - 2.30s: サイバーグリッド・スキャンライン展開
-        SHOW_UI = 3,              // 2.30s+: GAME OVER モザイク崩壊テキスト、メニューUI
-        RETRY_DEMATERIALIZE = 4   // リトライ時シームレス逆マテリアライズ演出
-    };
-    enum class GameOverMenuOption {
-        Retry = 0,
-        Title = 1
-    };
-    GameOverStep gameOverStep_ = GameOverStep::HIT_STOP;
-    GameOverMenuOption gameOverSelectedOption_ = GameOverMenuOption::Retry;
-    float gameOverTimer_ = 0.0f;
-    bool debugPreviewGameOverUI_ = false;
-    bool gameOverBarVisible_ = true;
-    float gameOverBarWidth_ = 320.0f;
-    float gameOverBarThickness_ = 2.5f;
-    float gameOverBarOffsetY_ = 42.0f;
-    Vector4 gameOverBarColor_ = { 0.92f, 0.12f, 0.18f, 0.86f };
-
-    // リトライ時シームレス逆マテリアライズ用
-    float retryDematerializeTimer_ = 0.0f;
-    const float kRetryDematerializeDuration = 1.10f; // 0.90s消滅 + 0.20sボイド間
-    Vector3 retryStartCamPos_ = { 0.0f, 0.0f, 0.0f };
-    Vector3 retryStartCamTarget_ = { 0.0f, 0.0f, 0.0f };
-    float retryStartProgress_ = 0.0f;
-    int retryStartRailIndex_ = 0;
-    Vector3 gameOverPlayerStartPos_ = { 0.0f, 0.0f, 0.0f };
-    Vector3 gameOverPlayerStartRot_ = { 0.0f, 0.0f, 0.0f };
-
-    struct GameOverShard {
-        std::unique_ptr<Object3d> object;
-        Vector3 position;
-        Vector3 velocity;
-        Vector3 rotation;
-        Vector3 rotSpeed;
-        Vector3 scale;
-        Vector4 color;
-        float life = 0.0f;
-        float maxLife = 0.85f;
-    };
-    std::vector<GameOverShard> gameOverShards_;
-    std::unique_ptr<Object3d> gameOverShockwaveRing_;
-    float shockwaveScale_ = 0.2f;
-    float shockwaveAlpha_ = 1.0f;
-
+    // ゲームオーバー演出（GameOver Sequence）
+    GameOverSequence gameOverSequence_;
+    GameOverContext BuildGameOverContext();
     void StartGameOverSequence();
     void UpdateGameOverSequence(float dt);
-    void DrawGameOverUI();
 
     // ゲームクリア演出（GameClear Sequence）
-    enum class ClearStep {
-        ASCENDING,      // 自機が上空へ急上昇・飛び去る（カメラ停止、スラスター噴射）
-        SHOW_UI,        // フェーズ4 (5.2s〜7.5s): シアン発光ブラケット枠付き「MISSION ACCOMPLISHED / 任務完了」
-        RESULT_PANEL    // フェーズ⑦: 半透明ホログラムウィンドウ（リザルトパネル）展開＆SPACEでタイトル復帰
-    };
-    ClearStep clearStep_ = ClearStep::ASCENDING;
-    float clearTimer_ = 0.0f;
-    float clearTotalTimer_ = 0.0f;
-    Vector3 clearStartPlayerPos_ = { 0.0f, 0.0f, 0.0f };
-    Vector3 clearPlayerAscentPos_ = { 0.0f, 0.0f, 0.0f };
-    Vector3 clearPlayerAscentRot_ = { 0.0f, 0.0f, 0.0f };
-    bool clearUseQuat_ = false;
-    Quaternion clearQuat_ = Quaternion::Identity();
-    Vector3 clearMoveDir_ = { 0.0f, 0.45f, 0.89f };
-    float clearAscentSpeed_ = 0.0f;
-
+    GameClearSequence clearSequence_;
+    GameClearContext BuildClearContext();
     void StartClearSequence();
     void UpdateClearSequence(float dt);
-    void DrawClearUI();
+
+    // Update() 内部フェーズ分割ヘルパー
+    void HandleGlobalHotkeys(class EngineServices* services, class Input* input);
+    void UpdateDemoPlay(class EngineServices* services, float dt);
+    void UpdateRailAndCamera(class EngineServices* services, float dt, float& unscaledGameSpeed);
+    void UpdateActorsAndCollisions(float dt, float unscaledGameSpeed);
+    void UpdateCameraShakeAndVfx(float dt);
+    void CheckGameEndConditions();
+
+#ifdef ENABLE_EDITOR
+    GamePlayEditor editor_;
+#endif
 };
 
