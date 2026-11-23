@@ -156,7 +156,12 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Game\Scene\GamePlayScene.cpp" />
+    <ClCompile Include="Game\Scene\GamePlayEditor.cpp" />
     <ClCompile Include="Game\Sequence\BossFinisherSequence.cpp" />
+    <ClCompile Include="Game\Sequence\OpeningCutsceneSequence.cpp" />
+    <ClCompile Include="Game\Sequence\GameOverSequence.cpp" />
+    <ClCompile Include="Game\Sequence\GameClearSequence.cpp" />
+    <ClCompile Include="Game\Sequence\PauseMenu.cpp" />
     <ClCompile Include="Game\Scene\GameSceneFactory.cpp" />
     <ClCompile Include="Game\Scene\TitleScene.cpp" />
     <ClCompile Include="Game\Scene\GameOverScene.cpp" />
@@ -185,6 +190,12 @@
     <ClCompile Include="Game\System\RailCameraController.cpp" />
     <ClCompile Include="Game\System\TerrainCollisionDebugger.cpp" />
     <ClCompile Include="Game\System\CollisionManager.cpp" />
+    <ClCompile Include="Game\System\BossBattleController.cpp" />
+    <ClCompile Include="Game\System\GamePlayHUD.cpp" />
+    <ClCompile Include="Game\System\GamePlayVfxManager.cpp" />
+    <ClCompile Include="Game\System\GamePlayLevelManager.cpp" />
+    <ClCompile Include="Game\System\GamePlayWorld.cpp" />
+    <ClCompile Include="Game\System\DemoPlayController.cpp" />
     <ClCompile Include="KHEngine\Graphics\3d\Skybox\Skybox.cpp" />
     <ClCompile Include="KHEngine\Scene\AbstractSceneFactory.cpp" />
     <ClCompile Include="KHEngine\Core\Framework\BaseScene.cpp" />
@@ -253,7 +264,12 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Game\Scene\GamePlayScene.h" />
+    <ClInclude Include="Game\Scene\GamePlayEditor.h" />
     <ClInclude Include="Game\Sequence\BossFinisherSequence.h" />
+    <ClInclude Include="Game\Sequence\OpeningCutsceneSequence.h" />
+    <ClInclude Include="Game\Sequence\GameOverSequence.h" />
+    <ClInclude Include="Game\Sequence\GameClearSequence.h" />
+    <ClInclude Include="Game\Sequence\PauseMenu.h" />
     <ClInclude Include="Game\Scene\GameSceneFactory.h" />
     <ClInclude Include="Game\Scene\TitleScene.h" />
     <ClInclude Include="Game\Scene\GameOverScene.h" />
@@ -282,6 +298,12 @@
     <ClInclude Include="Game\System\RailCameraController.h" />
     <ClInclude Include="Game\System\TerrainCollisionDebugger.h" />
     <ClInclude Include="Game\System\CollisionManager.h" />
+    <ClInclude Include="Game\System\BossBattleController.h" />
+    <ClInclude Include="Game\System\GamePlayHUD.h" />
+    <ClInclude Include="Game\System\GamePlayVfxManager.h" />
+    <ClInclude Include="Game\System\GamePlayLevelManager.h" />
+    <ClInclude Include="Game\System\GamePlayWorld.h" />
+    <ClInclude Include="Game\System\DemoPlayController.h" />
     <ClInclude Include="KHEngine\Graphics\3d\Primitive\Ring.h" />
     <ClInclude Include="KHEngine\Graphics\3d\Primitive\Cylinder.h" />
     <ClInclude Include="KHEngine\Graphics\3d\Skybox\Skybox.h" />
