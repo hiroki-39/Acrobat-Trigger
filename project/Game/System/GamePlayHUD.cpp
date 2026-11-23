@@ -711,3 +711,198 @@ void GamePlayHUD::DrawOverlayUI(bool isPlayingPhase, bool isFinisherMovie, Playe
 #endif
 }
 
+
+
+void GamePlayHUD::RegisterDefaultTexts()
+{
+	// ボス戦用UIテキスト項目の初期登録（JSONに未登録の場合のみ新規作成され、既存のJSON設定は完全に保護される）
+	if (auto textMgr = UITextManager::GetInstance())
+	{
+		if (!textMgr->HasTextItem("BossTitle", "GAMEPLAY"))
+		{
+			UITextItem bossTitle;
+			bossTitle.id = "BossTitle";
+			bossTitle.text = "BOSS: ARMORED TRAIN \"BEHEMOTH\"";
+			bossTitle.position = { 340.0f, 12.0f };
+			bossTitle.fontSize = 20.0f;
+			bossTitle.fontType = ImGuiManager::FontType::Japanese_MPLUS;
+			bossTitle.color = { 1.0f, 0.35f, 0.31f, 1.0f };
+			bossTitle.hasOutline = true;
+			bossTitle.outlineThickness = 2.0f;
+			bossTitle.hasShadow = true;
+			bossTitle.shadowColor = { 0.0f, 0.0f, 0.0f, 0.8f };
+			bossTitle.align = UITextAlign::Left;
+			bossTitle.isVisible = false;
+			textMgr->RegisterText(bossTitle, "GAMEPLAY");
+		}
+		if (!textMgr->HasTextItem("BossTimer", "GAMEPLAY"))
+		{
+			UITextItem bossTimer;
+			bossTimer.id = "BossTimer";
+			bossTimer.text = "TIME LIMIT";
+			bossTimer.position = { 640.0f, 85.0f };
+			bossTimer.fontSize = 28.0f;
+			bossTimer.fontType = ImGuiManager::FontType::English_FiraMono;
+			bossTimer.color = { 0.0f, 0.92f, 0.84f, 1.0f };
+			bossTimer.hasOutline = true;
+			bossTimer.outlineThickness = 2.2f;
+			bossTimer.hasShadow = true;
+			bossTimer.shadowColor = { 0.0f, 0.0f, 0.0f, 0.85f };
+			bossTimer.align = UITextAlign::Center;
+			bossTimer.isVisible = false;
+			textMgr->RegisterText(bossTimer, "GAMEPLAY");
+		}
+		if (!textMgr->HasTextItem("BossWarningTitle", "GAMEPLAY"))
+		{
+			UITextItem bossWarnTitle;
+			bossWarnTitle.id = "BossWarningTitle";
+			bossWarnTitle.text = "WARNING";
+			bossWarnTitle.position = { 640.0f, 280.0f };
+			bossWarnTitle.fontSize = 58.0f;
+			bossWarnTitle.fontType = ImGuiManager::FontType::Japanese_MPLUS;
+			bossWarnTitle.color = { 1.0f, 0.15f, 0.15f, 1.0f };
+			bossWarnTitle.hasOutline = true;
+			bossWarnTitle.outlineThickness = 3.0f;
+			bossWarnTitle.hasShadow = true;
+			bossWarnTitle.shadowColor = { 0.0f, 0.0f, 0.0f, 0.85f };
+			bossWarnTitle.align = UITextAlign::Center;
+			bossWarnTitle.isVisible = false;
+			textMgr->RegisterText(bossWarnTitle, "GAMEPLAY");
+		}
+		if (!textMgr->HasTextItem("BossWarningSub", "GAMEPLAY"))
+		{
+			UITextItem bossWarnSub;
+			bossWarnSub.id = "BossWarningSub";
+			bossWarnSub.text = "EMERGENCY: MASSIVE ARMORED TRAIN DETECTED";
+			bossWarnSub.position = { 640.0f, 350.0f };
+			bossWarnSub.fontSize = 22.0f;
+			bossWarnSub.fontType = ImGuiManager::FontType::Japanese_MPLUS;
+			bossWarnSub.color = { 1.0f, 0.94f, 0.94f, 1.0f };
+			bossWarnSub.hasOutline = true;
+			bossWarnSub.outlineThickness = 2.0f;
+			bossWarnSub.align = UITextAlign::Center;
+			bossWarnSub.isVisible = false;
+			textMgr->RegisterText(bossWarnSub, "GAMEPLAY");
+		}
+		if (!textMgr->HasTextItem("BossTimeOverTitle", "GAMEPLAY"))
+		{
+			UITextItem bossTimeOverTitle;
+			bossTimeOverTitle.id = "BossTimeOverTitle";
+			bossTimeOverTitle.text = "TIME OVER";
+			bossTimeOverTitle.position = { 640.0f, 270.0f };
+			bossTimeOverTitle.fontSize = 68.0f;
+			bossTimeOverTitle.fontType = ImGuiManager::FontType::Japanese_MPLUS;
+			bossTimeOverTitle.color = { 1.0f, 0.12f, 0.12f, 1.0f };
+			bossTimeOverTitle.hasOutline = true;
+			bossTimeOverTitle.outlineThickness = 3.0f;
+			bossTimeOverTitle.hasShadow = true;
+			bossTimeOverTitle.shadowColor = { 0.0f, 0.0f, 0.0f, 0.9f };
+			bossTimeOverTitle.align = UITextAlign::Center;
+			bossTimeOverTitle.isVisible = false;
+			textMgr->RegisterText(bossTimeOverTitle, "GAMEPLAY");
+		}
+		if (!textMgr->HasTextItem("BossTimeOverSub", "GAMEPLAY"))
+		{
+			UITextItem bossTimeOverSub;
+			bossTimeOverSub.id = "BossTimeOverSub";
+			bossTimeOverSub.text = "CRITICAL ANNIHILATION ATTACK INCOMING";
+			bossTimeOverSub.position = { 640.0f, 350.0f };
+			bossTimeOverSub.fontSize = 22.0f;
+			bossTimeOverSub.fontType = ImGuiManager::FontType::Japanese_MPLUS;
+			bossTimeOverSub.color = { 1.0f, 0.86f, 0.2f, 1.0f };
+			bossTimeOverSub.hasOutline = true;
+			bossTimeOverSub.outlineThickness = 2.0f;
+			bossTimeOverSub.align = UITextAlign::Center;
+			bossTimeOverSub.isVisible = false;
+			textMgr->RegisterText(bossTimeOverSub, "GAMEPLAY");
+		}
+		if (!textMgr->HasTextItem("BossDefeatedTitle", "GAMEPLAY"))
+		{
+			UITextItem bossDefeated;
+			bossDefeated.id = "BossDefeatedTitle";
+			bossDefeated.text = "TARGET DESTROYED";
+			bossDefeated.position = { 640.0f, 300.0f };
+			bossDefeated.fontSize = 48.0f;
+			bossDefeated.fontType = ImGuiManager::FontType::Japanese_MPLUS;
+			bossDefeated.color = { 1.0f, 0.84f, 0.0f, 1.0f };
+			bossDefeated.hasOutline = true;
+			bossDefeated.outlineThickness = 3.0f;
+			bossDefeated.hasShadow = true;
+			bossDefeated.shadowColor = { 0.0f, 0.0f, 0.0f, 0.85f };
+			bossDefeated.align = UITextAlign::Center;
+			bossDefeated.isVisible = false;
+			textMgr->RegisterText(bossDefeated, "GAMEPLAY");
+		}
+		if (!textMgr->HasLoadedFromFile())
+		{
+			if (!textMgr->HasTextItem("ExecuteCritical", "GAMEPLAY"))
+			{
+				UITextItem item;
+				item.id = "ExecuteCritical";
+				item.text = "[ CRITICAL // EXECUTE READY ]";
+				item.position = { 640.0f, 160.0f };
+				item.fontSize = 28.0f;
+				item.fontType = ImGuiManager::FontType::Japanese_MPLUS;
+				item.color = { 1.0f, 0.15f, 0.2f, 1.0f };
+				item.hasOutline = true;
+				item.outlineThickness = 2.0f;
+				item.align = UITextAlign::Center;
+				item.isVisible = false;
+				textMgr->RegisterText(item, "GAMEPLAY");
+			}
+			if (!textMgr->HasTextItem("ExecuteGuide", "GAMEPLAY"))
+			{
+				UITextItem item;
+				item.id = "ExecuteGuide";
+				item.text = "[ HOLD SPACE TO LOCK ON ]";
+				item.position = { 640.0f, 520.0f };
+				item.fontSize = 22.0f;
+				item.fontType = ImGuiManager::FontType::Japanese_MPLUS;
+				item.color = { 0.0f, 0.95f, 1.0f, 1.0f };
+				item.hasOutline = true;
+				item.outlineThickness = 2.0f;
+				item.align = UITextAlign::Center;
+				item.isVisible = false;
+				textMgr->RegisterText(item, "GAMEPLAY");
+			}
+			if (!textMgr->HasTextItem("MissionAccomplishedTitle", "GAMEPLAY"))
+			{
+				UITextItem item;
+				item.id = "MissionAccomplishedTitle";
+				item.text = "MISSION ACCOMPLISHED";
+				item.position = { 640.0f, 290.0f };
+				item.fontSize = 38.0f;
+				item.fontType = ImGuiManager::FontType::Japanese_MPLUS;
+				item.color = { 0.95f, 1.0f, 1.0f, 1.0f };
+				item.hasOutline = true;
+				item.outlineThickness = 3.0f;
+				item.hasShadow = true;
+				item.align = UITextAlign::Center;
+				item.isVisible = false;
+				textMgr->RegisterText(item, "GAMEPLAY");
+			}
+			if (!textMgr->HasTextItem("MissionAccomplishedSub", "GAMEPLAY"))
+			{
+				UITextItem item;
+				item.id = "MissionAccomplishedSub";
+				item.text = "- 任務完了 // TARGET PURGED -";
+				item.position = { 640.0f, 335.0f };
+				item.fontSize = 18.0f;
+				item.fontType = ImGuiManager::FontType::Japanese_MPLUS;
+				item.color = { 0.0f, 0.9f, 1.0f, 1.0f };
+				item.hasOutline = true;
+				item.outlineThickness = 2.0f;
+				item.align = UITextAlign::Center;
+				item.isVisible = false;
+				textMgr->RegisterText(item, "GAMEPLAY");
+			}
+		}
+
+		// シーン開始時に処刑・クリア関連テキストを確実に非表示にリセット
+		textMgr->SetVisible("ExecuteCritical", false, "GAMEPLAY");
+		textMgr->SetVisible("ExecuteGuide", false, "GAMEPLAY");
+		textMgr->SetVisible("MissionAccomplishedTitle", false, "GAMEPLAY");
+		textMgr->SetVisible("MissionAccomplishedSub", false, "GAMEPLAY");
+	}
+
+}

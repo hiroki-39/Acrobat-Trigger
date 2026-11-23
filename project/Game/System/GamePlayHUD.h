@@ -25,6 +25,11 @@ public:
 	void Initialize(SpriteCommon* spriteCommon, uint32_t whiteTexIndex, uint32_t ringIconTex, uint32_t ringIconOutlineTex);
 
 	/// <summary>
+	/// ゲームプレイ用UIテキスト項目の初期登録
+	/// </summary>
+	void RegisterDefaultTexts();
+
+	/// <summary>
 	/// 3Dスコア加算ポップアップを追加
 	/// </summary>
 	void AddScorePopup(const Vector3& worldPos, int score, float duration = 0.65f);

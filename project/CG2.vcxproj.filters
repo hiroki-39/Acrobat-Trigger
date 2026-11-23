@@ -213,6 +213,15 @@
     <ClCompile Include="Game\System\GamePlayVfxManager.cpp">
       <Filter>繧ｽ繝ｼ繧ｹ 繝輔ぃ繧､繝ｫ</Filter>
     </ClCompile>
+    <ClCompile Include="Game\System\GamePlayLevelManager.cpp">
+      <Filter>繧ｽ繝ｼ繧ｹ 繝輔ぃ繧､繝ｫ</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\System\GamePlayWorld.cpp">
+      <Filter>繧ｽ繝ｼ繧ｹ 繝輔ぃ繧､繝ｫ</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\System\DemoPlayController.cpp">
+      <Filter>繧ｽ繝ｼ繧ｹ 繝輔ぃ繧､繝ｫ</Filter>
+    </ClCompile>
     <ClCompile Include="Game\Actor\Player\Player.cpp">
       <Filter>繧ｽ繝ｼ繧ｹ 繝輔ぃ繧､繝ｫ</Filter>
     </ClCompile>
@@ -493,6 +502,15 @@
       <Filter>繝倥ャ繝€繝ｼ 繝輔ぃ繧､繝ｫ</Filter>
     </ClInclude>
     <ClInclude Include="Game\System\GamePlayVfxManager.h">
+      <Filter>繝倥ャ繝€繝ｼ 繝輔ぃ繧､繝ｫ</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\System\GamePlayLevelManager.h">
+      <Filter>繝倥ャ繝€繝ｼ 繝輔ぃ繧､繝ｫ</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\System\GamePlayWorld.h">
+      <Filter>繝倥ャ繝€繝ｼ 繝輔ぃ繧､繝ｫ</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\System\DemoPlayController.h">
       <Filter>繝倥ャ繝€繝ｼ 繝輔ぃ繧､繝ｫ</Filter>
     </ClInclude>
     <ClInclude Include="Game\Actor\Weapon\MemoryType.h">

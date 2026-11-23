@@ -368,11 +368,11 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 				{
 					ImGui::Separator();
 					ImGui::TextColored(ImVec4(0.0f, 0.9f, 1.0f, 1.0f), "【デモプレイ制御 (Demo Mode)】");
-					ImGui::SliderFloat("スタート演出完了後の待機時間 (秒)##DemoPostIntro", &scene.demoPostIntroDuration_, 0.5f, 6.0f, "%.1f 秒");
+					ImGui::SliderFloat("スタート演出完了後の待機時間 (秒)##DemoPostIntro", &scene.demoController_.PostIntroDuration(), 0.5f, 6.0f, "%.1f 秒");
 					if (scene.gamePhase_ != GamePlayScene::GamePhase::START_CUTSCENE)
 					{
-						ImGui::ProgressBar(std::clamp(scene.demoTimer_ / scene.demoPostIntroDuration_, 0.0f, 1.0f), ImVec2(-1, 14));
-						ImGui::TextColored(ImVec4(0.2f, 0.9f, 0.5f, 1.0f), "タイトル帰還まで: %.1f / %.1f 秒", scene.demoTimer_, scene.demoPostIntroDuration_);
+						ImGui::ProgressBar(std::clamp(scene.demoController_.Timer() / scene.demoController_.PostIntroDuration(), 0.0f, 1.0f), ImVec2(-1, 14));
+						ImGui::TextColored(ImVec4(0.2f, 0.9f, 0.5f, 1.0f), "タイトル帰還まで: %.1f / %.1f 秒", scene.demoController_.Timer(), scene.demoController_.PostIntroDuration());
 					}
 					else
 					{

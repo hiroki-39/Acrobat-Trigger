@@ -32,6 +32,9 @@
 #include "Game/System/BossBattleController.h"
 #include "Game/System/GamePlayHUD.h"
 #include "Game/System/GamePlayVfxManager.h"
+#include "Game/System/GamePlayLevelManager.h"
+#include "Game/System/GamePlayWorld.h"
+#include "Game/System/DemoPlayController.h"
 #include "Game/Scene/GamePlayEditor.h"
 #include <vector>
 #include <list>
@@ -60,7 +63,10 @@ public:
     void SeamlessResetForRetry();
 
 private:
-    std::unique_ptr<struct LevelData> cachedLevelData_;
+    GamePlayLevelManager levelManager_;
+    LevelLoadContext BuildLevelContext();
+    GamePlayWorld world_;
+    GamePlayWorldContext BuildWorldContext();
     std::vector<std::unique_ptr<Object3d>> modelInstances;
 
     std::unique_ptr<Camera> camera;
@@ -95,15 +101,7 @@ private:
     bool isPlaying_ = true;
 #endif
 
-    // デモプレイ演出用変数（スタート演出 -> 被弾HP0 -> リトライ -> スタート演出 -> 被弾HP0 -> タイトル遷移）
-    float demoTimer_ = 0.0f;
-    float demoPostIntroDuration_ = 2.0f;
-    int demoDeathLoopCount_ = 0;         // デモループ回数 (0: サイクル1 リトライへ, 1: サイクル2 タイトルへ)
-    float demoSurvivalTimer_ = 0.0f;     // 通常飛行開始からのタイマー
-    bool demoBulletSpawned_ = false;     // デモ被弾用敵弾発射フラグ
-    bool demoHitTriggered_ = false;      // デモ被弾直撃フラグ
-    float demoGameOverWaitTimer_ = 0.0f; // ゲームオーバーUI表示後の待機タイマー
-    int demoMenuSelectStep_ = 0;         // デモ中のUI選択ステップ（選択している感を演出するステップ管理）
+    DemoPlayController demoController_;
 
     
     Vector3 currentCameraRot_ = {0.0f, 0.0f, 0.0f};
@@ -155,8 +153,7 @@ private:
     std::list<std::unique_ptr<Obstacle>> obstacles_;
     std::list<std::unique_ptr<EnhanceRing>> enhanceRings_;
     std::list<std::unique_ptr<MemoryItem>> memoryItems_;
-
-    void SpawnMemoryItem(const Vector3& pos, MemoryType type = MemoryType::CYBER_BIT);
+    void SpawnMemoryItem(const Vector3& pos, MemoryType type = MemoryType::CYBER_BIT) { world_.SpawnMemoryItem(pos, type, memoryItems_); }
 
     
 #ifdef USE_IMGUI

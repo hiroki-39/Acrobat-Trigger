@@ -4,6 +4,9 @@
 #include "KHEngine/Core/Graphics/DirectXCommon.h"
 #include "KHEngine/Graphics/3d/Object/Object3dCommon.h"
 #include "KHEngine/Graphics/3d/Camera/Camera.h"
+#include "KHEngine/Graphics/Billboard/Billboard.h"
+#include "KHEngine/Graphics/PostProcess/PostProcess.h"
+#include "Game/Actor/Player/Player.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -226,5 +229,164 @@ void GamePlayVfxManager::SpawnVoxelHitParticles(const Vector3& worldPos, Camera*
 		vp.obj->SetRotation(vp.rotation);
 		vp.obj->Update();
 		voxelHitParticles_.push_back(std::move(vp));
+	}
+}
+
+void GamePlayVfxManager::UpdatePlayerVfx(float dt, Player* player, Camera* activeCamera, bool isPlaying, bool isPaused, bool isStartCutscene, bool isPlayingPhase, bool isGameOver, bool isClear, float cutsceneTimer, bool isThrusterReady, float gameSpeed, std::mt19937& randomEngine)
+{
+	Matrix4x4 viewMatrix = Matrix4x4::Identity();
+	Matrix4x4 projectionMatrix = Matrix4x4::Identity();
+	Matrix4x4 billboardMatrix = Matrix4x4::Identity();
+	if (activeCamera)
+	{
+		viewMatrix = activeCamera->GetViewMatrix();
+		projectionMatrix = activeCamera->GetProjectionMatrix();
+		billboardMatrix = Billboard::CreateFromCamera(activeCamera, true);
+	}
+	if (player && player->GetObject3d())
+	{
+		const Matrix4x4& wMat = player->GetObject3d()->GetmatWorld();
+		Vector3 worldPos = { wMat.m[3][0], wMat.m[3][1], wMat.m[3][2] };
+
+		// タイトルシーンと完全に同一：自機マトリクスに親子付けし、機体姿勢・ロール・傾きに完全追従
+		thrusterEffect_.SetParentMatrix(&player->GetObject3d()->GetmatWorld());
+		thrusterEffect_.SetPosition({ 0.0f, -0.22f, -3.00f });
+
+		bool shouldEmitThruster = false;
+
+		if (!player->IsDead() && !isGameOver)
+		{
+			if (isStartCutscene)
+			{
+				// スタート演出中は、機体が復元完了して点火するタイミング（2.50s以降）のみ放出
+				if (cutsceneTimer >= 2.50f || player->IsCutsceneBoosting())
+				{
+					shouldEmitThruster = true;
+					// 点火時は力強いブレイジングオレンジ
+					thrusterEffect_.SetBaseColor({ 1.0f, 0.55f, 0.1f, 1.0f });
+				}
+			}
+			else if (isPlayingPhase || (isClear && player->IsVisible()))
+			{
+				// 通常プレイ時およびクリア演出・リザルト背景飛行時
+				shouldEmitThruster = true;
+				// 巡航時はクールな高エネルギーシアンブルー、ブースト時やロール回避時はブレイジングオレンジ
+				if (player->IsBoosting() || player->IsRolling())
+				{
+					thrusterEffect_.SetBaseColor({ 1.0f, 0.55f, 0.1f, 1.0f });
+				}
+				else
+				{
+					thrusterEffect_.SetBaseColor({ 0.5f, 0.85f, 1.0f, 1.0f });
+				}
+			}
+
+			if (shouldEmitThruster)
+			{
+				thrusterEffect_.Play();
+				thrusterEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
+			}
+			else
+			{
+				// 放出すべきでない期間（カットシーン復元前など）はパーティクルを常にクリアし、frequency自動生成も阻止
+				thrusterEffect_.ClearParticles();
+			}
+		}
+		else
+		{
+			// 死亡時・ゲームオーバー時はスラスターパーティクルを即座に消去
+			thrusterEffect_.ClearParticles();
+		}
+		UpdateEffects(dt, viewMatrix, projectionMatrix, billboardMatrix);
+
+		// 気流線（スピードライン・風の筋）エフェクトの発生
+		// プレイヤーが前進していない時（停止時・カットシーン待機・ゲームオーバー・被弾・リトライ時等）は完全消去
+		bool isPlayerMoving = isPlaying && !isPaused &&
+		                      (isPlayingPhase || 
+		                       (isStartCutscene && isThrusterReady)) &&
+		                      gameSpeed > 0.01f &&
+		                      (player && !player->IsDead());
+
+		if (isPlayerMoving)
+		{
+			bool isBoost = player && player->IsBoosting();
+			int spawnCount = isBoost ? 4 : 2;
+
+			// 機体の飛行進路周辺に分散させて発生（照準を遮らないよう自然な範囲に分散）
+			std::uniform_real_distribution<float> distOffsetX(-8.0f, 8.0f);
+			std::uniform_real_distribution<float> distOffsetY(-3.0f, 4.5f);
+			std::uniform_real_distribution<float> distOffsetZ(20.0f, 45.0f);
+
+			for (int i = 0; i < spawnCount; ++i)
+			{
+				Vector3 windSpawnPos = {
+					worldPos.x + distOffsetX(randomEngine),
+					worldPos.y + distOffsetY(randomEngine),
+					worldPos.z + distOffsetZ(randomEngine)
+				};
+				windEffect_.SetPosition(windSpawnPos);
+				windEffect_.Play();
+			}
+		}
+		else
+		{
+			// プレイヤーが進んでいない時はスピードラインを即座に完全消去
+			windEffect_.ClearParticles();
+		}
+		windEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
+	}
+
+}
+
+void GamePlayVfxManager::UpdatePostProcessEffects(PostProcess* pp, bool isBoosting, bool& isJustDodgeActive, float& justDodgeTimer, float justDodgeMaxTime)
+{
+	if (isBoosting)
+	{
+		thrusterEffect_.SetBaseColor({ 1.0f, 0.2f, 0.0f, 1.0f });
+		if (pp)
+		{
+			pp->SetEffectActive("RadialBlur", true);
+			pp->GetData()->radialBlurIntensity = 0.08f;
+		}
+	}
+	else
+	{
+		thrusterEffect_.SetBaseColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+		if (pp)
+		{
+			pp->SetEffectActive("RadialBlur", false);
+		}
+	}
+
+	if (isJustDodgeActive)
+	{
+		justDodgeTimer -= 1.0f;
+		if (pp)
+		{
+			float t = justDodgeTimer / justDodgeMaxTime;
+			pp->GetData()->vignetteIntensity = std::sinf(t * 3.141592f) * 0.6f;
+		}
+		if (justDodgeTimer <= 0.0f)
+		{
+			isJustDodgeActive = false;
+			if (pp)
+			{
+				pp->SetEffectActive("Grayscale", false);
+				pp->SetEffectActive("Vignetting", false);
+			}
+		}
+	}
+}
+
+void GamePlayVfxManager::ResetPostProcess(PostProcess* pp)
+{
+	if (!pp) return;
+	pp->SetEffectActive("Grayscale", false);
+	pp->SetEffectActive("Vignetting", false);
+	pp->SetEffectActive("Random(Glitch)", false);
+	if (auto* d = pp->GetData())
+	{
+		d->glitchStrength = 0.0f;
+		d->noiseStrength = 0.0f;
 	}
 }

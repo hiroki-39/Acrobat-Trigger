@@ -193,6 +193,9 @@
     <ClCompile Include="Game\System\BossBattleController.cpp" />
     <ClCompile Include="Game\System\GamePlayHUD.cpp" />
     <ClCompile Include="Game\System\GamePlayVfxManager.cpp" />
+    <ClCompile Include="Game\System\GamePlayLevelManager.cpp" />
+    <ClCompile Include="Game\System\GamePlayWorld.cpp" />
+    <ClCompile Include="Game\System\DemoPlayController.cpp" />
     <ClCompile Include="KHEngine\Graphics\3d\Skybox\Skybox.cpp" />
     <ClCompile Include="KHEngine\Scene\AbstractSceneFactory.cpp" />
     <ClCompile Include="KHEngine\Core\Framework\BaseScene.cpp" />
@@ -298,6 +301,9 @@
     <ClInclude Include="Game\System\BossBattleController.h" />
     <ClInclude Include="Game\System\GamePlayHUD.h" />
     <ClInclude Include="Game\System\GamePlayVfxManager.h" />
+    <ClInclude Include="Game\System\GamePlayLevelManager.h" />
+    <ClInclude Include="Game\System\GamePlayWorld.h" />
+    <ClInclude Include="Game\System\DemoPlayController.h" />
     <ClInclude Include="KHEngine\Graphics\3d\Primitive\Ring.h" />
     <ClInclude Include="KHEngine\Graphics\3d\Primitive\Cylinder.h" />
     <ClInclude Include="KHEngine\Graphics\3d\Skybox\Skybox.h" />

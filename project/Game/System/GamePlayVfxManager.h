@@ -6,6 +6,7 @@
 #include "KHEngine/Math/Matrix4x4.h"
 #include <vector>
 #include <memory>
+#include <random>
 
 class DirectXCommon;
 class SrvManager;
@@ -37,6 +38,21 @@ public:
 	/// スラスター・ウィンド以外のエフェクトおよびボクセル粒子の更新
 	/// </summary>
 	void UpdateEffects(float dt, const Matrix4x4& viewMatrix, const Matrix4x4& projectionMatrix, const Matrix4x4& billboardMatrix);
+
+	/// <summary>
+	/// 自機スラスター・ウィンド・全VFXの毎フレーム更新
+	/// </summary>
+	void UpdatePlayerVfx(float dt, class Player* player, Camera* activeCamera, bool isPlaying, bool isPaused, bool isStartCutscene, bool isPlayingPhase, bool isGameOver, bool isClear, float cutsceneTimer, bool isThrusterReady, float gameSpeed, std::mt19937& randomEngine);
+
+	/// <summary>
+	/// ブースト時のRadialBlur・ジャスト回避時のVignette/Grayscaleポストプロセス演出を更新
+	/// </summary>
+	void UpdatePostProcessEffects(class PostProcess* pp, bool isBoosting, bool& isJustDodgeActive, float& justDodgeTimer, float justDodgeMaxTime);
+
+	/// <summary>
+	/// シーン終了時のポストプロセスエフェクトリセット
+	/// </summary>
+	void ResetPostProcess(class PostProcess* pp);
 
 	/// <summary>
 	/// 全エフェクトおよびボクセル粒子の描画
