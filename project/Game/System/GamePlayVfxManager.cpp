@@ -6,6 +6,7 @@
 #include "KHEngine/Graphics/3d/Camera/Camera.h"
 #include "KHEngine/Graphics/Billboard/Billboard.h"
 #include "KHEngine/Graphics/PostProcess/PostProcess.h"
+#include "KHEngine/Graphics/Resource/Texture/TextureManager.h"
 #include "Game/Actor/Player/Player.h"
 #include <algorithm>
 #include <cmath>
@@ -15,6 +16,7 @@ void GamePlayVfxManager::Initialize(DirectXCommon* dxCommon, SrvManager* srvMana
 {
 	thrusterEffect_.Initialize(dxCommon, srvManager);
 	thrusterEffect_.LoadFromJson("thruster.json");
+	playerThrusterVfx_.Initialize(dxCommon, srvManager);
 
 	explosionEffect_.Initialize(dxCommon, srvManager);
 	explosionEffect_.LoadFromJson("explosion.json");
@@ -25,6 +27,11 @@ void GamePlayVfxManager::Initialize(DirectXCommon* dxCommon, SrvManager* srvMana
 
 	dodgeEffect_.Initialize(dxCommon, srvManager);
 	dodgeEffect_.LoadFromJson("dodge.json");
+	for (auto& node : dodgeEffect_.GetNodes())
+	{
+		node->emitter.SetUseBillboard(true);
+	}
+	TextureManager::GetInstance()->LoadTexture("digital_ring.png");
 
 	trailEffect_.Initialize(dxCommon, srvManager);
 	trailEffect_.LoadFromJson("trail.json");
@@ -41,11 +48,16 @@ void GamePlayVfxManager::Initialize(DirectXCommon* dxCommon, SrvManager* srvMana
 
 	windEffect_.Initialize(dxCommon, srvManager);
 	windEffect_.LoadFromJson("wind.json");
+	for (auto& node : windEffect_.GetNodes())
+	{
+		node->emitter.SetUseBillboard(true);
+	}
 }
 
 void GamePlayVfxManager::ClearAll()
 {
 	thrusterEffect_.ClearParticles();
+	playerThrusterVfx_.Clear();
 	explosionEffect_.ClearParticles();
 	voxelHitParticles_.clear();
 	hitEffect_.ClearParticles();
@@ -100,7 +112,7 @@ void GamePlayVfxManager::Draw(bool drawThruster, bool drawWind, Object3dCommon* 
 {
 	if (drawThruster)
 	{
-		thrusterEffect_.Draw();
+		playerThrusterVfx_.Draw();
 	}
 	explosionEffect_.Draw();
 	hitEffect_.Draw();
@@ -262,40 +274,34 @@ void GamePlayVfxManager::UpdatePlayerVfx(float dt, Player* player, Camera* activ
 				if (cutsceneTimer >= 2.50f || player->IsCutsceneBoosting())
 				{
 					shouldEmitThruster = true;
-					// 点火時は力強いブレイジングオレンジ
-					thrusterEffect_.SetBaseColor({ 1.0f, 0.55f, 0.1f, 1.0f });
 				}
 			}
 			else if (isPlayingPhase || (isClear && player->IsVisible()))
 			{
 				// 通常プレイ時およびクリア演出・リザルト背景飛行時
 				shouldEmitThruster = true;
-				// 巡航時はクールな高エネルギーシアンブルー、ブースト時やロール回避時はブレイジングオレンジ
-				if (player->IsBoosting() || player->IsRolling())
-				{
-					thrusterEffect_.SetBaseColor({ 1.0f, 0.55f, 0.1f, 1.0f });
-				}
-				else
-				{
-					thrusterEffect_.SetBaseColor({ 0.5f, 0.85f, 1.0f, 1.0f });
-				}
 			}
 
-			if (shouldEmitThruster)
-			{
-				thrusterEffect_.Play();
-				thrusterEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
-			}
-			else
-			{
-				// 放出すべきでない期間（カットシーン復元前など）はパーティクルを常にクリアし、frequency自動生成も阻止
-				thrusterEffect_.ClearParticles();
-			}
+			bool isBoostActive = player->IsBoosting() || player->IsCutsceneBoosting() || (isStartCutscene && shouldEmitThruster);
+			bool isRollActive = player->IsRolling();
+			bool isWingVaporActive = isRollActive || player->IsBanking();
+			float vfxDt = isPaused ? 0.0f : dt;
+			playerThrusterVfx_.Update(
+				vfxDt,
+				wMat,
+				viewMatrix,
+				projectionMatrix,
+				billboardMatrix,
+				shouldEmitThruster,
+				isBoostActive,
+				isRollActive,
+				isWingVaporActive,
+				randomEngine);
 		}
 		else
 		{
-			// 死亡時・ゲームオーバー時はスラスターパーティクルを即座に消去
-			thrusterEffect_.ClearParticles();
+			// 死亡時・ゲームオーバー時はスラスターを即座に消去
+			playerThrusterVfx_.Clear();
 		}
 		UpdateEffects(dt, viewMatrix, projectionMatrix, billboardMatrix);
 

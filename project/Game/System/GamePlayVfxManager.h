@@ -1,5 +1,6 @@
 #pragma once
 #include "KHEngine/Graphics/3d/Particle/ParticleEffect.h"
+#include "Game/System/PlayerThrusterVfx.h"
 #include "KHEngine/Graphics/3d/Object/Object3d.h"
 #include "KHEngine/Math/Vector3.h"
 #include "KHEngine/Math/Vector4.h"
@@ -84,6 +85,7 @@ private:
 	};
 
 	ParticleEffect thrusterEffect_;
+	PlayerThrusterVfx playerThrusterVfx_;
 	ParticleEffect explosionEffect_;
 	ParticleEffect hitEffect_;
 	ParticleEffect dodgeEffect_;

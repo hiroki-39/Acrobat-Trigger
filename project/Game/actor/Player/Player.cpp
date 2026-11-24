@@ -1387,7 +1387,7 @@ void Player::DrawImGuiContent() {
 }
 
 bool Player::IsBanking() const {
-    return std::abs(currentBank_) > 0.65f || isRolling_ || std::abs(currentPitch_) > 0.35f;
+    return std::abs(currentBank_) > 0.45f || isRolling_ || std::abs(currentPitch_) > 0.25f;
 }
 
 Vector3 Player::GetLeftWingPosition() const {

@@ -21,7 +21,7 @@ public:
         ParticleForGPU* instancingData = nullptr;
         uint32_t numInstance = 0;
         
-        int shapeType = 0; // 0: Quad(Plane), 1: Ring, 2: Cylinder
+        int shapeType = 0; // 0: Quad(Plane), 1: Ring, 2: Cylinder, 3: HexRing(Honeycomb)
         
         // アニメーション設定
         float uvScrollSpeed = 0.0f;

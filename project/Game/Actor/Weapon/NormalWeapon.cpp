@@ -60,11 +60,11 @@ void NormalWeapon::Attack(Input* input,
         Enemy* hoverEnemy = owner_->GetReticleHoverEnemy();
 
         if (owner_->IsDoubleShot()) {
-            // 2連装: 左右の銃口から目標座標（奥照準）へ向けて正確に集束射出（コンバージェンス射撃）
+            // 2連装: 左右の銃口（機体中央寄りの胴体脇）から目標座標（奥照準）へ向けて正確に集束射出（コンバージェンス射撃）
             Vector3 rightDir = { mat.m[0][0], mat.m[0][1], mat.m[0][2] };
-            float offsetAmount = 2.0f;
-            Vector3 rightOffset = { playerPos.x + rightDir.x * offsetAmount + forwardVec.x * 1.5f, playerPos.y + rightDir.y * offsetAmount + forwardVec.y * 1.5f, playerPos.z + rightDir.z * offsetAmount + forwardVec.z * 1.5f };
-            Vector3 leftOffset = { playerPos.x - rightDir.x * offsetAmount + forwardVec.x * 1.5f, playerPos.y - rightDir.y * offsetAmount + forwardVec.y * 1.5f, playerPos.z - rightDir.z * offsetAmount + forwardVec.z * 1.5f };
+            float offsetAmount = 1.0f;
+            Vector3 rightOffset = { playerPos.x + rightDir.x * offsetAmount + forwardVec.x * 5.8f, playerPos.y + rightDir.y * offsetAmount + forwardVec.y * 5.8f, playerPos.z + rightDir.z * offsetAmount + forwardVec.z * 5.8f };
+            Vector3 leftOffset = { playerPos.x - rightDir.x * offsetAmount + forwardVec.x * 5.8f, playerPos.y - rightDir.y * offsetAmount + forwardVec.y * 5.8f, playerPos.z - rightDir.z * offsetAmount + forwardVec.z * 5.8f };
 
             Vector3 rightDirToTarget = { targetPos.x - rightOffset.x, targetPos.y - rightOffset.y, targetPos.z - rightOffset.z };
             float rLen = std::sqrtf(rightDirToTarget.x * rightDirToTarget.x + rightDirToTarget.y * rightDirToTarget.y + rightDirToTarget.z * rightDirToTarget.z);
@@ -84,8 +84,8 @@ void NormalWeapon::Attack(Input* input,
             leftBullet->Initialize(object3dCommon_, leftOffset, leftVelocity, parentCamera, hoverEnemy);
             bullets.push_back(std::move(leftBullet));
         } else {
-            // 通常の1発発射: 機首銃口から奥照準の中心へ向けて射出
-            Vector3 muzzlePos = { playerPos.x + forwardVec.x * 2.2f, playerPos.y + forwardVec.y * 2.2f, playerPos.z + forwardVec.z * 2.2f };
+            // 通常の1発発射: 機首銃口から奥照準の中心へ向けて射出（弾サイズに合わせて前方へオフセット）
+            Vector3 muzzlePos = { playerPos.x + forwardVec.x * 6.5f, playerPos.y + forwardVec.y * 6.5f, playerPos.z + forwardVec.z * 6.5f };
             Vector3 direction = {
                 targetPos.x - muzzlePos.x,
                 targetPos.y - muzzlePos.y,

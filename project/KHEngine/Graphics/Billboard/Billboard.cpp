@@ -13,12 +13,10 @@ Matrix4x4 Billboard::Create(const Matrix4x4& cameraWorld, bool useBillboard)
 	camRotOnly.m[3][0] = 0.0f;
 	camRotOnly.m[3][1] = 0.0f;
 	camRotOnly.m[3][2] = 0.0f;
+	camRotOnly.m[3][3] = 1.0f;
 
-	// 逆行列（回転の逆）
-	Matrix4x4 invCam = Matrix4x4::Inverse(camRotOnly);
-
-	// 裏面回転を取り入れて完成
-	Matrix4x4 billboard = BackToFrontMatrix() * invCam;
+	// 裏面回転を取り入れてカメラに正対するビルボード行列を完成（行ベクトル形式: BackToFront * camRotOnly）
+	Matrix4x4 billboard = BackToFrontMatrix() * camRotOnly;
 
 	// translation 成分をゼロにして位置情報を持たせない
 	billboard.m[3][0] = 0.0f;

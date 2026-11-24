@@ -40,12 +40,6 @@ void GamePlayWorld::UpdateActorsAndCollisions(float dt, float unscaledGameSpeed,
 		if (ctx.isPlaying && !ctx.pauseMenu->IsPaused() && !ctx.isGameOverPhase && !ctx.isClearPhase)
 		{
 
-			bool wasBanking = ctx.player->IsBanking();
-			Vector3 prevLeftWing = ctx.player->GetLeftWingPosition();
-			Vector3 prevRightWing = ctx.player->GetRightWingPosition();
-
-
-			// エイムアシストは Player::UpdateReticleAndAimAssist で精密に一元管理
 			ctx.player->SetAssistTarget(nullptr);
 
 			// レール進行度に応じた動的移動制限の適用
@@ -62,64 +56,9 @@ void GamePlayWorld::UpdateActorsAndCollisions(float dt, float unscaledGameSpeed,
 
 			if (ctx.player->ConsumeDodgeTrigger())
 			{
-				const Matrix4x4& wMat = ctx.player->GetObject3d()->GetmatWorld();
-
-				Vector3 pPos = { wMat.m[3][0], wMat.m[3][1], wMat.m[3][2] };
-
-
-				Vector3 forward = { wMat.m[2][0], wMat.m[2][1], wMat.m[2][2] };
-				float len = std::sqrt(forward.x * forward.x + forward.y * forward.y + forward.z * forward.z);
-				if (len > 0.0001f)
-				{
-					forward.x /= len; forward.y /= len; forward.z /= len;
-				}
-
-
-				Vector3 effectPos = { pPos.x - forward.x * 2.0f, pPos.y - forward.y * 2.0f, pPos.z - forward.z * 2.0f };
-
-				ctx.vfx->Dodge().SetPosition(effectPos);
+				ctx.vfx->Dodge().SetParentMatrix(&ctx.player->GetObject3d()->GetmatWorld());
+				ctx.vfx->Dodge().SetPosition({ 0.0f, 0.0f, -1.5f });
 				ctx.vfx->Dodge().Play();
-			}
-
-
-			if (ctx.player->IsBanking())
-			{
-				Vector3 leftWing = ctx.player->GetLeftWingPosition();
-				Vector3 rightWing = ctx.player->GetRightWingPosition();
-
-				if (wasBanking)
-				{
-
-					int emitCount = 8;
-					for (int i = 1; i <= emitCount; ++i)
-					{
-						float t = (float)i / emitCount;
-						Vector3 lPos = {
-							prevLeftWing.x + (leftWing.x - prevLeftWing.x) * t,
-							prevLeftWing.y + (leftWing.y - prevLeftWing.y) * t,
-							prevLeftWing.z + (leftWing.z - prevLeftWing.z) * t
-						};
-						Vector3 rPos = {
-							prevRightWing.x + (rightWing.x - prevRightWing.x) * t,
-							prevRightWing.y + (rightWing.y - prevRightWing.y) * t,
-							prevRightWing.z + (rightWing.z - prevRightWing.z) * t
-						};
-
-						ctx.vfx->Trail().SetPosition(lPos);
-						ctx.vfx->Trail().Play();
-
-						ctx.vfx->Trail().SetPosition(rPos);
-						ctx.vfx->Trail().Play();
-					}
-				}
-				else
-				{
-					ctx.vfx->Trail().SetPosition(leftWing);
-					ctx.vfx->Trail().Play();
-
-					ctx.vfx->Trail().SetPosition(rightWing);
-					ctx.vfx->Trail().Play();
-				}
 			}
 		}
 		else

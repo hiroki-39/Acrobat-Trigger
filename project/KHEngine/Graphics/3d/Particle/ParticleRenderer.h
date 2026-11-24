@@ -30,6 +30,9 @@ public:
 	// モデル頂点を渡して頂点バッファを作成（main から呼ぶ）
 	void CreateVertexBuffer(const void* vertexData, uint32_t vertexCount, uint32_t vertexStride);
 
+	// 動的メッシュ用に既存の頂点バッファ内容を更新する（作成済みバッファ容量以内）
+	void UpdateVertexBuffer(const void* vertexData, uint32_t vertexCount);
+
 	// マテリアル用 CBV を内部で作成して初期化（main から呼ぶ）
 	void CreateMaterialBuffer(size_t sizeInBytes, const void* initData);
 	

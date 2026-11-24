@@ -17,30 +17,30 @@ void PlayerBullet::Initialize(Object3dCommon* object3dCommon, const Vector3& pos
     object_ = std::make_unique<Object3d>();
     object_->Initialize(object3dCommon);
     object_->SetModel("beam.obj"); // 専用レーザービームモデル
-    object_->SetSelectLightings(6); // ビーム発光モード（中心ホワイトハイライト + 外縁プラズマ）
+    object_->SetSelectLightings(10); // 純粋ネオン自己発光（白飛びを抑えて濃い発色を維持）
     object_->SetEnableLighting(false); // 自発光
-    object_->SetColor({ 1.0f, 0.18f, 0.72f, 1.0f }); // 背景シアンの補色となる高輝度ネオンマゼンタ
+    object_->SetColor({ 0.55f, 0.05f, 1.0f, 1.0f }); // 濃いネオンパープル
     object_->SetTranslate(position);
     object_->SetRotation(rotation_);
-    object_->SetScale({ 2.4f, 2.4f, 16.0f }); // 遠距離・背面視点でもハッキリ視認できる太さと長さ
+    object_->SetScale({ 2.0f, 2.0f, 10.0f }); // 視認性と機体サイズを両立したバランスサイズ
 
     // 光の尾（ビームトレイル）の生成
     trailObject_ = std::make_unique<Object3d>();
     trailObject_->Initialize(object3dCommon);
     trailObject_->SetModel("beam.obj");
-    trailObject_->SetSelectLightings(6);
+    trailObject_->SetSelectLightings(10);
     trailObject_->SetEnableLighting(false);
-    trailObject_->SetColor({ 1.0f, 0.35f, 0.85f, 0.65f }); // 鮮やかに尾を引くピンクの残光
+    trailObject_->SetColor({ 0.42f, 0.02f, 0.85f, 0.75f }); // 濃い紫の残光トレイル
     trailObject_->SetTranslate(position);
     trailObject_->SetRotation(rotation_);
-    trailObject_->SetScale({ 1.8f, 1.8f, 24.0f }); // 大型ビームに合わせた力強いロングトレイル
+    trailObject_->SetScale({ 1.4f, 1.4f, 14.0f });
 
     colliderObject_ = std::make_unique<Object3d>();
     colliderObject_->Initialize(object3dCommon);
     colliderObject_->SetModel("collider_sphere_player.obj");
     colliderObject_->GetModel()->SetColor({ 0.0f, 1.0f, 0.0f, 1.0f });
     colliderObject_->SetTranslate(position);
-    colliderObject_->SetScale({ 4.2f, 4.2f, 8.0f }); // 高速移動時のすり抜け防止
+    colliderObject_->SetScale({ 3.6f, 3.6f, 7.5f }); // 高速移動時のすり抜け防止しつつ適正サイズに調整
     previousPosition_ = position;
 }
 
@@ -83,10 +83,19 @@ void PlayerBullet::Update(float gameSpeed) {
     }
 
     // 速度ベクトルに従って移動
-    pos.x += velocity_.x * gameSpeed;
-    pos.y += velocity_.y * gameSpeed;
-    pos.z += velocity_.z * gameSpeed;
+    float moveX = velocity_.x * gameSpeed;
+    float moveY = velocity_.y * gameSpeed;
+    float moveZ = velocity_.z * gameSpeed;
+    pos.x += moveX;
+    pos.y += moveY;
+    pos.z += moveZ;
     object_->SetTranslate(pos);
+
+    // 累積飛行距離による射程制限チェック
+    traveledDistance_ += std::sqrt(moveX * moveX + moveY * moveY + moveZ * moveZ);
+    if (traveledDistance_ >= maxDistance_) {
+        isDead_ = true;
+    }
 
     // 進行方向に向きを同期
     float curSpeed = std::sqrt(velocity_.x * velocity_.x + velocity_.y * velocity_.y + velocity_.z * velocity_.z);
@@ -109,9 +118,9 @@ void PlayerBullet::Update(float gameSpeed) {
     if (trailObject_) {
         // メインビームの後端から後方へ伸びるように配置
         Vector3 trailPos = {
-            pos.x - velocity_.x * 0.45f,
-            pos.y - velocity_.y * 0.45f,
-            pos.z - velocity_.z * 0.45f
+            pos.x - velocity_.x * 0.12f,
+            pos.y - velocity_.y * 0.12f,
+            pos.z - velocity_.z * 0.12f
         };
         trailObject_->SetTranslate(trailPos);
         trailObject_->SetRotation(rotation_);

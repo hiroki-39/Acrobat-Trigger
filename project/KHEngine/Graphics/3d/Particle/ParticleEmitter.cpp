@@ -43,8 +43,9 @@ void ParticleEmitter::Update(float dt)
             p.velocity += accelField_.acceleration * dt;
         }
 
-        // 移動
+        // 移動・回転
         p.transform.translate += p.velocity * dt;
+        p.transform.rotation += p.angularVelocity * dt;
 
         // 寿命による変化 (Over Lifetime)
         float progress = p.currentTime / p.lifeTime; // 0.0 から 1.0
@@ -117,6 +118,7 @@ Particle ParticleEmitter::MakeNewParticle()
     p.initialScale = p.transform.scale; // 初期スケールを保存
     
     p.transform.rotation = randomVec3(parameter_.minRotation, parameter_.maxRotation);
+    p.angularVelocity = randomVec3(parameter_.minAngularVelocity, parameter_.maxAngularVelocity);
     
     p.velocity = randomVec3(parameter_.minVelocity, parameter_.maxVelocity);
     

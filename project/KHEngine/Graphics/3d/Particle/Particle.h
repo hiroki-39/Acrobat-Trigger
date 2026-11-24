@@ -24,6 +24,7 @@ struct Particle
     Transform transform;
     Vector3 initialScale; // OverLifetime計算用
     Vector3 velocity;
+    Vector3 angularVelocity; // 回転速度（rad/sec）
     Vector4 initialColor; // OverLifetime計算用
     Vector4 color;
     float lifeTime;
@@ -67,6 +68,10 @@ struct ParticleEmitterParameter
     // 回転範囲
     Vector3 minRotation = { 0.0f, 0.0f, 0.0f };
     Vector3 maxRotation = { 0.0f, 0.0f, 0.0f };
+
+    // 回転速度範囲 (rad/sec)
+    Vector3 minAngularVelocity = { 0.0f, 0.0f, 0.0f };
+    Vector3 maxAngularVelocity = { 0.0f, 0.0f, 0.0f };
 
     // 色範囲 (開始色)
     Vector4 minColor = { 1.0f, 1.0f, 1.0f, 1.0f };

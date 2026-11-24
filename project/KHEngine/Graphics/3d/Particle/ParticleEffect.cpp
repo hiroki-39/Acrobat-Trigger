@@ -26,7 +26,7 @@ void ParticleEffect::AddNode(const std::string& name, int shapeType)
     node->shapeType = shapeType;
     
     if (shapeType == 0) node->emitter.SetParameter(ParticleEmitter::CreateExplosionPreset());
-    else if (shapeType == 1) node->emitter.SetParameter(ParticleEmitter::CreateRingPreset());
+    else if (shapeType == 1 || shapeType == 3) node->emitter.SetParameter(ParticleEmitter::CreateRingPreset());
     else if (shapeType == 2) node->emitter.SetParameter(ParticleEmitter::CreateCylinderPreset());
 
     node->emitter.SetTextureName("gradationLine.png");
@@ -43,6 +43,7 @@ void ParticleEffect::SetupRendererForNode(Node* node)
     std::string assetName = "quad";
     if (node->shapeType == 1) assetName = "ring";
     else if (node->shapeType == 2) assetName = "Cylinder";
+    else if (node->shapeType == 3) assetName = "hexRing";
 
     ParticleManager::GetInstance()->SetupRendererFromAsset(node->renderer, assetName, dxCommon_, srvManager_, maxInstances_);
     node->instancingData = node->renderer.GetInstancingData();
@@ -157,8 +158,8 @@ void ParticleEffect::DrawImGui()
     ImGui::Separator();
     ImGui::Text("Add New Node");
     static int newShapeType = 0;
-    const char* shapes[] = { "Quad (Plane)", "Ring", "Cylinder" };
-    ImGui::Combo("Shape", &newShapeType, shapes, 3);
+    const char* shapes[] = { "Quad (Plane)", "Ring", "Cylinder", "HexRing (Honeycomb)" };
+    ImGui::Combo("Shape", &newShapeType, shapes, 4);
     if (ImGui::Button("Add Node"))
     {
         AddNode("New Node", newShapeType);
@@ -175,7 +176,7 @@ void ParticleEffect::DrawImGui()
         {
             ImGui::InputText("Node Name", node->name, sizeof(node->name));
             
-            if (ImGui::Combo("Shape Type", &node->shapeType, shapes, 3))
+            if (ImGui::Combo("Shape Type", &node->shapeType, shapes, 4))
             {
                 SetupRendererForNode(node.get());
             }
@@ -295,6 +296,8 @@ void ParticleEffect::SaveToJson(const std::string& filename) {
         ep["maxVelocity"] = { p.maxVelocity.x, p.maxVelocity.y, p.maxVelocity.z };
         ep["minRotation"] = { p.minRotation.x, p.minRotation.y, p.minRotation.z };
         ep["maxRotation"] = { p.maxRotation.x, p.maxRotation.y, p.maxRotation.z };
+        ep["minAngularVelocity"] = { p.minAngularVelocity.x, p.minAngularVelocity.y, p.minAngularVelocity.z };
+        ep["maxAngularVelocity"] = { p.maxAngularVelocity.x, p.maxAngularVelocity.y, p.maxAngularVelocity.z };
         ep["minColor"] = { p.minColor.x, p.minColor.y, p.minColor.z, p.minColor.w };
         ep["maxColor"] = { p.maxColor.x, p.maxColor.y, p.maxColor.z, p.maxColor.w };
         ep["isColorOverLifetime"] = p.isColorOverLifetime;
@@ -355,6 +358,12 @@ void ParticleEffect::LoadFromJson(const std::string& filename) {
         p.maxVelocity = { ep["maxVelocity"][0], ep["maxVelocity"][1], ep["maxVelocity"][2] };
         p.minRotation = { ep["minRotation"][0], ep["minRotation"][1], ep["minRotation"][2] };
         p.maxRotation = { ep["maxRotation"][0], ep["maxRotation"][1], ep["maxRotation"][2] };
+        if (ep.contains("minAngularVelocity")) {
+            p.minAngularVelocity = { ep["minAngularVelocity"][0], ep["minAngularVelocity"][1], ep["minAngularVelocity"][2] };
+        }
+        if (ep.contains("maxAngularVelocity")) {
+            p.maxAngularVelocity = { ep["maxAngularVelocity"][0], ep["maxAngularVelocity"][1], ep["maxAngularVelocity"][2] };
+        }
         p.minColor = { ep["minColor"][0], ep["minColor"][1], ep["minColor"][2], ep["minColor"][3] };
         p.maxColor = { ep["maxColor"][0], ep["maxColor"][1], ep["maxColor"][2], ep["maxColor"][3] };
         p.isColorOverLifetime = ep["isColorOverLifetime"];

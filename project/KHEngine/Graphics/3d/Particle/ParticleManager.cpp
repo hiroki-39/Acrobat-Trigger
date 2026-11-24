@@ -12,6 +12,7 @@ ParticleManager* ParticleManager::GetInstance()
         instance_ = new ParticleManager();
         instance_->RegisterQuad("quad", "circle2.png");
         instance_->RegisterRing("ring", "gradationLine.png", 32, 0.5f, 1.0f);
+        instance_->RegisterRing("hexRing", "gradationLine.png", 6, 0.88f, 1.0f);
         instance_->RegisterCylinder("Cylinder", "resources/sprites/gradationLine.png");
     }
     return instance_;

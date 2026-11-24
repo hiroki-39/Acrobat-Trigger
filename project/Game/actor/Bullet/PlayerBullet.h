@@ -45,9 +45,12 @@ public:
         }
     }
 
-    // 威力・貫通・外見カスタマイズ
+    // 威力・貫通・射程・外見カスタマイズ
     float GetDamage() const { return damage_; }
     void SetDamage(float dmg) { damage_ = dmg; }
+
+    float GetMaxDistance() const { return maxDistance_; }
+    void SetMaxDistance(float maxDist) { maxDistance_ = maxDist; }
 
     bool IsPenetrating() const { return isPenetrating_; }
     void SetPenetrating(bool penetrating, int maxPenetrations = 5) {
@@ -75,6 +78,8 @@ private:
     Vector3 previousPosition_ = { 0.0f, 0.0f, 0.0f };
     bool isDead_ = false;
     float deathTimer_ = 180.0f; // 寿命（フレーム）
+    float traveledDistance_ = 0.0f; // 累積飛行距離
+    float maxDistance_ = 200.0f;    // 最大射程距離 (m)
     Enemy* targetEnemy_ = nullptr;
 
     float damage_ = 1.0f;
