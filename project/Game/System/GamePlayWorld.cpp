@@ -40,12 +40,6 @@ void GamePlayWorld::UpdateActorsAndCollisions(float dt, float unscaledGameSpeed,
 		if (ctx.isPlaying && !ctx.pauseMenu->IsPaused() && !ctx.isGameOverPhase && !ctx.isClearPhase)
 		{
 
-			bool wasBanking = ctx.player->IsBanking();
-			Vector3 prevLeftWing = ctx.player->GetLeftWingPosition();
-			Vector3 prevRightWing = ctx.player->GetRightWingPosition();
-
-
-			// エイムアシストは Player::UpdateReticleAndAimAssist で精密に一元管理
 			ctx.player->SetAssistTarget(nullptr);
 
 			// レール進行度に応じた動的移動制限の適用
@@ -62,64 +56,9 @@ void GamePlayWorld::UpdateActorsAndCollisions(float dt, float unscaledGameSpeed,
 
 			if (ctx.player->ConsumeDodgeTrigger())
 			{
-				const Matrix4x4& wMat = ctx.player->GetObject3d()->GetmatWorld();
-
-				Vector3 pPos = { wMat.m[3][0], wMat.m[3][1], wMat.m[3][2] };
-
-
-				Vector3 forward = { wMat.m[2][0], wMat.m[2][1], wMat.m[2][2] };
-				float len = std::sqrt(forward.x * forward.x + forward.y * forward.y + forward.z * forward.z);
-				if (len > 0.0001f)
-				{
-					forward.x /= len; forward.y /= len; forward.z /= len;
-				}
-
-
-				Vector3 effectPos = { pPos.x - forward.x * 2.0f, pPos.y - forward.y * 2.0f, pPos.z - forward.z * 2.0f };
-
-				ctx.vfx->Dodge().SetPosition(effectPos);
+				ctx.vfx->Dodge().SetParentMatrix(&ctx.player->GetObject3d()->GetmatWorld());
+				ctx.vfx->Dodge().SetPosition({ 0.0f, 0.0f, -1.5f });
 				ctx.vfx->Dodge().Play();
-			}
-
-
-			if (ctx.player->IsBanking())
-			{
-				Vector3 leftWing = ctx.player->GetLeftWingPosition();
-				Vector3 rightWing = ctx.player->GetRightWingPosition();
-
-				if (wasBanking)
-				{
-
-					int emitCount = 8;
-					for (int i = 1; i <= emitCount; ++i)
-					{
-						float t = (float)i / emitCount;
-						Vector3 lPos = {
-							prevLeftWing.x + (leftWing.x - prevLeftWing.x) * t,
-							prevLeftWing.y + (leftWing.y - prevLeftWing.y) * t,
-							prevLeftWing.z + (leftWing.z - prevLeftWing.z) * t
-						};
-						Vector3 rPos = {
-							prevRightWing.x + (rightWing.x - prevRightWing.x) * t,
-							prevRightWing.y + (rightWing.y - prevRightWing.y) * t,
-							prevRightWing.z + (rightWing.z - prevRightWing.z) * t
-						};
-
-						ctx.vfx->Trail().SetPosition(lPos);
-						ctx.vfx->Trail().Play();
-
-						ctx.vfx->Trail().SetPosition(rPos);
-						ctx.vfx->Trail().Play();
-					}
-				}
-				else
-				{
-					ctx.vfx->Trail().SetPosition(leftWing);
-					ctx.vfx->Trail().Play();
-
-					ctx.vfx->Trail().SetPosition(rightWing);
-					ctx.vfx->Trail().Play();
-				}
 			}
 		}
 		else
@@ -233,7 +172,7 @@ void GamePlayWorld::UpdateActorsAndCollisions(float dt, float unscaledGameSpeed,
 		// メモリドロップアイテムの更新・マグネット吸引・回収判定
 		for (auto it = (*ctx.memoryItems).begin(); it != (*ctx.memoryItems).end(); )
 		{
-			(*it)->Update(ctx.gameSpeed, ctx.player);
+			(*it)->Update(ctx.gameSpeed, ctx.player, ctx.vfx);
 			if ((*it)->IsDead())
 			{
 				it = (*ctx.memoryItems).erase(it);
@@ -271,6 +210,18 @@ void GamePlayWorld::UpdateActorsAndCollisions(float dt, float unscaledGameSpeed,
 		colCtx.onSpawnVoxelHit = [ctx, this](const Vector3& pos, int count, float minSz, float maxSz) {
 			ctx.vfx->SpawnVoxelHitParticles(pos, ctx.activeCamera, count, minSz, maxSz);
 		};
+		colCtx.onSpawnBulletHit = [ctx](const Vector3& pos, const Vector3& vel) {
+			ctx.vfx->SpawnBulletHitVoxelParticles(pos, vel);
+		};
+		colCtx.onSpawnEnemyBulletTerrainHit = [ctx](const Vector3& pos) {
+			ctx.vfx->SpawnPlayerDamageParticles(pos);
+		};
+		colCtx.onSpawnEnemyDissolve = [ctx](const Vector3& pos) {
+			ctx.vfx->SpawnEnemyDissolveShards(pos);
+		};
+		colCtx.onSpawnRingPass = [ctx](const Vector3& pos, bool isHeal) {
+			ctx.vfx->SpawnRingPassParticles(pos, isHeal);
+		};
 		colCtx.dodgeEffect = &ctx.vfx->Dodge();
 		colCtx.ringEffect = &ctx.vfx->Ring();
 		colCtx.healRingEffect = &ctx.vfx->HealRing();
@@ -300,16 +251,17 @@ void GamePlayWorld::UpdateActorsAndCollisions(float dt, float unscaledGameSpeed,
 			(*ctx.enemyKillShakeFrames) = 2;
 			// 2. 敵撃破座標にスコア加算ポップアップ演出を登録
 			ctx.hud->AddScorePopup(pos, addScore, 0.65f);
-			// 3. 敵撃破時のメモリドロップ（40%の確率でビットメモリをドロップ）
+		};
+
+		// 撃破エフェクト（ディゾルブ）完了後にメモリをドロップ
+		colCtx.onEnemyDissolveFinished = [ctx, this](const Vector3& pos) {
 			static std::mt19937 memRng(1337);
 			std::uniform_real_distribution<float> memDist(0.0f, 1.0f);
 			if (memDist(memRng) < 0.40f) {
 				const MemoryType kDropTypes[] = {
 					MemoryType::CYBER_BIT,
-
 					MemoryType::BOMB,
 					MemoryType::SPREAD,
-
 				};
 				std::uniform_int_distribution<size_t> typeDist(0, 2);
 				SpawnMemoryItem(pos, kDropTypes[typeDist(memRng)], (*ctx.memoryItems));
@@ -824,6 +776,13 @@ void GamePlayWorld::UpdateCameraAndEnvironment(const GamePlayWorldContext& ctx)
 			pos.x += ((rand() % 100) / 50.0f - 1.0f) * killShakePower;
 			pos.y += ((rand() % 100) / 50.0f - 1.0f) * killShakePower;
 			ctx.activeCamera->SetTranslate(pos);
+		}
+		// 3. 被弾時のカメラパンチ（Zロール傾き・バネ減衰）
+		if (ctx.player)
+		{
+			Vector3 camRot = ctx.activeCamera->GetRotation();
+			camRot.z = ctx.player->GetCameraPunchRoll();
+			ctx.activeCamera->SetRotation(camRot);
 		}
 		ctx.activeCamera->Update();
 	}

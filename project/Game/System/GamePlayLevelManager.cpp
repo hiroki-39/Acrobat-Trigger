@@ -87,7 +87,8 @@ static void CreateObjectFromNode(const LevelObjectData& node, const Object3d* pa
             type = RingType::HEAL;
         }
 
-		ring->Initialize(common, node.translation, node.scale, node.rotation, node.fileName, type, skyboxTexIndex, node.collider);
+		// 新リングモデルは正面向きで作成されているため、位置座標のみ参照し回転は0固定とする
+		ring->Initialize(common, node.translation, node.scale, { 0.0f, 0.0f, 0.0f }, node.fileName, type, skyboxTexIndex, node.collider);
 		enhanceRings.push_back(std::move(ring));
 	}
 	else if (isEnemy)
@@ -290,7 +291,8 @@ static void LoadEnemiesOnlyFromNode(const LevelObjectData& node, Object3dCommon*
             type = RingType::HEAL;
         }
 
-		ring->Initialize(common, node.translation, node.scale, node.rotation, node.fileName, type, skyboxTexIndex, node.collider);
+		// 新リングモデルは正面向きで作成されているため、位置座標のみ参照し回転は0固定とする
+		ring->Initialize(common, node.translation, node.scale, { 0.0f, 0.0f, 0.0f }, node.fileName, type, skyboxTexIndex, node.collider);
 		enhanceRings.push_back(std::move(ring));
 	}
 	else if (isEnemy)

@@ -14,6 +14,7 @@ class PlayerMissile;
 class Input;
 class Object3dCommon;
 class Object3d;
+class CyberVfxSystem;
 
 /// <summary>
 /// 2D HUD描画用ロックオンターゲット情報
@@ -104,4 +105,12 @@ public:
     /// 2D HUD描画用ロックオンターゲットリスト取得
     /// </summary>
     virtual std::vector<LockOnTargetHUD> GetLockOnTargets() const { return {}; }
+
+    /// <summary>
+    /// 共通サイバーVFXシステムを設定
+    /// </summary>
+    void SetVfxSystem(CyberVfxSystem* vfxSystem) { vfxSystem_ = vfxSystem; }
+
+protected:
+    CyberVfxSystem* vfxSystem_ = nullptr;
 };

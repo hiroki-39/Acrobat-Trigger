@@ -27,6 +27,9 @@ void Enemy::Initialize(Object3dCommon* object3dCommon, const LevelObjectData& no
     bulletSpeed_ = 2.0f;
     
     isDead_ = false;
+    isDissolving_ = false;
+    deathRewardGiven_ = false;
+    dissolveTimer_ = 0.0f;
     collider_ = nodeData.collider;
 
     // ゲーム側のエネミープリセットマネージャーから設定を取得（ゲーム側オーサリング優先）
@@ -126,7 +129,22 @@ void Enemy::SetMovePath(std::unique_ptr<Rail> path) {
 }
 
 void Enemy::Update(const Vector3& cameraPos, const Vector3& cameraForward, Player* player, std::list<std::unique_ptr<EnemyBullet>>& enemyBullets, float gameSpeed) {
-    if (isDead_) return;
+    if (isDead_) {
+        if (isDissolving_ && object_) {
+            dissolveTimer_ += (1.0f / 60.0f) * gameSpeed;
+            float progress = std::clamp(dissolveTimer_ / dissolveDuration_, 0.0f, 1.0f);
+            Vector4 col = color_;
+            col.w = 1.0f - progress;
+            object_->SetSelectLightings(14);
+            object_->SetShininess(GetVisualPosition().y);
+            object_->SetColor(col);
+            object_->Update();
+            if (progress >= 1.0f) {
+                isDissolving_ = false;
+            }
+        }
+        return;
+    }
 
     Vector3 playerWorldPos = cameraPos;
     if (player && player->GetObject3d()) {
@@ -319,7 +337,7 @@ void Enemy::Update(const Vector3& cameraPos, const Vector3& cameraForward, Playe
 }
 
 void Enemy::Draw() {
-    if (!isDead_ && isActive_ && object_) {
+    if ((!isDead_ || isDissolving_) && isActive_ && object_) {
         object_->Draw();
     }
 }
@@ -331,17 +349,23 @@ void Enemy::DrawCollider() {
 }
 
 void Enemy::OnCollision(float damage) {
+    if (isDead_) return;
     hp_ -= damage;
     invincibilityTimer_ = 6.0f; // 被弾フラッシュ演出用タイマー（約0.1秒）
     
     if (hp_ <= 0.0f) {
         isDead_ = true;
+        isDissolving_ = true;
+        dissolveTimer_ = 0.0f;
     }
 }
 
 void Enemy::Kill() {
+    if (isDead_) return;
     hp_ = 0;
     isDead_ = true;
+    isDissolving_ = true;
+    dissolveTimer_ = 0.0f;
 }
 
 bool Enemy::CheckCollision(const Sphere& bulletSphere) const {

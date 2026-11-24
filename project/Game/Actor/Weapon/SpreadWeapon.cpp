@@ -1,4 +1,5 @@
 #include "SpreadWeapon.h"
+#include "Game/System/CyberVfxSystem.h"
 #include "Game/Actor/Player/Player.h"
 #include "Game/Actor/Bullet/PlayerBullet.h"
 #include "KHEngine/Input/Input.h"
@@ -52,7 +53,7 @@ void SpreadWeapon::Attack(Input* input,
 
             // 基準となる射撃方向（レティクル方向）
             Vector3 targetPos = owner_->GetReticleWorldPosition();
-            Vector3 muzzlePos = { playerPos.x + forwardVec.x * 2.5f, playerPos.y + forwardVec.y * 2.5f, playerPos.z + forwardVec.z * 2.5f };
+            Vector3 muzzlePos = { playerPos.x + forwardVec.x * 4.5f, playerPos.y + forwardVec.y * 4.5f, playerPos.z + forwardVec.z * 4.5f };
 
             Vector3 baseDir = { targetPos.x - muzzlePos.x, targetPos.y - muzzlePos.y, targetPos.z - muzzlePos.z };
             float baseLen = std::sqrtf(baseDir.x * baseDir.x + baseDir.y * baseDir.y + baseDir.z * baseDir.z);
@@ -101,10 +102,21 @@ void SpreadWeapon::Attack(Input* input,
                 auto bullet = std::make_unique<PlayerBullet>();
                 bullet->Initialize(object3dCommon_, muzzlePos, vel, parentCamera, nullptr);
                 bullet->SetDamage(1);
-                bullet->SetBulletColor({ 0.2f, 1.0f, 0.35f, 1.0f }); // 鮮烈なエメラルドグリーン
+                // ボムVFXに揃えた シアン→ブルー→マゼンタ のサイバーカラーグラデーション
+                Vector4 bulletColor = { 0.15f, 0.85f, 1.0f, 1.0f }; // 中央（0°）：シアンブルー
+                if (i == 1 || i == 2) {
+                    bulletColor = { 0.45f, 0.35f, 1.0f, 1.0f }; // 内側（±7°）：バイオレットブルー
+                } else if (i >= 3) {
+                    bulletColor = { 0.85f, 0.08f, 0.92f, 1.0f }; // 外側（±14°）：ネオンマゼンタ
+                }
+                bullet->SetBulletColor(bulletColor);
                 // 通常弾と同等以上の視認性を誇る大型ビーム形状（Z軸 10m！）
                 bullet->SetBulletScale({ 1.25f, 1.25f, 10.0f });
                 bullets.push_back(std::move(bullet));
+            }
+
+            if (vfxSystem_) {
+                vfxSystem_->TriggerSpreadMuzzle(muzzlePos);
             }
 
             SoundManager::GetInstance()->PlaySE("shot.mp3", 0.8f);

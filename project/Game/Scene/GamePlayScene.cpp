@@ -443,7 +443,15 @@ void GamePlayScene::UpdateRailAndCamera(EngineServices* services, float dt, floa
 		}
 	}
 
-	vfx_.UpdatePostProcessEffects(pp, isBoosting, isJustDodgeActive_, justDodgeTimer_, justDodgeMaxTime_);
+	vfx_.UpdatePostProcessEffects(
+		pp,
+		isBoosting,
+		isJustDodgeActive_,
+		justDodgeTimer_,
+		justDodgeMaxTime_,
+		player_ ? player_->GetDamagePulseRatio() : 0.0f,
+		player_ ? player_->GetHpRatio() : 1.0f,
+		dt);
 
 	gameSpeed_ = unscaledGameSpeed;
 	if (isJustDodgeActive_)

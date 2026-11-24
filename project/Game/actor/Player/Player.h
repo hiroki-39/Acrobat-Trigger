@@ -245,7 +245,7 @@ public:
         return false;
     }
 
-    void OnCollision();
+    void OnCollision(const Vector3* hitPos = nullptr);
     bool OnTerrainCollision(const Vector3& worldNormal, float penetrationDepth, Object3d* parentCamera = nullptr, const Vector3* hitPoint = nullptr);
     OBB GetWorldOBB() const;
     void SetColliderColor(const Vector4& color) {
@@ -264,6 +264,19 @@ public:
     int GetHp() const { return hp_; }
     void SetHp(int hp) { hp_ = hp; if (hp_ <= 0) isDead_ = true; }
     int GetMaxHp() const { return maxHp_; }
+    float GetHpRatio() const { return maxHp_ > 0 ? std::clamp(static_cast<float>(hp_) / static_cast<float>(maxHp_), 0.0f, 1.0f) : 0.0f; }
+
+    float GetDamagePulseRatio() const { return std::clamp(damageEffectTimer_ / 0.35f, 0.0f, 1.0f); }
+    float GetDamageFlashRatio() const { return std::clamp(damageFlashTimer_ / 0.15f, 0.0f, 1.0f); }
+    float GetCameraPunchRoll() const { return cameraPunchAngle_; }
+    bool ConsumeDamageVfxTrigger(Vector3& outHitPos) {
+        if (hasPendingDamageVfx_) {
+            outHitPos = pendingDamageHitPos_;
+            hasPendingDamageVfx_ = false;
+            return true;
+        }
+        return false;
+    }
     size_t GetLockedEnemyCount() const { return multiLockedEnemies_.size(); }
     int GetMaxMissiles() const { return maxMissiles_; }
     static int GetMaxAllowedMissiles() { return MAX_MISSILES; }
@@ -504,6 +517,16 @@ private:
     bool isDead_ = false;
     bool isVisible_ = true;
     bool isDoubleShot_ = false;
+
+    // 被弾サイバーパンク演出用（ポストエフェクト・赤フラッシュ・カメラパンチ・3Dプリズム）
+    void TriggerDamageFeedback(const Vector3* hitPos);
+    float damageEffectTimer_ = 0.0f;   // ポストエフェクト用 (0.35s)
+    float damageFlashTimer_ = 0.0f;    // 自機赤フラッシュ＆HUDグリッチ用 (0.15s)
+    float cameraPunchAngle_ = 0.0f;    // カメラロール傾き (rad)
+    float cameraPunchVelocity_ = 0.0f; // バネ減衰用角速度
+    bool isDamageFlashing_ = false;
+    bool hasPendingDamageVfx_ = false;
+    Vector3 pendingDamageHitPos_ = { 0.0f, 0.0f, 0.0f };
 
     // カットシーン演出用
     bool isCutsceneActive_ = false;

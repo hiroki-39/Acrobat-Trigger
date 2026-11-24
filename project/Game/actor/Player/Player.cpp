@@ -167,11 +167,25 @@ void Player::Initialize(Object3dCommon* object3dCommon, uint32_t skyboxTexIndex)
     weaponManager_.Initialize(this, object3dCommon);
 }
 
+void Player::TriggerDamageFeedback(const Vector3* hitPos) {
+    damageEffectTimer_ = 0.35f;
+    damageFlashTimer_ = 0.15f;
+    isDamageFlashing_ = true;
+    // カメラロールを ±4度 (約 0.07 rad) 弾く
+    float sign = ((std::rand() % 2) == 0) ? 1.0f : -1.0f;
+    cameraPunchAngle_ = sign * 0.07f;
+    cameraPunchVelocity_ = sign * 0.35f;
+
+    hasPendingDamageVfx_ = true;
+    pendingDamageHitPos_ = hitPos ? *hitPos : GetWorldPosition();
+}
+
 // プレイヤー被弾時の処理
-void Player::OnCollision() {
+void Player::OnCollision(const Vector3* hitPos) {
     if (isGodMode_ || invincibilityTimer_ > 0.0f || isDead_ || isRolling_ || isCutsceneActive_ || isExecutionMode_) return; 
     
     hp_ -= 1000;
+    TriggerDamageFeedback(hitPos);
     // 被弾しても強化状態（ダブルショット）は維持する
     if (hp_ <= 0) {
         isDead_ = true;
@@ -338,6 +352,7 @@ bool Player::OnTerrainCollision(const Vector3& worldNormal, float penetrationDep
     bool causedDamage = false;
     if (invincibilityTimer_ <= 0.0f) {
         hp_ -= 1000;
+        TriggerDamageFeedback(hitPoint);
         if (hp_ <= 0) {
             isDead_ = true;
         } else {
@@ -397,6 +412,32 @@ void Player::Update(std::list<std::unique_ptr<PlayerBullet>>& bullets, std::list
         invincibilityTimer_ -= gameSpeed;
     }
 
+    // 被弾サイバーパンク演出タイマー＆カメラパンチ（バネ減衰）＆瞬間赤フラッシュ更新
+    const float dtSec = (1.0f / 60.0f) * gameSpeed;
+    if (damageEffectTimer_ > 0.0f) {
+        damageEffectTimer_ = (std::max)(0.0f, damageEffectTimer_ - dtSec);
+    }
+    if (damageFlashTimer_ > 0.0f) {
+        damageFlashTimer_ = (std::max)(0.0f, damageFlashTimer_ - dtSec);
+        if (object_) {
+            object_->SetColor({ 1.45f, 0.12f, 0.28f, 1.0f });
+        }
+    } else if (isDamageFlashing_) {
+        isDamageFlashing_ = false;
+        if (object_) {
+            object_->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+        }
+    }
+    if (std::abs(cameraPunchAngle_) > 0.0001f || std::abs(cameraPunchVelocity_) > 0.0001f) {
+        float accel = -180.0f * cameraPunchAngle_ - 14.0f * cameraPunchVelocity_;
+        cameraPunchVelocity_ += accel * dtSec;
+        cameraPunchAngle_ += cameraPunchVelocity_ * dtSec;
+        if (std::abs(cameraPunchAngle_) < 0.0005f && std::abs(cameraPunchVelocity_) < 0.002f) {
+            cameraPunchAngle_ = 0.0f;
+            cameraPunchVelocity_ = 0.0f;
+        }
+    }
+
     object_->Update();
     
     if (accessory_) {
@@ -450,11 +491,13 @@ void Player::Draw() {
         }
     }
     
+    // 武器・発射エフェクト・ファンネル等は自機の被弾点滅に巻き込まれないよう常時描画する
+    weaponManager_.Draw();
+
     if (shouldDrawPlayer) {
         if (object_) {
             object_->Draw();
         }
-        weaponManager_.Draw();
         if (accessory_) {
             accessory_->Draw();
         }
@@ -1387,7 +1430,7 @@ void Player::DrawImGuiContent() {
 }
 
 bool Player::IsBanking() const {
-    return std::abs(currentBank_) > 0.65f || isRolling_ || std::abs(currentPitch_) > 0.35f;
+    return std::abs(currentBank_) > 0.45f || isRolling_ || std::abs(currentPitch_) > 0.25f;
 }
 
 Vector3 Player::GetLeftWingPosition() const {

@@ -69,14 +69,9 @@ void CollisionManager::CheckPlayerAttacksVsEnemies(CollisionContext& ctx)
                 bullet->OnCollision();
                 (*it)->OnCollision(bullet->GetDamage());
 
-                if (ctx.onSpawnVoxelHit)
+                if (ctx.onSpawnBulletHit)
                 {
-                    ctx.onSpawnVoxelHit(bulletSphere.center, 8, 0.45f, 0.95f);
-                }
-                if (ctx.hitEffect)
-                {
-                    ctx.hitEffect->SetPosition(bulletSphere.center);
-                    ctx.hitEffect->Play();
+                    ctx.onSpawnBulletHit(bulletSphere.center, bullet->GetVelocity());
                 }
                 SoundManager::GetInstance()->PlaySE("small_explosion.mp3", 0.35f);
             }
@@ -127,19 +122,30 @@ void CollisionManager::CheckPlayerAttacksVsEnemies(CollisionContext& ctx)
             }
         }
 
-        // 敵の死亡判定
+        // 敵の死亡判定（撃破時はボスと同じデジタル・グリッド・ディゾルブを実行してから消去）
         if ((*it)->IsDead())
         {
-            Vector3 deadPos = (*it)->GetPosition();
-            if (ctx.score) *ctx.score += 100;
-            if (ctx.onEnemyKilled) ctx.onEnemyKilled(deadPos, 100);
-            if (ctx.explosionEffect)
+            if (!(*it)->IsDeathRewardGiven())
             {
-                ctx.explosionEffect->SetPosition(deadPos);
-                ctx.explosionEffect->Play();
+                (*it)->MarkDeathRewardGiven();
+                Vector3 deadPos = (*it)->GetVisualPosition();
+                if (ctx.score) *ctx.score += 100;
+                if (ctx.onEnemyKilled) ctx.onEnemyKilled(deadPos, 100);
+                if (ctx.onSpawnEnemyDissolve) ctx.onSpawnEnemyDissolve(deadPos);
+                SoundManager::GetInstance()->PlaySE("small_explosion.mp3", 0.8f);
             }
-            SoundManager::GetInstance()->PlaySE("small_explosion.mp3", 0.8f);
-            it = ctx.enemies->erase(it);
+            if ((*it)->IsReadyToErase())
+            {
+                if (ctx.onEnemyDissolveFinished)
+                {
+                    ctx.onEnemyDissolveFinished((*it)->GetVisualPosition());
+                }
+                it = ctx.enemies->erase(it);
+            }
+            else
+            {
+                ++it;
+            }
         }
         else
         {
@@ -174,14 +180,9 @@ void CollisionManager::CheckPlayerAttacksVsBoss(CollisionContext& ctx)
             {
                 ctx.boss->OnDamaged(hitCarIdx, 1, hitPartType, hitPartIdx);
             }
-            if (ctx.onSpawnVoxelHit)
+            if (ctx.onSpawnBulletHit)
             {
-                ctx.onSpawnVoxelHit(hitPos, 8, 0.45f, 0.95f);
-            }
-            if (ctx.hitEffect)
-            {
-                ctx.hitEffect->SetPosition(hitPos);
-                ctx.hitEffect->Play();
+                ctx.onSpawnBulletHit(hitPos, bullet->GetVelocity());
             }
             SoundManager::GetInstance()->PlaySE("small_explosion.mp3", 0.35f);
             if (hitPartType != BossPartType::Carriage)
@@ -352,10 +353,9 @@ void CollisionManager::CheckEnemyBullets(CollisionContext& ctx)
             if (isHit)
             {
                 (*it)->OnCollision();
-                if (ctx.hitEffect)
+                if (ctx.onSpawnEnemyBulletTerrainHit)
                 {
-                    ctx.hitEffect->SetPosition(curr);
-                    ctx.hitEffect->Play();
+                    ctx.onSpawnEnemyBulletTerrainHit(curr);
                 }
             }
         }
@@ -463,8 +463,9 @@ void CollisionManager::CheckEnemyBullets(CollisionContext& ctx)
                 else
                 {
                     // 被弾
+                    Vector3 hitPos = (*it)->GetPosition();
                     (*it)->OnCollision();
-                    ctx.player->OnCollision();
+                    ctx.player->OnCollision(&hitPos);
                     if (ctx.cameraShakeTimer) *ctx.cameraShakeTimer = 20.0f;
                 }
             }
@@ -503,10 +504,9 @@ void CollisionManager::CheckEnhanceRingsVsPlayer(CollisionContext& ctx)
                     }
                     SoundManager::GetInstance()->PlaySE("powerup.mp3", 0.9f);
 
-                    if (ctx.ringEffect)
+                    if (ctx.onSpawnRingPass)
                     {
-                        ctx.ringEffect->SetPosition((*it)->GetPosition());
-                        ctx.ringEffect->Play();
+                        ctx.onSpawnRingPass((*it)->GetPosition(), false);
                     }
                 }
                 else if ((*it)->GetType() == RingType::HEAL)
@@ -514,10 +514,9 @@ void CollisionManager::CheckEnhanceRingsVsPlayer(CollisionContext& ctx)
                     ctx.player->Heal(3000);
                     SoundManager::GetInstance()->PlaySE("powerup.mp3", 0.8f);
 
-                    if (ctx.healRingEffect)
+                    if (ctx.onSpawnRingPass)
                     {
-                        ctx.healRingEffect->SetPosition((*it)->GetPosition());
-                        ctx.healRingEffect->Play();
+                        ctx.onSpawnRingPass((*it)->GetPosition(), true);
                     }
                 }
 
@@ -575,14 +574,9 @@ void CollisionManager::CheckPlayerAttacksVsObstacles(CollisionContext& ctx)
                 bullet->OnCollision();
                 (*it)->OnCollision(bullet->GetDamage());
 
-                if (ctx.onSpawnVoxelHit)
+                if (ctx.onSpawnBulletHit)
                 {
-                    ctx.onSpawnVoxelHit(bulletSphere.center, 8, 0.45f, 0.95f);
-                }
-                if (ctx.hitEffect)
-                {
-                    ctx.hitEffect->SetPosition(bulletSphere.center);
-                    ctx.hitEffect->Play();
+                    ctx.onSpawnBulletHit(bulletSphere.center, bullet->GetVelocity());
                 }
                 SoundManager::GetInstance()->PlaySE("small_explosion.mp3", 0.35f);
             }
@@ -737,10 +731,9 @@ void CollisionManager::CheckPlayerBulletsVsTerrain(CollisionContext& ctx)
             if (modelObj->CheckCollisionWithSphere(bulletSphere, nullptr))
             {
                 bullet->OnCollision();
-                if (ctx.hitEffect)
+                if (ctx.onSpawnBulletHit)
                 {
-                    ctx.hitEffect->SetPosition(bulletSphere.center);
-                    ctx.hitEffect->Play();
+                    ctx.onSpawnBulletHit(bulletSphere.center, bullet->GetVelocity());
                 }
                 break;
             }

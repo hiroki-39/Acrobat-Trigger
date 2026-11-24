@@ -310,6 +310,25 @@ void ParticleRenderer::CreateVertexBuffer(const void* vertexData, uint32_t verte
 	vertexBufferView_.StrideInBytes = static_cast<UINT>(vertexStride);
 }
 
+void ParticleRenderer::UpdateVertexBuffer(const void* vertexData, uint32_t vertexCount)
+{
+	if (!vertexResource_ || !vertexData || vertexStride_ == 0) return;
+	const size_t copyBytes = static_cast<size_t>(vertexCount) * vertexStride_;
+	if (copyBytes > vertexBufferView_.SizeInBytes) return;
+
+	if (copyBytes > 0)
+	{
+		void* mapped = nullptr;
+		HRESULT hr = vertexResource_->Map(0, nullptr, &mapped);
+		if (SUCCEEDED(hr) && mapped)
+		{
+			std::memcpy(mapped, vertexData, copyBytes);
+			vertexResource_->Unmap(0, nullptr);
+		}
+	}
+	vertexCount_ = vertexCount;
+}
+
 void ParticleRenderer::CreateMaterialBuffer(size_t sizeInBytes, const void* initData)
 {
 	if (!dxCommon_ || !initData || sizeInBytes == 0) return;

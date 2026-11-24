@@ -1,0 +1,147 @@
+{
+    "bombExplosion": {
+        "burstVoxelCount": 96,
+        "burstVoxelLifeBase": 0.45,
+        "burstVoxelSizeMin": 0.45,
+        "burstVoxelSizeRange": 0.75,
+        "burstVoxelSpeedMin": 16.0,
+        "burstVoxelSpeedRange": 46.0,
+        "coreEndColor": [
+            0.1,
+            0.55,
+            1.65,
+            0.0
+        ],
+        "coreLife": 0.16,
+        "coreStartColor": [
+            2.2,
+            2.3,
+            2.5,
+            1.0
+        ],
+        "coreStartScale": 12.0,
+        "flareHLength": 18.0,
+        "flareLife": 0.16,
+        "flareStartColor": [
+            2.0,
+            2.2,
+            2.4,
+            1.0
+        ],
+        "flareThickness": 2.8,
+        "flareVLength": 15.0,
+        "glitchCount": 12,
+        "ringEndBase": 8.5,
+        "ringEndColor": [
+            1.55,
+            0.02,
+            0.95,
+            0.0
+        ],
+        "ringEndStep": 2.2,
+        "ringLifeBase": 0.45,
+        "ringLifeStep": 0.04,
+        "ringStartBase": 1.6,
+        "ringStartColor": [
+            0.08,
+            0.52,
+            1.75,
+            1.0
+        ],
+        "ringStartStep": 0.6
+    },
+    "funnelTrail": {
+        "coreColor": [
+            1.2,
+            1.25,
+            1.35,
+            0.95
+        ],
+        "coreWidth": 0.18,
+        "glowColor": [
+            0.14,
+            0.78,
+            1.65,
+            0.85
+        ],
+        "glowWidth": 0.42,
+        "magentaColor": [
+            1.5,
+            0.05,
+            0.95,
+            0.65
+        ],
+        "magentaWidth": 0.72,
+        "trailLife": 0.38
+    },
+    "muzzle": {
+        "flashEndColor": [
+            0.1,
+            0.55,
+            1.65,
+            0.0
+        ],
+        "flashHeight": 0.75,
+        "flashLife": 0.11,
+        "flashStartColor": [
+            1.8,
+            2.0,
+            2.2,
+            1.0
+        ],
+        "flashVHeight": 2.2,
+        "flashWidth": 2.6,
+        "ringEndColor": [
+            1.45,
+            0.02,
+            0.9,
+            0.0
+        ],
+        "ringEndScale": 1.65,
+        "ringLife": 0.16,
+        "ringRotSpeed": 7.0,
+        "ringStartColor": [
+            0.08,
+            0.52,
+            1.65,
+            0.95
+        ],
+        "ringStartScale": 0.45,
+        "voxelCount": 2,
+        "voxelLife": 0.22,
+        "voxelSize": 0.18,
+        "voxelSpeedZ": 6.0
+    },
+    "spread": {
+        "coreLife": 0.1,
+        "coreScaleX": 2.8,
+        "coreScaleY": 1.8,
+        "glitchCount": 2,
+        "glitchEndLength": 3.2,
+        "glitchLength": 1.8,
+        "glitchLife": 0.13,
+        "glitchThickness": 0.09,
+        "muzzleFlashScale": 1.0,
+        "ringEndColor": [
+            1.5,
+            0.02,
+            0.9,
+            0.0
+        ],
+        "ringEndScale": 2.4,
+        "ringLife": 0.18,
+        "ringRotSpeed": -6.0,
+        "ringStartColor": [
+            0.08,
+            0.52,
+            1.7,
+            0.9
+        ],
+        "ringStartScale": 0.65,
+        "ringTiltX": 0.35,
+        "voxelCount": 3,
+        "voxelLife": 0.22,
+        "voxelSize": 0.18,
+        "voxelSpeed": 12.0
+    }
+}

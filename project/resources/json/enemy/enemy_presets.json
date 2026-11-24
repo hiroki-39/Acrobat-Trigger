@@ -134,7 +134,7 @@
                 0.0,
                 0.0
             ],
-            "colliderRadius": 2.5,
+            "colliderRadius": 4.0,
             "colliderSize": [
                 2.0,
                 2.0,
@@ -162,9 +162,9 @@
             "moveAmplitude": 8.0,
             "moveSpeed": 0.6000000238418579,
             "scale": [
-                1.5,
-                1.5,
-                1.5
+                2.5,
+                2.5,
+                2.5
             ],
             "shootInterval": 160.0
         },
@@ -176,7 +176,7 @@
                 0.0,
                 0.0
             ],
-            "colliderRadius": 2.4000000953674316,
+            "colliderRadius": 3.8,
             "colliderSize": [
                 2.0,
                 2.0,
@@ -204,9 +204,9 @@
             "moveAmplitude": 33.5,
             "moveSpeed": 0.5,
             "scale": [
-                3.0,
-                3.0,
-                3.0
+                4.8,
+                4.8,
+                4.8
             ],
             "shootInterval": 120.0
         },
@@ -218,7 +218,7 @@
                 0.0,
                 0.0
             ],
-            "colliderRadius": 3.0,
+            "colliderRadius": 4.8,
             "colliderSize": [
                 2.0,
                 2.0,
@@ -246,9 +246,9 @@
             "moveAmplitude": 3.0,
             "moveSpeed": 0.5,
             "scale": [
-                3.0,
-                3.0,
-                3.0
+                4.8,
+                4.8,
+                4.8
             ],
             "shootInterval": 120.0
         },
@@ -260,7 +260,7 @@
                 0.0,
                 0.0
             ],
-            "colliderRadius": 2.200000047683716,
+            "colliderRadius": 3.8,
             "colliderSize": [
                 2.0,
                 2.0,
@@ -288,9 +288,9 @@
             "moveAmplitude": 10.0,
             "moveSpeed": 1.0,
             "scale": [
-                1.2000000476837158,
-                1.2000000476837158,
-                1.2000000476837158
+                2.2,
+                2.2,
+                2.2
             ],
             "shootInterval": 0.0
         },
@@ -302,7 +302,7 @@
                 0.0,
                 0.0
             ],
-            "colliderRadius": 2.4000000953674316,
+            "colliderRadius": 4.0,
             "colliderSize": [
                 2.0,
                 2.0,
@@ -330,9 +330,9 @@
             "moveAmplitude": 12.0,
             "moveSpeed": 0.800000011920929,
             "scale": [
-                1.399999976158142,
-                1.399999976158142,
-                1.399999976158142
+                2.4,
+                2.4,
+                2.4
             ],
             "shootInterval": 120.0
         },
@@ -344,11 +344,11 @@
                 0.0,
                 0.0
             ],
-            "colliderRadius": 2.0,
+            "colliderRadius": 3.0,
             "colliderSize": [
-                3.0,
-                3.0,
-                3.0
+                4.5,
+                4.5,
+                4.5
             ],
             "colliderType": "BOX",
             "color": [
@@ -372,9 +372,9 @@
             "moveAmplitude": 0.0,
             "moveSpeed": 0.0,
             "scale": [
-                4.0,
-                4.0,
-                4.0
+                6.0,
+                6.0,
+                6.0
             ],
             "shootInterval": 90.0
         }

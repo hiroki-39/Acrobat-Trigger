@@ -8,6 +8,7 @@
 #include "KHEngine/Graphics/3d/Skybox/Skybox.h"
 #include "KHEngine/Graphics/3d/Object/Object3d.h"
 #include "KHEngine/Graphics/3d/Particle/ParticleEffect.h"
+#include "Game/System/PlayerThrusterVfx.h"
 #include "KHEngine/Graphics/3d/GPUParticle/GPUParticleSystem.h"
 #include "KHEngine/Math/Vector3.h"
 #include "KHEngine/Math/Vector4.h"
@@ -33,7 +34,7 @@ private:
     std::unique_ptr<Object3d> playerObj_;
 
     // パーティクルエフェクト（スラスターブースト・スピードライン）
-    ParticleEffect thrusterEffect_;
+    PlayerThrusterVfx playerThrusterVfx_;
     ParticleEffect windEffect_; // スピードライン（高速で後方に流れる光の筋）
     std::mt19937 randomEngine_;
 

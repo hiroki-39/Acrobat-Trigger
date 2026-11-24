@@ -119,6 +119,8 @@ void TitleScene::Initialize()
     texManager->LoadTexture("uvChecker.png");
     texManager->LoadTexture("circle.png");
     texManager->LoadTexture("circle2.png");
+    texManager->LoadTexture("digital_ring.png");
+    texManager->LoadTexture("star_blink.png");
     texManager->LoadTexture("gradationLine.png");
     texManager->LoadTexture("sprites/white.png");
     texManager->LoadTexture("prticle_kira.png");
@@ -342,19 +344,13 @@ void TitleScene::Initialize()
         ParticleManager::GetInstance()->RegisterQuad("quad", "circle2.png");
         ParticleManager::GetInstance()->RegisterCylinder("Cylinder", "resources/sprites/effect/gradationLine.png", 16, 0.5f, 0.5f, 4.0f);
 
-        thrusterEffect_.Initialize(dxCommon, srvManager);
-        thrusterEffect_.LoadFromJson("thruster.json");
-        if (playerObj_)
-        {
-            thrusterEffect_.SetParentMatrix(&playerObj_->GetmatWorld());
-        }
-        thrusterEffect_.SetPosition(nozzleOffset_);
+        playerThrusterVfx_.Initialize(dxCommon, srvManager);
 
         windEffect_.Initialize(dxCommon, srvManager);
         windEffect_.LoadFromJson("wind.json");
         for (auto& node : windEffect_.GetNodes())
         {
-            node->emitter.SetUseBillboard(false);
+            node->emitter.SetUseBillboard(true);
             auto param = node->emitter.GetParameter();
             param.minVelocity.z = -10.0f;
             param.maxVelocity.z = -14.0f;
@@ -1648,73 +1644,27 @@ void TitleScene::Update()
         Matrix4x4 projectionMatrix = activeCamera->GetProjectionMatrix();
         Matrix4x4 billboardMatrix = Billboard::CreateFromCamera(activeCamera, true);
 
-        // 1. スラスター（ブースト炎）
-        // 自機（playerObj_）と親子関係を結び、機体の姿勢・移動・ロール回転に完全連動
+        // 1. スラスター（3パーツ幾何学バーナー＋トレイル＋ハニカム衝撃波）
         if (playerObj_)
         {
-            thrusterEffect_.SetParentMatrix(&playerObj_->GetmatWorld());
+            bool isThrusterActive = isPlaying && (playerColor_.w > 0.1f);
+            bool isTitleBoost = isIntro_
+                || (isDiving_ && startTransitionType_ != StartTransitionType::VirtualShatter)
+                || (dodgeThrustBoost_ > 0.35f);
+            bool isTitleRoll = (std::abs(curRot.z) > 1.2f);
+            bool isTitleWingVapor = (std::abs(curRot.z) > 0.45f);
+            playerThrusterVfx_.Update(
+                isPlaying ? dt : 0.0f,
+                playerObj_->GetmatWorld(),
+                viewMatrix,
+                projectionMatrix,
+                billboardMatrix,
+                isThrusterActive,
+                isTitleBoost,
+                isTitleRoll,
+                isTitleWingVapor,
+                randomEngine_);
         }
-        thrusterEffect_.SetPosition(nozzleOffset_);
-
-        if (isDiving_)
-        {
-            if (startTransitionType_ == StartTransitionType::VirtualShatter)
-            {
-                // 仮想空間自機ポリゴン消滅演出: エメラルドシアン〜高輝度ホワイトシアン
-                thrusterEffect_.SetBaseColor(dissolveProgress_ > 0.0f ? Vector4{ 0.85f, 1.0f, 0.96f, 1.0f } : Vector4{ 0.25f, 1.0f, 0.85f, 1.0f });
-            }
-            else if (startTransitionType_ == StartTransitionType::SonicAfterburner)
-            {
-                // 超音速アフターバーナー: 白熱オレンジ〜ホワイトシアンの超巨大高エネルギー炎
-                float t = diveTimer_ / diveDuration_;
-                Vector4 cyanWhite = { 0.80f, 0.95f, 1.0f, 1.0f };
-                Vector4 blazingOrange = { 1.0f, 0.6f, 0.1f, 1.0f };
-                thrusterEffect_.SetBaseColor(t > 0.18f ? cyanWhite : blazingOrange);
-            }
-            else
-            {
-                // カメラブレイク: 鮮烈な高出力バーニングオレンジ
-                thrusterEffect_.SetBaseColor({ 1.0f, 0.48f, 0.08f, 1.0f });
-            }
-        }
-        else if (isIntro_ || motionBlend < 1.0f)
-        {
-            // 起動時の追い抜き飛び込み登場演出中〜巡航移行にかけて、オレンジからシアンブルーへ滑らかにカラーフェード
-            Vector4 orange = { 1.0f, 0.55f, 0.1f, 1.0f };
-            Vector4 cyan = { 0.5f, 0.85f, 1.0f, 1.0f };
-            float tCol = isIntro_ ? 0.0f : motionBlend;
-            Vector4 blendedCol = {
-                std::lerp(orange.x, cyan.x, tCol),
-                std::lerp(orange.y, cyan.y, tCol),
-                std::lerp(orange.z, cyan.z, tCol),
-                1.0f
-            };
-            thrusterEffect_.SetBaseColor(blendedCol);
-        }
-        else if (dodgeThrustBoost_ > 0.1f)
-        {
-            // アクロバット建物回避中は高エネルギーアフターバーナー発光（白熱シアンブースト）
-            float b = std::clamp(dodgeThrustBoost_, 0.0f, 1.0f);
-            Vector4 cyan = { 0.5f, 0.85f, 1.0f, 1.0f };
-            Vector4 highBoost = { 0.9f, 0.95f, 1.0f, 1.0f };
-            Vector4 boostedCol = {
-                std::lerp(cyan.x, highBoost.x, b),
-                std::lerp(cyan.y, highBoost.y, b),
-                std::lerp(cyan.z, highBoost.z, b),
-                1.0f
-            };
-            thrusterEffect_.SetBaseColor(boostedCol);
-        }
-        else
-        {
-            // 巡航中はクールな高エネルギーシアンブルー
-            thrusterEffect_.SetBaseColor({ 0.5f, 0.85f, 1.0f, 1.0f });
-        }
-        if (isPlaying)
-        {
-            thrusterEffect_.Play();
-        }
-        thrusterEffect_.Update(dt, viewMatrix, projectionMatrix, billboardMatrix);
 
         // 2. スピードライン（奥から手前へ一直線に突き抜ける光の筋）
         if (isPlaying)
@@ -2321,7 +2271,7 @@ void TitleScene::Draw()
     // 4. スラスターブースト＆スピードライン描画
     if (playerColor_.w > 0.1f)
     {
-        thrusterEffect_.Draw();
+        playerThrusterVfx_.Draw();
         windEffect_.Draw();
     }
 }

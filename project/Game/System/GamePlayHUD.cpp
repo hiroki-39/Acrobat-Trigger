@@ -133,18 +133,30 @@ void GamePlayHUD::UpdateBars(float dt, Player* player)
 			if (hpRate < 0.0f) hpRate = 0.0f;
 			hpBarSprite_->SetSize(Vector2(400.0f * hpRate, 32.0f));
 
-			// HPに応じて色を変更
-			if (hpRate > 0.5f)
+			float dmgFlash = player->GetDamageFlashRatio();
+			if (dmgFlash > 0.0f)
 			{
-				hpBarSprite_->SetColor(Vector4(0.0f, 1.0f, 0.0f, 1.0f)); // 緑
-			}
-			else if (hpRate > 0.2f)
-			{
-				hpBarSprite_->SetColor(Vector4(1.0f, 1.0f, 0.0f, 1.0f)); // 黄色
+				// 被弾直後 0.15秒間：警告色の赤フラッシュ＋横数pxのグリッチ振動
+				float jitterX = static_cast<float>((std::rand() % 13) - 6) * dmgFlash;
+				hpBarSprite_->SetPosition(Vector2(20.0f + jitterX, 720.0f - 32.0f - 20.0f));
+				hpBarSprite_->SetColor(Vector4(1.0f, 0.08f, 0.22f, 1.0f));
 			}
 			else
 			{
-				hpBarSprite_->SetColor(Vector4(1.0f, 0.0f, 0.0f, 1.0f)); // 赤
+				hpBarSprite_->SetPosition(Vector2(20.0f, 720.0f - 32.0f - 20.0f));
+				// HPに応じて色を変更
+				if (hpRate > 0.5f)
+				{
+					hpBarSprite_->SetColor(Vector4(0.0f, 1.0f, 0.0f, 1.0f)); // 緑
+				}
+				else if (hpRate > 0.2f)
+				{
+					hpBarSprite_->SetColor(Vector4(1.0f, 1.0f, 0.0f, 1.0f)); // 黄色
+				}
+				else
+				{
+					hpBarSprite_->SetColor(Vector4(1.0f, 0.0f, 0.0f, 1.0f)); // 赤
+				}
 			}
 			hpBarSprite_->Update();
 		}

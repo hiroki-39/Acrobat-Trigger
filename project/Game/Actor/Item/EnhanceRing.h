@@ -30,7 +30,8 @@ public:
     const Vector3& GetPosition() const { return position_; }
 
 private:
-    std::unique_ptr<Object3d> object_;
+    std::unique_ptr<Object3d> object_;      // ring_core（強化=赤 / 回復=緑）
+    std::unique_ptr<Object3d> ring1Object_; // ring_1（共通=白、回転パーツ）
     std::unique_ptr<Object3d> colliderObject_;
     Vector3 position_;
     Vector3 rotation_;
@@ -38,6 +39,8 @@ private:
     RingType type_;
     LevelCollider collider_;
 
+    float animTimer_ = 0.0f;
+    float ring1RotZ_ = 0.0f;
     bool isDead_ = false;
     bool isShrinking_ = false;
     float shrinkScale_ = 1.0f;

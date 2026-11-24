@@ -1,4 +1,5 @@
 #include "CyberBitWeapon.h"
+#include "Game/System/CyberVfxSystem.h"
 #include "Game/Actor/Player/Player.h"
 #include "Game/Actor/Bullet/PlayerBullet.h"
 #include "Game/Actor/Enemy/Enemy.h"
@@ -47,43 +48,43 @@ void CyberBitWeapon::Initialize(Player* owner, Object3dCommon* object3dCommon) {
         b.ring2RotZ = static_cast<float>(i) * 2.1f;
         b.ring2RotSpeed = -0.07f - static_cast<float>(i) * 0.015f;
 
-        // 本体（外枠フレーム）
+        // 本体（外枠フレーム：ボム外枠と同じホログラムワイヤー/スキャンライン）
         b.bodyObject = std::make_unique<Object3d>();
         b.bodyObject->Initialize(object3dCommon_);
         b.bodyObject->SetModel("resources/3dModels/funnel/funnel_body/funnel_body.obj");
         b.bodyObject->SetEnableLighting(false);
-        b.bodyObject->SetSelectLightings(0);
-        b.bodyObject->SetColor({ 0.90f, 0.94f, 1.0f, 1.0f }); // サイバーシルバー
+        b.bodyObject->SetSelectLightings(12);
+        b.bodyObject->SetColor({ 0.20f, 0.75f, 1.0f, 0.92f }); // サイバーブルーエッジ＋暗金属
         b.bodyObject->SetScale({ 0.45f, 0.45f, 0.45f }); // 洗練されたビットサイズ
         b.currentScale = 0.45f;
 
-        // コア（内部ピラミッド結晶）
+        // コア（内部ピラミッド結晶：ボムコアと同じ高密度ホログラム）
         b.coreObject = std::make_unique<Object3d>();
         b.coreObject->Initialize(object3dCommon_);
         b.coreObject->SetModel("resources/3dModels/funnel/funnel_core/funnel_core.obj");
         b.coreObject->SetEnableLighting(false);
-        b.coreObject->SetSelectLightings(0);
-        b.coreObject->SetColor({ 1.0f, 0.15f, 0.85f, 1.0f }); // ネオンマゼンタ
+        b.coreObject->SetSelectLightings(13);
+        b.coreObject->SetColor({ 0.72f, 0.16f, 1.0f, 0.85f }); // サイバーバイオレットコア
         b.coreObject->SetScale({ 1.0f, 1.0f, 1.0f });
         b.coreObject->SetParent(b.bodyObject.get());
 
-        // リング1（第1回転リング）
+        // リング1（第1回転リング：純発光ネオンマゼンタ）
         b.ring1Object = std::make_unique<Object3d>();
         b.ring1Object->Initialize(object3dCommon_);
         b.ring1Object->SetModel("resources/3dModels/funnel/funnel_ring1/funnel_ring1.obj");
         b.ring1Object->SetEnableLighting(false);
-        b.ring1Object->SetSelectLightings(0);
-        b.ring1Object->SetColor({ 0.95f, 0.35f, 1.0f, 1.0f }); // ネオンパープルピンク
+        b.ring1Object->SetSelectLightings(10);
+        b.ring1Object->SetColor({ 0.95f, 0.20f, 0.92f, 1.0f }); // ネオンマゼンタ
         b.ring1Object->SetScale({ 1.0f, 1.0f, 1.0f });
         b.ring1Object->SetParent(b.bodyObject.get());
 
-        // リング2（第2逆回転リング）
+        // リング2（第2逆回転リング：純発光ネオンシアン）
         b.ring2Object = std::make_unique<Object3d>();
         b.ring2Object->Initialize(object3dCommon_);
         b.ring2Object->SetModel("resources/3dModels/funnel/funnel_ring2/funnel_ring2.obj");
         b.ring2Object->SetEnableLighting(false);
-        b.ring2Object->SetSelectLightings(0);
-        b.ring2Object->SetColor({ 0.35f, 0.85f, 1.0f, 1.0f }); // ネオンサイバーシアン
+        b.ring2Object->SetSelectLightings(10);
+        b.ring2Object->SetColor({ 0.15f, 0.88f, 1.0f, 1.0f }); // ネオンサイバーシアン
         b.ring2Object->SetScale({ 1.0f, 1.0f, 1.0f });
         b.ring2Object->SetParent(b.bodyObject.get());
     }
@@ -301,6 +302,9 @@ void CyberBitWeapon::Update(float gameSpeed, const std::list<std::unique_ptr<Ene
                 float hitRadius = 3.5f;
                 if ((dist < hitRadius || closestDistSq <= hitRadius * hitRadius) && !b.hasHitTarget) {
                     b.hasHitTarget = true;
+                    if (vfxSystem_) {
+                        vfxSystem_->TriggerBulletHit(closestPt, b.velocity);
+                    }
                     // ダメージ・撃破付与
                     if (b.targetBoss && boss) {
                         boss->OnDamaged(b.targetCarriageIndex, 3);
@@ -342,11 +346,10 @@ void CyberBitWeapon::Update(float gameSpeed, const std::list<std::unique_ptr<Ene
             Vector3 toHome = { homeStation.x - b.position.x, homeStation.y - b.position.y, homeStation.z - b.position.z };
             float hDist = std::sqrtf(toHome.x * toHome.x + toHome.y * toHome.y + toHome.z * toHome.z);
 
-            // 1. 至近距離（1.0m以内）または帰還時間90フレーム（約1.5秒）経過で確実にドッキング完了
-            if (hDist < 1.0f || b.flightTimer >= 90.0f) {
+            // 1. 緩めのドッキング判定（3.5m以内）または帰還時間45フレーム（約0.75秒）経過で待機状態へ移行
+            //    瞬間ワープせず、IDLE_HOVER の滑らかな位置補間にそのまま引き継ぐ
+            if (hDist < 3.5f || b.flightTimer >= 45.0f) {
                 b.state = BitFlightState::IDLE_HOVER;
-                b.position = homeStation;
-                b.prevPosition = homeStation;
                 b.velocity = { 0.0f, 0.0f, 0.0f };
                 b.targetEnemy = nullptr;
                 b.targetBoss = nullptr;
@@ -355,10 +358,9 @@ void CyberBitWeapon::Update(float gameSpeed, const std::list<std::unique_ptr<Ene
                 break;
             }
 
-            // 2. 近距離アプローチ（5.0m以内）：ステアリング旋回から滑らかな直接位置補間（Lerp吸着）へ切り替え
-            // これにより、高速接近時のオーバーシュートや自機周囲のぐるぐる周回バグが100%根絶される！
-            if (hDist < 5.0f) {
-                float dockLerp = (std::min)(1.0f, 0.28f * gameSpeed);
+            // 2. 近距離アプローチ（9.0m以内）：高速Lerp吸着で自機の前進に置いていかれないようにする
+            if (hDist < 9.0f) {
+                float dockLerp = (std::min)(1.0f, 0.36f * gameSpeed);
                 b.position.x += (homeStation.x - b.position.x) * dockLerp;
                 b.position.y += (homeStation.y - b.position.y) * dockLerp;
                 b.position.z += (homeStation.z - b.position.z) * dockLerp;
@@ -371,8 +373,8 @@ void CyberBitWeapon::Update(float gameSpeed, const std::list<std::unique_ptr<Ene
                 break;
             }
 
-            // 3. 遠距離アプローチ：距離に応じたスムーズなアライバル減速
-            float returnSpeed = (std::min)(3.2f, (std::max)(1.2f, hDist * 0.35f));
+            // 3. 遠距離アプローチ：自機の前進・ブーストに追いつける十分な帰還速度を確保
+            float returnSpeed = (std::min)(6.5f, (std::max)(2.4f, hDist * 0.45f));
             Vector3 desiredVel = {
                 (toHome.x / hDist) * returnSpeed,
                 (toHome.y / hDist) * returnSpeed,
@@ -415,20 +417,14 @@ void CyberBitWeapon::Update(float gameSpeed, const std::list<std::unique_ptr<Ene
         float xzLen = std::sqrtf(lookDir.x * lookDir.x + lookDir.z * lookDir.z);
         float pitch = std::atan2f(lookDir.y, xzLen);
 
-        // 飛翔時・待機時の動的スケーリング（飛翔時は迫力ある大型化＋遠方視認性向上、帰還時は自機に近づくにつれて滑らかに通常サイズへ縮小）
+        // 飛翔時・待機時の動的スケーリング（攻撃飛翔中は大型化し、帰還開始と同時に定位置サイズ 0.45f へ戻す）
         float targetScaleVal = 0.45f;
-        if (b.state == BitFlightState::RETURNING) {
-            // 自機の待機ステーションまでの距離に応じて 1.10f から 0.45f へ滑らかに縮小
-            Vector3 toHome = { homeStation.x - b.position.x, homeStation.y - b.position.y, homeStation.z - b.position.z };
-            float hDist = std::sqrtf(toHome.x * toHome.x + toHome.y * toHome.y + toHome.z * toHome.z);
-            float t = std::clamp(hDist / 25.0f, 0.0f, 1.0f);
-            targetScaleVal = 0.45f + (1.10f - 0.45f) * t;
-        } else if (b.state != BitFlightState::IDLE_HOVER) {
+        if (b.state == BitFlightState::ARC_OUTWARD || b.state == BitFlightState::HOMING_ATTACK) {
             // 攻撃飛翔時は基本 1.1f、さらに奥へ進むほど遠近感の縮小を補正してしっかり見えるサイズに
             float dz = (std::max)(0.0f, b.position.z - playerPos.z);
             targetScaleVal = 1.10f + std::clamp(dz * 0.012f, 0.0f, 0.90f);
         }
-        b.currentScale += (targetScaleVal - b.currentScale) * 0.22f * gameSpeed;
+        b.currentScale += (targetScaleVal - b.currentScale) * 0.25f * gameSpeed;
 
         // 1. 本体のトランスフォーム更新
         if (b.bodyObject) {
@@ -647,6 +643,9 @@ void CyberBitWeapon::Attack(Input* input,
             };
 
             launchedCount++;
+            if (vfxSystem_) {
+                vfxSystem_->TriggerMuzzleFlash(b.position, 0.75f);
+            }
             if (i < lockOnReticles_.size() && lockOnReticles_[i]) {
                 lockOnReticles_[i]->SetScale({ 0.001f, 0.001f, 0.001f });
             }
@@ -680,6 +679,10 @@ void CyberBitWeapon::Attack(Input* input,
             auto newBullet = std::make_unique<PlayerBullet>();
             newBullet->Initialize(object3dCommon_, muzzlePos, velocity, parentCamera, hoverEnemy);
             bullets.push_back(std::move(newBullet));
+
+            if (vfxSystem_) {
+                vfxSystem_->TriggerMuzzleFlash(muzzlePos, 0.9f);
+            }
             // SEは鳴らさない
         }
     }
@@ -761,4 +764,25 @@ bool CyberBitWeapon::IsDepleted() const {
 
 std::string CyberBitWeapon::GetAmmoText() const {
     return "CYBER BIT " + std::to_string(ammo_) + " / " + std::to_string(maxAmmo_);
+}
+
+std::vector<Vector3> CyberBitWeapon::GetBitPositions() const {
+    std::vector<Vector3> positions;
+    positions.reserve(bits_.size());
+    for (const auto& b : bits_) {
+        positions.push_back(b.position);
+    }
+    return positions;
+}
+
+void CyberBitWeapon::GetBitTrailStates(std::vector<Vector3>& outPositions, std::vector<uint8_t>& outIsAttacking) const {
+    outPositions.clear();
+    outIsAttacking.clear();
+    outPositions.reserve(bits_.size());
+    outIsAttacking.reserve(bits_.size());
+    for (const auto& b : bits_) {
+        outPositions.push_back(b.position);
+        bool isAttackFlight = (b.state == BitFlightState::ARC_OUTWARD || b.state == BitFlightState::HOMING_ATTACK);
+        outIsAttacking.push_back(isAttackFlight ? 1 : 0);
+    }
 }
