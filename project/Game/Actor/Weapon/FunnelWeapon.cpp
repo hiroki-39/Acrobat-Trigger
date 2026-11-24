@@ -359,10 +359,10 @@ void FunnelWeapon::Update(float gameSpeed, const std::list<std::unique_ptr<Enemy
                 lookDir = { toHome.x / hDist, toHome.y / hDist, toHome.z / hDist };
             }
 
-            moveRate = 0.28f; // スピーディな帰還
+            moveRate = 0.36f; // 自機前進に負けないスピーディな帰還
 
-            // 待機位置に接近したら待機モードへ合流
-            if (hDist < 1.4f) {
+            // 緩めの判定で待機位置へスムーズに合流
+            if (hDist < 3.2f) {
                 f.state = BitState::IDLE_HOVER;
                 f.shotsFired = 0;
             }
@@ -509,7 +509,8 @@ void FunnelWeapon::GetFunnelTrailStates(std::vector<Vector3>& outPositions, std:
     outIsAttacking.reserve(funnels_.size());
     for (const auto& f : funnels_) {
         outPositions.push_back(f.position);
-        outIsAttacking.push_back(f.state != BitState::IDLE_HOVER ? 1 : 0);
+        bool isAttackFlight = (f.state == BitState::APPROACH || f.state == BitState::ATTACKING);
+        outIsAttacking.push_back(isAttackFlight ? 1 : 0);
     }
 }
 

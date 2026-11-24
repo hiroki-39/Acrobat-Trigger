@@ -6,7 +6,7 @@
 #include <cmath>
 #include <algorithm>
 
-float MemoryItem::s_ScaleMultiplier = 1.2f;
+float MemoryItem::s_ScaleMultiplier = 1.6f;
 Vector4 MemoryItem::s_CustomBitColor = { 1.0f, 0.65f, 0.12f, 1.0f }; // 地形に対して最も際立つエレクトリックオレンジ/ゴールド
 
 void MemoryItem::Initialize(Object3dCommon* object3dCommon, const Vector3& pos, MemoryType type) {
@@ -17,6 +17,7 @@ void MemoryItem::Initialize(Object3dCommon* object3dCommon, const Vector3& pos, 
     spawnTimer_ = 0.0f;
     hasSpawnedBurst_ = false;
     trailAccum_ = 0.0f;
+    ambientVoxelAccum_ = 0.0f;
     lifeTimer_ = 600.0f;
     isDead_ = false;
     isAttracting_ = false;
@@ -48,21 +49,38 @@ void MemoryItem::Initialize(Object3dCommon* object3dCommon, const Vector3& pos, 
         break;
     }
 
-    ModelManager::GetInstance()->LoadModel("memory.obj");
+    ModelManager::GetInstance()->LoadModel("memory/memory_core/memory_core.obj");
+    ModelManager::GetInstance()->LoadModel("memory/memory_1/memory_1.obj");
     ModelManager::GetInstance()->LoadModel("cube.obj");
 
+    Vector3 initScale(baseScale_.x * s_ScaleMultiplier * 0.2f, baseScale_.y * s_ScaleMultiplier * 0.2f, baseScale_.z * s_ScaleMultiplier * 0.2f);
+
+    // 1. memory_core：メモリ種類ごとの色を適用（サイバーホログラムシェーダー case 15）
     object_ = std::make_unique<Object3d>();
     object_->Initialize(object3dCommon);
-    object_->SetModel("memory.obj");
+    object_->SetModel("memory/memory_core/memory_core.obj");
     object_->SetColor(itemColor_);
-    object_->SetScale(Vector3(baseScale_.x * s_ScaleMultiplier * 0.2f, baseScale_.y * s_ScaleMultiplier * 0.2f, baseScale_.z * s_ScaleMultiplier * 0.2f));
-    // メモリ専用ホログラム・サイバーシェーダー（case 15）で描画
+    object_->SetScale(initScale);
     object_->SetEnableLighting(false);
     object_->SetEnvironmentCoefficient(0.0f);
     object_->SetSelectLightings(15);
     object_->SetShininess(0.0f);
     object_->SetTranslate(position_);
     object_->Update();
+
+    // 2. memory_1：全メモリ共通のサイバープラチナカラーを適用（サイバーホログラムシェーダー case 15）
+    const Vector4 kCommonFrameColor = { 0.78f, 0.88f, 0.98f, 1.0f };
+    subObject_ = std::make_unique<Object3d>();
+    subObject_->Initialize(object3dCommon);
+    subObject_->SetModel("memory/memory_1/memory_1.obj");
+    subObject_->SetColor(kCommonFrameColor);
+    subObject_->SetScale(initScale);
+    subObject_->SetEnableLighting(false);
+    subObject_->SetEnvironmentCoefficient(0.0f);
+    subObject_->SetSelectLightings(15);
+    subObject_->SetShininess(0.0f);
+    subObject_->SetTranslate(position_);
+    subObject_->Update();
 
     // 周囲を公転するオービタル・データビット3個を初期化
     for (int i = 0; i < kOrbitBitCount; ++i) {
@@ -181,6 +199,13 @@ void MemoryItem::Update(float gameSpeed, Player* player, GamePlayVfxManager* vfx
                 position_.y += std::sinf(animTimer_ * 2.0f) * 0.025f * gameSpeed;
             }
 
+            // ドロップ浮遊中は周囲で下から上へボクセルブロックを発生させる
+            ambientVoxelAccum_ += dt;
+            if (ambientVoxelAccum_ >= 0.065f && vfxManager) {
+                ambientVoxelAccum_ = 0.0f;
+                vfxManager->SpawnMemoryAmbientVoxel(position_, itemColor_, 2.25f);
+            }
+
             // プレイヤーが前方に大きく通り過ぎた場合は自然消滅
             if (pPos.z - position_.z > 60.0f || lifeTimer_ <= 0.0f) {
                 isDead_ = true;
@@ -205,8 +230,19 @@ void MemoryItem::Update(float gameSpeed, Player* player, GamePlayVfxManager* vfx
         object_->Update();
     }
 
-    // 周囲を公転するオービタル・データビットの更新
-    float orbitRadius = 1.65f * spawnScaleMul * orbitShrink;
+    if (subObject_) {
+        // memory_1 は全メモリ共通のサイバープラチナカラー
+        const Vector4 kCommonFrameColor = { 0.78f, 0.88f, 0.98f, 1.0f };
+        subObject_->SetColor(kCommonFrameColor);
+        subObject_->SetShininess(animTimer_);
+        subObject_->SetTranslate(position_);
+        subObject_->SetRotation(rotation_);
+        subObject_->SetScale(Vector3(currentScaleVal, currentScaleVal, currentScaleVal));
+        subObject_->Update();
+    }
+
+    // 周囲を公転するオービタル・データビットの更新（拡大したメモリサイズに合わせる）
+    float orbitRadius = 2.25f * spawnScaleMul * orbitShrink;
     float orbitSpeed = isAttracting_ ? 2.6f : 1.35f;
     for (int i = 0; i < kOrbitBitCount; ++i) {
         if (!orbitBits_[i]) continue;
@@ -223,7 +259,7 @@ void MemoryItem::Update(float gameSpeed, Player* player, GamePlayVfxManager* vfx
         orbitBits_[i]->SetTranslate({ position_.x + offset.x, position_.y + offset.y, position_.z + offset.z });
         orbitBits_[i]->SetRotation({ angle * 0.7f, angle + 1.57f, tilt });
         float bitScale = spawnScaleMul * orbitShrink;
-        orbitBits_[i]->SetScale({ 0.11f * bitScale, 0.11f * bitScale, 0.38f * bitScale });
+        orbitBits_[i]->SetScale({ 0.14f * bitScale, 0.14f * bitScale, 0.48f * bitScale });
         orbitBits_[i]->Update();
     }
 }
@@ -232,6 +268,9 @@ void MemoryItem::Draw() {
     if (isDead_) return;
     if (object_) {
         object_->Draw();
+    }
+    if (subObject_) {
+        subObject_->Draw();
     }
     for (int i = 0; i < kOrbitBitCount; ++i) {
         if (orbitBits_[i]) {

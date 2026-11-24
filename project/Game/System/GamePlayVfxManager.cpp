@@ -771,6 +771,60 @@ void GamePlayVfxManager::SpawnMemoryTrailParticle(const Vector3& pos, const Vect
 	voxelHitParticles_.push_back(std::move(vp));
 }
 
+void GamePlayVfxManager::SpawnMemoryAmbientVoxel(const Vector3& centerPos, const Vector4& color, float modelRadius)
+{
+	if (voxelHitParticles_.size() > 160) return;
+	auto services = EngineServices::GetInstance();
+	Object3dCommon* object3dCommon = services ? services->GetObject3dCommon() : nullptr;
+	if (!object3dCommon) return;
+
+	// モデル半径に沿った円周付近（少し外側含む）から下端より発生して上へ昇る
+	float angle = static_cast<float>(std::rand() % 628) * 0.01f;
+	float r = modelRadius * (0.65f + static_cast<float>(std::rand() % 65) * 0.01f);
+	float sz = 0.18f + static_cast<float>(std::rand() % 13) * 0.01f; // 0.18m 〜 0.30m（モデルサイズに合う小〜中ボクセル）
+
+	VoxelHitParticle vp;
+	vp.obj = std::make_unique<Object3d>();
+	vp.obj->Initialize(object3dCommon);
+	vp.obj->SetModel("cube.obj");
+	vp.obj->SetEnableLighting(false);
+	vp.obj->SetEnvironmentCoefficient(0.0f);
+	vp.obj->SetSelectLightings(10);
+
+	vp.position = {
+		centerPos.x + std::cosf(angle) * r,
+		centerPos.y - modelRadius * 1.05f + (static_cast<float>(std::rand() % 40) * 0.02f),
+		centerPos.z + std::sinf(angle) * r
+	};
+	vp.velocity = {
+		std::cosf(angle) * 0.25f,
+		4.8f + static_cast<float>(std::rand() % 100) * 0.038f, // 下から上へ立ち昇る
+		std::sinf(angle) * 0.25f
+	};
+	vp.rotation = {
+		static_cast<float>(std::rand() % 628) * 0.01f,
+		static_cast<float>(std::rand() % 628) * 0.01f,
+		static_cast<float>(std::rand() % 628) * 0.01f
+	};
+	vp.rotSpeed = {
+		((std::rand() % 100) - 50) * 0.09f,
+		((std::rand() % 100) - 50) * 0.09f,
+		((std::rand() % 100) - 50) * 0.09f
+	};
+	vp.scale = { sz, sz, sz };
+	// 4回に1回はmemory_1と同系色のサイバープラチナ色、それ以外はメモリ種類色
+	vp.color = (std::rand() % 4 == 0) ? Vector4{ 0.78f, 0.88f, 0.98f, 1.0f } : color;
+	vp.life = 0.0f;
+	vp.maxLife = 0.55f + static_cast<float>(std::rand() % 10) * 0.025f;
+
+	vp.obj->SetTranslate(vp.position);
+	vp.obj->SetRotation(vp.rotation);
+	vp.obj->SetScale(vp.scale);
+	vp.obj->SetColor(vp.color);
+	vp.obj->Update();
+	voxelHitParticles_.push_back(std::move(vp));
+}
+
 void GamePlayVfxManager::SpawnPlayerDamageParticles(const Vector3& hitPos)
 {
 	// 1. 視認性を邪魔しない小さめの3D三角形プリズム破片を16個放出

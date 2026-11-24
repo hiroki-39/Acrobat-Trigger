@@ -56,6 +56,11 @@ public:
 	void SpawnMemoryTrailParticle(const Vector3& pos, const Vector4& color);
 
 	/// <summary>
+	/// メモリドロップ浮遊中に周囲で下から上へ昇るボクセルブロックを生成
+	/// </summary>
+	void SpawnMemoryAmbientVoxel(const Vector3& centerPos, const Vector4& color, float modelRadius);
+
+	/// <summary>
 	/// スラスター・ウィンド以外のエフェクトおよびボクセル粒子の更新
 	/// </summary>
 	void UpdateEffects(float dt, const Matrix4x4& viewMatrix, const Matrix4x4& projectionMatrix, const Matrix4x4& billboardMatrix);

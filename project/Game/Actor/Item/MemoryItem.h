@@ -28,7 +28,8 @@ public:
 private:
     static constexpr int kOrbitBitCount = 3;
 
-    std::unique_ptr<Object3d> object_ = nullptr;
+    std::unique_ptr<Object3d> object_ = nullptr;      // memory_core（メモリ種類ごとの色）
+    std::unique_ptr<Object3d> subObject_ = nullptr;   // memory_1（全メモリ共通色）
     std::array<std::unique_ptr<Object3d>, kOrbitBitCount> orbitBits_;
     Vector3 position_ = { 0.0f, 0.0f, 0.0f };
     Vector3 spawnStartPos_ = { 0.0f, 0.0f, 0.0f };
@@ -43,6 +44,7 @@ private:
     float spawnDuration_ = 0.45f; // 出現ポップアップ時間
     bool hasSpawnedBurst_ = false;
     float trailAccum_ = 0.0f;
+    float ambientVoxelAccum_ = 0.0f;
     float lifeTimer_ = 600.0f; // 約10秒間滞留（回収されなければ自然消滅）
     bool isDead_ = false;
 

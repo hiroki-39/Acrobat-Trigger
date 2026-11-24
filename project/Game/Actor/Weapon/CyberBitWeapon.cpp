@@ -346,11 +346,10 @@ void CyberBitWeapon::Update(float gameSpeed, const std::list<std::unique_ptr<Ene
             Vector3 toHome = { homeStation.x - b.position.x, homeStation.y - b.position.y, homeStation.z - b.position.z };
             float hDist = std::sqrtf(toHome.x * toHome.x + toHome.y * toHome.y + toHome.z * toHome.z);
 
-            // 1. 至近距離（1.0m以内）または帰還時間90フレーム（約1.5秒）経過で確実にドッキング完了
-            if (hDist < 1.0f || b.flightTimer >= 90.0f) {
+            // 1. 緩めのドッキング判定（3.5m以内）または帰還時間45フレーム（約0.75秒）経過で待機状態へ移行
+            //    瞬間ワープせず、IDLE_HOVER の滑らかな位置補間にそのまま引き継ぐ
+            if (hDist < 3.5f || b.flightTimer >= 45.0f) {
                 b.state = BitFlightState::IDLE_HOVER;
-                b.position = homeStation;
-                b.prevPosition = homeStation;
                 b.velocity = { 0.0f, 0.0f, 0.0f };
                 b.targetEnemy = nullptr;
                 b.targetBoss = nullptr;
@@ -359,10 +358,9 @@ void CyberBitWeapon::Update(float gameSpeed, const std::list<std::unique_ptr<Ene
                 break;
             }
 
-            // 2. 近距離アプローチ（5.0m以内）：ステアリング旋回から滑らかな直接位置補間（Lerp吸着）へ切り替え
-            // これにより、高速接近時のオーバーシュートや自機周囲のぐるぐる周回バグが100%根絶される！
-            if (hDist < 5.0f) {
-                float dockLerp = (std::min)(1.0f, 0.28f * gameSpeed);
+            // 2. 近距離アプローチ（9.0m以内）：高速Lerp吸着で自機の前進に置いていかれないようにする
+            if (hDist < 9.0f) {
+                float dockLerp = (std::min)(1.0f, 0.36f * gameSpeed);
                 b.position.x += (homeStation.x - b.position.x) * dockLerp;
                 b.position.y += (homeStation.y - b.position.y) * dockLerp;
                 b.position.z += (homeStation.z - b.position.z) * dockLerp;
@@ -375,8 +373,8 @@ void CyberBitWeapon::Update(float gameSpeed, const std::list<std::unique_ptr<Ene
                 break;
             }
 
-            // 3. 遠距離アプローチ：距離に応じたスムーズなアライバル減速
-            float returnSpeed = (std::min)(3.2f, (std::max)(1.2f, hDist * 0.35f));
+            // 3. 遠距離アプローチ：自機の前進・ブーストに追いつける十分な帰還速度を確保
+            float returnSpeed = (std::min)(6.5f, (std::max)(2.4f, hDist * 0.45f));
             Vector3 desiredVel = {
                 (toHome.x / hDist) * returnSpeed,
                 (toHome.y / hDist) * returnSpeed,
@@ -419,20 +417,14 @@ void CyberBitWeapon::Update(float gameSpeed, const std::list<std::unique_ptr<Ene
         float xzLen = std::sqrtf(lookDir.x * lookDir.x + lookDir.z * lookDir.z);
         float pitch = std::atan2f(lookDir.y, xzLen);
 
-        // 飛翔時・待機時の動的スケーリング（飛翔時は迫力ある大型化＋遠方視認性向上、帰還時は自機に近づくにつれて滑らかに通常サイズへ縮小）
+        // 飛翔時・待機時の動的スケーリング（攻撃飛翔中は大型化し、帰還開始と同時に定位置サイズ 0.45f へ戻す）
         float targetScaleVal = 0.45f;
-        if (b.state == BitFlightState::RETURNING) {
-            // 自機の待機ステーションまでの距離に応じて 1.10f から 0.45f へ滑らかに縮小
-            Vector3 toHome = { homeStation.x - b.position.x, homeStation.y - b.position.y, homeStation.z - b.position.z };
-            float hDist = std::sqrtf(toHome.x * toHome.x + toHome.y * toHome.y + toHome.z * toHome.z);
-            float t = std::clamp(hDist / 25.0f, 0.0f, 1.0f);
-            targetScaleVal = 0.45f + (1.10f - 0.45f) * t;
-        } else if (b.state != BitFlightState::IDLE_HOVER) {
+        if (b.state == BitFlightState::ARC_OUTWARD || b.state == BitFlightState::HOMING_ATTACK) {
             // 攻撃飛翔時は基本 1.1f、さらに奥へ進むほど遠近感の縮小を補正してしっかり見えるサイズに
             float dz = (std::max)(0.0f, b.position.z - playerPos.z);
             targetScaleVal = 1.10f + std::clamp(dz * 0.012f, 0.0f, 0.90f);
         }
-        b.currentScale += (targetScaleVal - b.currentScale) * 0.22f * gameSpeed;
+        b.currentScale += (targetScaleVal - b.currentScale) * 0.25f * gameSpeed;
 
         // 1. 本体のトランスフォーム更新
         if (b.bodyObject) {
@@ -790,6 +782,7 @@ void CyberBitWeapon::GetBitTrailStates(std::vector<Vector3>& outPositions, std::
     outIsAttacking.reserve(bits_.size());
     for (const auto& b : bits_) {
         outPositions.push_back(b.position);
-        outIsAttacking.push_back(b.state != BitFlightState::IDLE_HOVER ? 1 : 0);
+        bool isAttackFlight = (b.state == BitFlightState::ARC_OUTWARD || b.state == BitFlightState::HOMING_ATTACK);
+        outIsAttacking.push_back(isAttackFlight ? 1 : 0);
     }
 }
