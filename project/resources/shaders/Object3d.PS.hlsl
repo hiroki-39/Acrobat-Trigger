@@ -719,10 +719,49 @@ PixelShaderOutput main(VertexShaderOutput input)
                 output.color.a = gMaterial.color.a;
             }
             break;
+        case 12:
+            {
+                // ===== サイバーボム外枠ケージ（bom_1.obj）用シェーダー（細枠でも視認できるホログラムフレーム） =====
+                float32_t3 wp = input.worldPosition;
+                float32_t NdotV = saturate(abs(dot(normal, toEye)));
+                float32_t rim = pow(1.0f - NdotV, 1.8f);
+
+                float32_t NdotL = dot(normal, -gDirectionlLight.direction);
+                float32_t facetShade = 0.55f + 0.45f * saturate(NdotL * 0.5f + 0.5f);
+
+                // 細枠が消えない穏やかなホログラムスキャンライン
+                float32_t scan = 0.78f + 0.22f * sin(wp.y * 22.0f);
+
+                float32_t3 baseCol = gMaterial.color.rgb * (facetShade * 0.85f);
+                float32_t3 rimCol  = gMaterial.color.rgb * (rim * 0.75f);
+
+                output.color.rgb = (baseCol + rimCol) * scan;
+                output.color.a = gMaterial.color.a;
+            }
+            break;
+        case 13:
+            {
+                // ===== サイバーボム多面体コア（bom_core.obj）用シェーダー（高輝度ホログラム多面体コア） =====
+                float32_t3 wp = input.worldPosition;
+                float32_t NdotV = saturate(abs(dot(normal, toEye)));
+                float32_t rim = pow(1.0f - NdotV, 1.8f);
+
+                // 多面体の立体感を保ちつつ明度をしっかり確保
+                float32_t NdotL = dot(normal, -gDirectionlLight.direction);
+                float32_t facetShade = 0.40f + 0.60f * saturate(NdotL * 0.5f + 0.5f);
+
+                // ホログラム走査線
+                float32_t scan = 0.74f + 0.26f * sin(wp.y * 28.0f + wp.x * 8.0f);
+                float32_t3 edgeLight = float32_t3(0.95f, 0.88f, 1.0f) * (pow(rim, 2.5f) * 0.45f);
+
+                output.color.rgb = (gMaterial.color.rgb * (facetShade * 1.15f + rim * 1.25f) + edgeLight) * scan;
+                output.color.a = gMaterial.color.a;
+            }
+            break;
     }
 
-    // 環境マッピング（仮想空間シェーダー case 7, 8, 9, 10, 11 時は独自のホログラム発光を維持するため除外）
-    if (gMaterial.environmentCoefficient > 0.0f && gMaterial.selectLightings != 7 && gMaterial.selectLightings != 8 && gMaterial.selectLightings != 9 && gMaterial.selectLightings != 10 && gMaterial.selectLightings != 11)
+    // 環境マッピング（仮想空間シェーダー case 7〜13 時は独自のホログラム発光を維持するため除外）
+    if (gMaterial.environmentCoefficient > 0.0f && gMaterial.selectLightings != 7 && gMaterial.selectLightings != 8 && gMaterial.selectLightings != 9 && gMaterial.selectLightings != 10 && gMaterial.selectLightings != 11 && gMaterial.selectLightings != 12 && gMaterial.selectLightings != 13)
     {
         // 視線ベクトル（表面からカメラへ）
         float32_t3 toEye = normalize(gCamera.worldPosition - input.worldPosition);

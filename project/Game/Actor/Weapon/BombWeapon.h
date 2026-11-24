@@ -6,17 +6,22 @@
 
 /// <summary>
 /// 爆弾兵器（スマートボム / サイバー・ディスラプター）
-/// 前方へ射出され、高輝度プラズマ爆発で画面内の広範囲敵を殲滅＆敵弾消去
-/// （動的確保を排したオブジェクトプール管理により、描画フリッカーおよび解放時クラッシュを根絶）
+/// 外枠ケージ（bom_1）＋多面体コア（bom_core）の二重構造を持ち、
+/// 飛行トレイルおよび広範囲爆発のすべてをサイバーボクセルブロック（cube.obj）で表現する
 /// </summary>
 class BombWeapon : public IWeapon {
 public:
     static constexpr size_t kMaxBombPool = 3;
+    static constexpr size_t kMaxVoxelPool = 180;
 
     struct BombSlot {
         bool isActive = false;
         Vector3 position = { 0.0f, 0.0f, 0.0f };
         Vector3 velocity = { 0.0f, 0.0f, 0.0f };
+        Vector3 frameRotation = { 0.0f, 0.0f, 0.0f };
+        Vector3 coreRotation = { 0.0f, 0.0f, 0.0f };
+        float pulseTimer = 0.0f;
+        float trailTimer = 0.0f;
         float flightDistance = 0.0f;
         float maxFlightDistance = 80.0f;
         float armingTimer = 0.0f; // 誤爆防止セーフティタイマー
@@ -24,10 +29,23 @@ public:
         float explodeTimer = 0.0f;
         float maxExplodeTime = 40.0f;
         float explodeDamageRadius = 45.0f; // ゲームプレイ上の敵・敵弾殲滅判定半径（広大）
-        float maxVisualRadius = 15.0f;      // カメラ干渉・画面チカチカを防ぐ安全な視覚エフェクト最大半径
 
-        std::unique_ptr<Object3d> bombObject = nullptr;
-        std::unique_ptr<Object3d> shockwaveObject = nullptr;
+        std::unique_ptr<Object3d> bombObject = nullptr;     // 外枠ケージ（bom_1.obj）
+        std::unique_ptr<Object3d> bombCoreObject = nullptr; // 内側多面体コア（bom_core.obj）
+    };
+
+    struct BombVoxelParticle {
+        bool active = false;
+        std::unique_ptr<Object3d> obj = nullptr;
+        Vector3 position = { 0.0f, 0.0f, 0.0f };
+        Vector3 velocity = { 0.0f, 0.0f, 0.0f };
+        Vector3 rotation = { 0.0f, 0.0f, 0.0f };
+        Vector3 rotSpeed = { 0.0f, 0.0f, 0.0f };
+        Vector3 scale = { 1.0f, 1.0f, 1.0f };
+        Vector4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
+        float drag = 2.5f;
+        float life = 0.0f;
+        float maxLife = 0.6f;
     };
 
     void Initialize(Player* owner, Object3dCommon* object3dCommon) override;
@@ -55,6 +73,10 @@ public:
     bool HasActiveExplosion(Vector3* outPos = nullptr, float* outRadius = nullptr) const;
 
 private:
+    void SpawnVoxel(const Vector3& pos, const Vector3& vel, const Vector3& rotSpeed, const Vector3& scale, const Vector4& color, float maxLife, float drag);
+    void TriggerVoxelExplosion(const Vector3& center);
+    void UpdateVoxels(float gameSpeed);
+
     Player* owner_ = nullptr;
     Object3dCommon* object3dCommon_ = nullptr;
 
@@ -64,4 +86,5 @@ private:
 
     // 事前生成済み固定プール（動的生成・破棄による D3D12 リソース解放クラッシュを完全防止）
     std::vector<BombSlot> bombPool_;
+    std::vector<BombVoxelParticle> voxelPool_;
 };
