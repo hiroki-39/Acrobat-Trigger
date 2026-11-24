@@ -216,6 +216,12 @@
     <ClCompile Include="Game\System\PlayerThrusterVfx.cpp">
       <Filter>繧ｽ繝ｼ繧ｹ 繝輔ぃ繧､繝ｫ</Filter>
     </ClCompile>
+    <ClCompile Include="Game\System\CyberVfxSystem.cpp">
+      <Filter>繧ｽ繝ｼ繧ｹ 繝輔ぃ繧､繝ｫ</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\System\CyberVfxConfig.cpp">
+      <Filter>繧ｽ繝ｼ繧ｹ 繝輔ぃ繧､繝ｫ</Filter>
+    </ClCompile>
     <ClCompile Include="Game\System\GamePlayLevelManager.cpp">
       <Filter>繧ｽ繝ｼ繧ｹ 繝輔ぃ繧､繝ｫ</Filter>
     </ClCompile>
@@ -508,6 +514,12 @@
       <Filter>繝倥ャ繝€繝ｼ 繝輔ぃ繧､繝ｫ</Filter>
     </ClInclude>
     <ClInclude Include="Game\System\PlayerThrusterVfx.h">
+      <Filter>繝倥ャ繝€繝ｼ 繝輔ぃ繧､繝ｫ</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\System\CyberVfxSystem.h">
+      <Filter>繝倥ャ繝€繝ｼ 繝輔ぃ繧､繝ｫ</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\System\CyberVfxConfig.h">
       <Filter>繝倥ャ繝€繝ｼ 繝輔ぃ繧､繝ｫ</Filter>
     </ClInclude>
     <ClInclude Include="Game\System\GamePlayLevelManager.h">

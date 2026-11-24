@@ -758,10 +758,100 @@ PixelShaderOutput main(VertexShaderOutput input)
                 output.color.a = gMaterial.color.a;
             }
             break;
+        case 14:
+            {
+                // ===== 通常敵撃破時：ボスと同一のデジタル・グリッド・ディゾルブ（上から下へデータ崩壊） =====
+                float32_t3 wp = input.worldPosition;
+                float32_t NdotV = saturate(abs(dot(normal, toEye)));
+                float32_t rim = pow(1.0f - NdotV, 2.2f);
+                float32_t NdotL = dot(normal, -gDirectionlLight.direction);
+                float32_t shade = saturate(NdotL * 0.5f + 0.5f);
+
+                float32_t3 baseRgb = textureColor.rgb * gMaterial.color.rgb * (0.45f + 0.55f * shade);
+                baseRgb += float32_t3(0.4f, 0.2f, 0.9f) * (rim * 0.5f);
+                output.color.rgb = baseRgb;
+                output.color.a = 1.0f;
+
+                if (gMaterial.color.a < 0.999f)
+                {
+                    float dissolveProgress = saturate(1.0f - gMaterial.color.a);
+
+                    // 1. 3Dデジタル・グリッドメッシュ
+                    float3 g3d = abs(frac(wp.xyz * 2.2f - 0.5f) - 0.5f) / max(fwidth(wp.xyz * 2.2f), 0.001f);
+                    float grid3D = 1.0f - saturate(min(min(g3d.x, g3d.y), g3d.z));
+                    float digitalGrid = saturate(grid3D);
+
+                    // 2. 敵中心Y（gMaterial.shininess）を基準に上から下へスキャンラインが降下
+                    float relY = wp.y - gMaterial.shininess;
+                    float scanHeight = lerp(7.5f, -7.5f, dissolveProgress);
+
+                    float3 voxelBlock = floor(wp.xyz * 3.0f);
+                    float voxelNoise = frac(sin(dot(voxelBlock, float32_t3(12.9898f, 78.233f, 45.164f))) * 43758.5453f);
+
+                    float aboveScan = (relY - scanHeight) + (voxelNoise - 0.5f) * 1.6f;
+
+                    if (aboveScan > 2.2f || dissolveProgress >= 0.98f)
+                    {
+                        discard;
+                    }
+
+                    if (aboveScan > 0.0f)
+                    {
+                        float gridStage = aboveScan / 2.2f;
+                        if (digitalGrid < 0.15f || gridStage > voxelNoise * 0.85f + 0.15f)
+                        {
+                            discard;
+                        }
+                        float32_t3 cyberCyan = float32_t3(0.0f, 0.95f, 1.0f);
+                        float32_t3 cyberMagenta = float32_t3(1.0f, 0.15f, 0.55f);
+                        float32_t3 gridCol = lerp(cyberCyan, cyberMagenta, voxelNoise);
+                        output.color.rgb = gridCol * 3.2f + float32_t3(1.0f, 1.0f, 1.0f) * 0.8f;
+                    }
+                    else
+                    {
+                        float frontier = saturate(1.0f - abs(aboveScan) / 1.8f);
+                        float laserLine = pow(frontier, 3.0f);
+                        float32_t3 gridOverlay = float32_t3(0.1f, 0.95f, 1.0f) * (digitalGrid * frontier * 2.8f);
+                        float32_t3 laserGlow = lerp(float32_t3(0.2f, 0.95f, 1.0f), float32_t3(1.0f, 0.25f, 0.70f), voxelNoise) * (laserLine * 3.5f);
+                        output.color.rgb += gridOverlay + laserGlow;
+                    }
+                }
+            }
+            break;
+        case 15:
+            {
+                // ===== メモリ（データチップ）専用ホログラム・サイバーシェーダー =====
+                float32_t3 wp = input.worldPosition;
+                float32_t NdotV = saturate(abs(dot(normal, toEye)));
+                float32_t rim = pow(1.0f - NdotV, 1.9f);
+                float32_t NdotL = dot(normal, -gDirectionlLight.direction);
+                float32_t shade = saturate(NdotL * 0.45f + 0.65f);
+
+                // gMaterial.shininess をアニメーション時間として使用
+                float animTime = gMaterial.shininess;
+
+                // 1. 表面の微細デジタル回路グリッド
+                float3 g3d = abs(frac(wp.xyz * 5.5f - 0.5f) - 0.5f) / max(fwidth(wp.xyz * 5.5f), 0.001f);
+                float microGrid = 1.0f - saturate(min(min(g3d.x, g3d.y), g3d.z));
+
+                // 2. 上方向に流れるデータスキャンライン
+                float scanPhase = frac(wp.y * 1.4f - animTime * 1.8f);
+                float scanBeam = pow(1.0f - abs(scanPhase - 0.5f) * 2.0f, 6.0f);
+                float fineScan = 0.88f + 0.12f * sin(wp.y * 36.0f - animTime * 10.0f);
+
+                // 3. ベース発光色＋フレネルエッジ白発光＋スキャン輝線
+                float32_t3 baseCol = textureColor.rgb * gMaterial.color.rgb * shade * fineScan;
+                float32_t3 edgeCol = lerp(gMaterial.color.rgb, float32_t3(1.0f, 1.0f, 1.0f), 0.65f) * (rim * 1.85f);
+                float32_t3 circuitCol = gMaterial.color.rgb * (microGrid * 0.45f + scanBeam * 1.1f) + float32_t3(1.0f, 1.0f, 1.0f) * (scanBeam * 0.45f);
+
+                output.color.rgb = baseCol * 1.25f + edgeCol + circuitCol;
+                output.color.a = gMaterial.color.a;
+            }
+            break;
     }
 
-    // 環境マッピング（仮想空間シェーダー case 7〜13 時は独自のホログラム発光を維持するため除外）
-    if (gMaterial.environmentCoefficient > 0.0f && gMaterial.selectLightings != 7 && gMaterial.selectLightings != 8 && gMaterial.selectLightings != 9 && gMaterial.selectLightings != 10 && gMaterial.selectLightings != 11 && gMaterial.selectLightings != 12 && gMaterial.selectLightings != 13)
+    // 環境マッピング（仮想空間シェーダー case 7〜15 時は独自のホログラム発光を維持するため除外）
+    if (gMaterial.environmentCoefficient > 0.0f && gMaterial.selectLightings != 7 && gMaterial.selectLightings != 8 && gMaterial.selectLightings != 9 && gMaterial.selectLightings != 10 && gMaterial.selectLightings != 11 && gMaterial.selectLightings != 12 && gMaterial.selectLightings != 13 && gMaterial.selectLightings != 14 && gMaterial.selectLightings != 15)
     {
         // 視線ベクトル（表面からカメラへ）
         float32_t3 toEye = normalize(gCamera.worldPosition - input.worldPosition);

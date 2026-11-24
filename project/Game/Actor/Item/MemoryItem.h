@@ -1,9 +1,11 @@
 #pragma once
 #include "KHEngine/Graphics/3d/Object/Object3d.h"
 #include "Game/Actor/Weapon/MemoryType.h"
+#include <array>
 #include <memory>
 
 class Player;
+class GamePlayVfxManager;
 
 /// <summary>
 /// 敵撃破時にドロップするメモリ（データチップ）オブジェクト
@@ -12,7 +14,7 @@ class Player;
 class MemoryItem {
 public:
     void Initialize(Object3dCommon* object3dCommon, const Vector3& pos, MemoryType type = MemoryType::CYBER_BIT);
-    void Update(float gameSpeed, Player* player);
+    void Update(float gameSpeed, Player* player, GamePlayVfxManager* vfxManager = nullptr);
     void Draw();
 
     bool IsDead() const { return isDead_; }
@@ -24,8 +26,12 @@ public:
     static Vector4 s_CustomBitColor;
 
 private:
+    static constexpr int kOrbitBitCount = 3;
+
     std::unique_ptr<Object3d> object_ = nullptr;
+    std::array<std::unique_ptr<Object3d>, kOrbitBitCount> orbitBits_;
     Vector3 position_ = { 0.0f, 0.0f, 0.0f };
+    Vector3 spawnStartPos_ = { 0.0f, 0.0f, 0.0f };
     Vector3 rotation_ = { 0.0f, 0.0f, 0.0f };
     Vector3 baseScale_ = { 0.065f, 0.065f, 0.065f }; // 視認性を高めた拡大スケール (約2.6倍)
 
@@ -33,6 +39,10 @@ private:
     Vector4 itemColor_ = { 1.0f, 0.65f, 0.12f, 1.0f }; // 地形（シアン/青）の補色となる高輝度エレクトリックオレンジ
 
     float animTimer_ = 0.0f;
+    float spawnTimer_ = 0.0f;
+    float spawnDuration_ = 0.45f; // 出現ポップアップ時間
+    bool hasSpawnedBurst_ = false;
+    float trailAccum_ = 0.0f;
     float lifeTimer_ = 600.0f; // 約10秒間滞留（回収されなければ自然消滅）
     bool isDead_ = false;
 

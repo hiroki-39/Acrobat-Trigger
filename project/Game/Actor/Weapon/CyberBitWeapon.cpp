@@ -1,4 +1,5 @@
 #include "CyberBitWeapon.h"
+#include "Game/System/CyberVfxSystem.h"
 #include "Game/Actor/Player/Player.h"
 #include "Game/Actor/Bullet/PlayerBullet.h"
 #include "Game/Actor/Enemy/Enemy.h"
@@ -47,43 +48,43 @@ void CyberBitWeapon::Initialize(Player* owner, Object3dCommon* object3dCommon) {
         b.ring2RotZ = static_cast<float>(i) * 2.1f;
         b.ring2RotSpeed = -0.07f - static_cast<float>(i) * 0.015f;
 
-        // 本体（外枠フレーム）
+        // 本体（外枠フレーム：ボム外枠と同じホログラムワイヤー/スキャンライン）
         b.bodyObject = std::make_unique<Object3d>();
         b.bodyObject->Initialize(object3dCommon_);
         b.bodyObject->SetModel("resources/3dModels/funnel/funnel_body/funnel_body.obj");
         b.bodyObject->SetEnableLighting(false);
-        b.bodyObject->SetSelectLightings(0);
-        b.bodyObject->SetColor({ 0.90f, 0.94f, 1.0f, 1.0f }); // サイバーシルバー
+        b.bodyObject->SetSelectLightings(12);
+        b.bodyObject->SetColor({ 0.20f, 0.75f, 1.0f, 0.92f }); // サイバーブルーエッジ＋暗金属
         b.bodyObject->SetScale({ 0.45f, 0.45f, 0.45f }); // 洗練されたビットサイズ
         b.currentScale = 0.45f;
 
-        // コア（内部ピラミッド結晶）
+        // コア（内部ピラミッド結晶：ボムコアと同じ高密度ホログラム）
         b.coreObject = std::make_unique<Object3d>();
         b.coreObject->Initialize(object3dCommon_);
         b.coreObject->SetModel("resources/3dModels/funnel/funnel_core/funnel_core.obj");
         b.coreObject->SetEnableLighting(false);
-        b.coreObject->SetSelectLightings(0);
-        b.coreObject->SetColor({ 1.0f, 0.15f, 0.85f, 1.0f }); // ネオンマゼンタ
+        b.coreObject->SetSelectLightings(13);
+        b.coreObject->SetColor({ 0.72f, 0.16f, 1.0f, 0.85f }); // サイバーバイオレットコア
         b.coreObject->SetScale({ 1.0f, 1.0f, 1.0f });
         b.coreObject->SetParent(b.bodyObject.get());
 
-        // リング1（第1回転リング）
+        // リング1（第1回転リング：純発光ネオンマゼンタ）
         b.ring1Object = std::make_unique<Object3d>();
         b.ring1Object->Initialize(object3dCommon_);
         b.ring1Object->SetModel("resources/3dModels/funnel/funnel_ring1/funnel_ring1.obj");
         b.ring1Object->SetEnableLighting(false);
-        b.ring1Object->SetSelectLightings(0);
-        b.ring1Object->SetColor({ 0.95f, 0.35f, 1.0f, 1.0f }); // ネオンパープルピンク
+        b.ring1Object->SetSelectLightings(10);
+        b.ring1Object->SetColor({ 0.95f, 0.20f, 0.92f, 1.0f }); // ネオンマゼンタ
         b.ring1Object->SetScale({ 1.0f, 1.0f, 1.0f });
         b.ring1Object->SetParent(b.bodyObject.get());
 
-        // リング2（第2逆回転リング）
+        // リング2（第2逆回転リング：純発光ネオンシアン）
         b.ring2Object = std::make_unique<Object3d>();
         b.ring2Object->Initialize(object3dCommon_);
         b.ring2Object->SetModel("resources/3dModels/funnel/funnel_ring2/funnel_ring2.obj");
         b.ring2Object->SetEnableLighting(false);
-        b.ring2Object->SetSelectLightings(0);
-        b.ring2Object->SetColor({ 0.35f, 0.85f, 1.0f, 1.0f }); // ネオンサイバーシアン
+        b.ring2Object->SetSelectLightings(10);
+        b.ring2Object->SetColor({ 0.15f, 0.88f, 1.0f, 1.0f }); // ネオンサイバーシアン
         b.ring2Object->SetScale({ 1.0f, 1.0f, 1.0f });
         b.ring2Object->SetParent(b.bodyObject.get());
     }
@@ -301,6 +302,9 @@ void CyberBitWeapon::Update(float gameSpeed, const std::list<std::unique_ptr<Ene
                 float hitRadius = 3.5f;
                 if ((dist < hitRadius || closestDistSq <= hitRadius * hitRadius) && !b.hasHitTarget) {
                     b.hasHitTarget = true;
+                    if (vfxSystem_) {
+                        vfxSystem_->TriggerBulletHit(closestPt, b.velocity);
+                    }
                     // ダメージ・撃破付与
                     if (b.targetBoss && boss) {
                         boss->OnDamaged(b.targetCarriageIndex, 3);
@@ -647,6 +651,9 @@ void CyberBitWeapon::Attack(Input* input,
             };
 
             launchedCount++;
+            if (vfxSystem_) {
+                vfxSystem_->TriggerMuzzleFlash(b.position, 0.75f);
+            }
             if (i < lockOnReticles_.size() && lockOnReticles_[i]) {
                 lockOnReticles_[i]->SetScale({ 0.001f, 0.001f, 0.001f });
             }
@@ -680,6 +687,10 @@ void CyberBitWeapon::Attack(Input* input,
             auto newBullet = std::make_unique<PlayerBullet>();
             newBullet->Initialize(object3dCommon_, muzzlePos, velocity, parentCamera, hoverEnemy);
             bullets.push_back(std::move(newBullet));
+
+            if (vfxSystem_) {
+                vfxSystem_->TriggerMuzzleFlash(muzzlePos, 0.9f);
+            }
             // SEは鳴らさない
         }
     }
@@ -761,4 +772,24 @@ bool CyberBitWeapon::IsDepleted() const {
 
 std::string CyberBitWeapon::GetAmmoText() const {
     return "CYBER BIT " + std::to_string(ammo_) + " / " + std::to_string(maxAmmo_);
+}
+
+std::vector<Vector3> CyberBitWeapon::GetBitPositions() const {
+    std::vector<Vector3> positions;
+    positions.reserve(bits_.size());
+    for (const auto& b : bits_) {
+        positions.push_back(b.position);
+    }
+    return positions;
+}
+
+void CyberBitWeapon::GetBitTrailStates(std::vector<Vector3>& outPositions, std::vector<uint8_t>& outIsAttacking) const {
+    outPositions.clear();
+    outIsAttacking.clear();
+    outPositions.reserve(bits_.size());
+    outIsAttacking.reserve(bits_.size());
+    for (const auto& b : bits_) {
+        outPositions.push_back(b.position);
+        outIsAttacking.push_back(b.state != BitFlightState::IDLE_HOVER ? 1 : 0);
+    }
 }

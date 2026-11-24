@@ -37,7 +37,10 @@ cbuffer PostProcessBuffer : register(b0) {
     float randomTime;
     float glitchStrength;
     float noiseStrength;
-    float padding2;
+    float damagePulse;
+
+    float lowHpIntensity;
+    float3 padding2;
 }
 
 // 疑似乱数ジェネレーター
@@ -172,6 +175,61 @@ PixelShaderOutput main(VertexShaderOutput input) {
     if (enableRandom != 0 && noiseStrength > 0.0) {
         float noise = random(uv * randomTime);
         color.rgb += (noise - 0.5) * noiseStrength;
+    }
+
+    // 8. サイバーパンク2077風 機械系電子ノイズ＆被弾グリッチ（心拍感のないデジタル障害）
+    if (damagePulse > 0.001 || lowHpIntensity > 0.001) {
+        float distNorm = length((uv - 0.5) * float2(1.6, 1.0));
+        float noiseEdge = smoothstep(0.28, 0.90, distNorm);
+        float2 sampleUv = uv;
+
+        // 8-0. 矩形デジタルブロック・水平データラインの瞬間ズレ（機械的ショート）
+        float activeGlitch = saturate(damagePulse * 0.9 + lowHpIntensity * 0.85);
+        float tickFast = floor(randomTime * 28.0);
+        float tickMed  = floor(randomTime * 14.0);
+
+        // 細長い水平スキャンライン単位の横ズレ
+        float lineId = floor(uv.y * 120.0);
+        float lineRand = random(float2(lineId, tickFast));
+        float lineThresh = 1.0 - (activeGlitch * 0.24 * (0.20 + 0.80 * noiseEdge));
+        if (lineRand > lineThresh) {
+            float shiftDir = random(float2(lineId + 11.3, tickFast)) - 0.5;
+            sampleUv.x += shiftDir * 0.055 * activeGlitch * (0.20 + 0.80 * noiseEdge);
+        }
+
+        // 外周のデジタル矩形ブロック破損（ブロック単位の色抜け・UV飛び）
+        float2 blockCoord = floor(uv * float2(28.0, 18.0));
+        float blockRand = random(blockCoord + float2(tickMed * 3.7, tickMed * 1.9));
+        float blockMask = step(1.0 - lowHpIntensity * 0.14 * noiseEdge, blockRand);
+        if (blockMask > 0.5) {
+            sampleUv.x += (random(blockCoord + tickFast) - 0.5) * 0.06;
+        }
+
+        // 8-1. 離散ステップ的なRGB色収差（アナログではなくデジタル信号のチャンネル分離）
+        float aberrationOffset = 0.015 * damagePulse + 0.009 * lowHpIntensity;
+        float rShift = gTexture.Sample(gSampler, sampleUv + float2(aberrationOffset, 0.0)).r;
+        float gBase  = gTexture.Sample(gSampler, sampleUv).g;
+        float bShift = gTexture.Sample(gSampler, sampleUv - float2(aberrationOffset, 0.0)).b;
+        float chromaBlend = saturate(damagePulse * 0.95 + lowHpIntensity * 0.78);
+        color.r = lerp(color.r, rShift, chromaBlend);
+        color.g = lerp(color.g, gBase,  saturate(lowHpIntensity * 0.70));
+        color.b = lerp(color.b, bShift, chromaBlend);
+
+        // 破損ブロック部分にシアン／警告レッドの電子フラッシュを混ぜる
+        if (blockMask > 0.5) {
+            float isCyan = step(0.65, random(blockCoord + 5.1));
+            float3 glitchTint = lerp(float3(1.0, 0.08, 0.25), float3(0.10, 0.85, 1.0), isCyan);
+            color.rgb = lerp(color.rgb, glitchTint, 0.42 * lowHpIntensity);
+        }
+
+        // 8-2. 画面外周のみの保護マスク（中央の照準・敵の視界はクリアに維持）
+        float combinedMask = saturate(damagePulse * 1.0 + lowHpIntensity * 0.78);
+        float edgeMask = smoothstep(0.45, 0.90, distNorm) * combinedMask;
+
+        // 8-3. 機械的インターレース走査線（矩形波的なクッキリしたスキャンライン）
+        float scanWave = step(0.45, frac(uv.y * 180.0 + randomTime * 12.0));
+        float3 errorRed = float3(1.0, 0.06, 0.22); // 警告ネオンレッド
+        color.rgb = lerp(color.rgb, errorRed * (0.45 + 0.55 * scanWave), edgeMask * 0.72);
     }
 
     output.color = color;

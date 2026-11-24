@@ -34,7 +34,10 @@ struct PostProcessData {
 	float randomTime;
 	float glitchStrength;
 	float noiseStrength;
-	float padding2[1];
+	float damagePulse;      // 被弾瞬間パルス (1.0 -> 0.0)
+
+	float lowHpIntensity;   // HP減少・危機時の外周赤脈動強度 (0.0 ~ 1.0)
+	float padding2[3];
 };
 
 class IPostProcess {

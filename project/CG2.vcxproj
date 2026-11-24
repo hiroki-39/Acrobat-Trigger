@@ -194,6 +194,8 @@
     <ClCompile Include="Game\System\GamePlayHUD.cpp" />
     <ClCompile Include="Game\System\GamePlayVfxManager.cpp" />
     <ClCompile Include="Game\System\PlayerThrusterVfx.cpp" />
+    <ClCompile Include="Game\System\CyberVfxSystem.cpp" />
+    <ClCompile Include="Game\System\CyberVfxConfig.cpp" />
     <ClCompile Include="Game\System\GamePlayLevelManager.cpp" />
     <ClCompile Include="Game\System\GamePlayWorld.cpp" />
     <ClCompile Include="Game\System\DemoPlayController.cpp" />
@@ -303,6 +305,8 @@
     <ClInclude Include="Game\System\GamePlayHUD.h" />
     <ClInclude Include="Game\System\GamePlayVfxManager.h" />
     <ClInclude Include="Game\System\PlayerThrusterVfx.h" />
+    <ClInclude Include="Game\System\CyberVfxSystem.h" />
+    <ClInclude Include="Game\System\CyberVfxConfig.h" />
     <ClInclude Include="Game\System\GamePlayLevelManager.h" />
     <ClInclude Include="Game\System\GamePlayWorld.h" />
     <ClInclude Include="Game\System\DemoPlayController.h" />

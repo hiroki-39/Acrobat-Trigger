@@ -119,6 +119,8 @@ void TitleScene::Initialize()
     texManager->LoadTexture("uvChecker.png");
     texManager->LoadTexture("circle.png");
     texManager->LoadTexture("circle2.png");
+    texManager->LoadTexture("digital_ring.png");
+    texManager->LoadTexture("star_blink.png");
     texManager->LoadTexture("gradationLine.png");
     texManager->LoadTexture("sprites/white.png");
     texManager->LoadTexture("prticle_kira.png");

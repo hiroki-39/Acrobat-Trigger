@@ -1,4 +1,5 @@
 #include "FunnelWeapon.h"
+#include "Game/System/CyberVfxSystem.h"
 #include "Game/Actor/Player/Player.h"
 #include "Game/Actor/Bullet/PlayerBullet.h"
 #include "Game/Actor/Enemy/Enemy.h"
@@ -47,42 +48,42 @@ void FunnelWeapon::Initialize(Player* owner, Object3dCommon* object3dCommon) {
         f.ring2RotZ = static_cast<float>(i) * 2.1f;
         f.ring2RotSpeed = -0.07f - static_cast<float>(i) * 0.015f;
 
-        // 1. 本体（外枠フレーム）
+        // 1. 本体（外枠フレーム：ボム外枠と同じホログラムワイヤー/スキャンライン）
         f.bodyObject = std::make_unique<Object3d>();
         f.bodyObject->Initialize(object3dCommon_);
         f.bodyObject->SetModel("resources/3dModels/funnel/funnel_body/funnel_body.obj");
         f.bodyObject->SetEnableLighting(false);
-        f.bodyObject->SetSelectLightings(0);
-        f.bodyObject->SetColor({ 0.90f, 0.94f, 1.0f, 1.0f }); // クールなサイバーシルバー
+        f.bodyObject->SetSelectLightings(12);
+        f.bodyObject->SetColor({ 0.20f, 0.75f, 1.0f, 0.92f }); // サイバーブルーエッジ＋暗金属
         f.bodyObject->SetScale({ 0.32f, 0.32f, 0.32f });
 
-        // 2. コア（内部ピラミッド結晶）
+        // 2. コア（内部ピラミッド結晶：ボムコアと同じ高密度ホログラム）
         f.coreObject = std::make_unique<Object3d>();
         f.coreObject->Initialize(object3dCommon_);
         f.coreObject->SetModel("resources/3dModels/funnel/funnel_core/funnel_core.obj");
         f.coreObject->SetEnableLighting(false);
-        f.coreObject->SetSelectLightings(0);
-        f.coreObject->SetColor({ 1.0f, 0.15f, 0.85f, 1.0f }); // 鮮烈なネオンマゼンタ
+        f.coreObject->SetSelectLightings(13);
+        f.coreObject->SetColor({ 0.72f, 0.16f, 1.0f, 0.85f }); // サイバーバイオレットコア
         f.coreObject->SetScale({ 1.0f, 1.0f, 1.0f });
         f.coreObject->SetParent(f.bodyObject.get());
 
-        // 3. リング1（第1回転リング）
+        // 3. リング1（第1回転リング：純発光ネオンマゼンタ）
         f.ring1Object = std::make_unique<Object3d>();
         f.ring1Object->Initialize(object3dCommon_);
         f.ring1Object->SetModel("resources/3dModels/funnel/funnel_ring1/funnel_ring1.obj");
         f.ring1Object->SetEnableLighting(false);
-        f.ring1Object->SetSelectLightings(0);
-        f.ring1Object->SetColor({ 0.95f, 0.35f, 1.0f, 1.0f }); // ネオンパープルピンク
+        f.ring1Object->SetSelectLightings(10);
+        f.ring1Object->SetColor({ 0.95f, 0.20f, 0.92f, 1.0f }); // ネオンマゼンタ
         f.ring1Object->SetScale({ 1.0f, 1.0f, 1.0f });
         f.ring1Object->SetParent(f.bodyObject.get());
 
-        // 4. リング2（第2逆回転リング）
+        // 4. リング2（第2逆回転リング：純発光ネオンシアン）
         f.ring2Object = std::make_unique<Object3d>();
         f.ring2Object->Initialize(object3dCommon_);
         f.ring2Object->SetModel("resources/3dModels/funnel/funnel_ring2/funnel_ring2.obj");
         f.ring2Object->SetEnableLighting(false);
-        f.ring2Object->SetSelectLightings(0);
-        f.ring2Object->SetColor({ 0.35f, 0.85f, 1.0f, 1.0f }); // ネオンサイバーシアン
+        f.ring2Object->SetSelectLightings(10);
+        f.ring2Object->SetColor({ 0.15f, 0.88f, 1.0f, 1.0f }); // ネオンサイバーシアン
         f.ring2Object->SetScale({ 1.0f, 1.0f, 1.0f });
         f.ring2Object->SetParent(f.bodyObject.get());
     }
@@ -429,9 +430,13 @@ void FunnelWeapon::Attack(Input* input,
             auto bullet = std::make_unique<PlayerBullet>();
             bullet->Initialize(object3dCommon_, mPos, vel, parentCamera, nullptr);
             bullet->SetDamage(0.35f); // 攻撃力を約1/3に下げ、敵の一撃死を防止（複数発ヒットで撃破）
-            bullet->SetBulletColor({ 1.0f, 0.18f, 0.88f, 1.0f }); // 鮮烈なサイバーマゼンタ
+            bullet->SetBulletColor({ 0.15f, 0.88f, 1.0f, 1.0f }); // サイバーシアンブルー
             bullet->SetBulletScale({ 0.45f, 0.45f, 6.0f }); // 小型端末にマッチしたシャープなニードルレーザー
             bullets.push_back(std::move(bullet));
+
+            if (vfxSystem_) {
+                vfxSystem_->TriggerMuzzleFlash(mPos, 0.65f);
+            }
         }
         SoundManager::GetInstance()->PlaySE("shot.mp3", 0.65f);
         pendingBulletMuzzles_.clear();
@@ -453,7 +458,7 @@ void FunnelWeapon::Attack(Input* input,
             if (fLen > 0.0001f) { forwardVec.x /= fLen; forwardVec.y /= fLen; forwardVec.z /= fLen; }
 
             Vector3 targetPos = owner_->GetReticleWorldPosition();
-            Vector3 muzzlePos = { playerPos.x + forwardVec.x * 2.5f, playerPos.y + forwardVec.y * 2.5f, playerPos.z + forwardVec.z * 2.5f };
+            Vector3 muzzlePos = { playerPos.x + forwardVec.x * 5.0f, playerPos.y + forwardVec.y * 5.0f, playerPos.z + forwardVec.z * 5.0f };
 
             Vector3 dir = { targetPos.x - muzzlePos.x, targetPos.y - muzzlePos.y, targetPos.z - muzzlePos.z };
             float len = std::sqrtf(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
@@ -466,9 +471,13 @@ void FunnelWeapon::Attack(Input* input,
             auto bullet = std::make_unique<PlayerBullet>();
             bullet->Initialize(object3dCommon_, muzzlePos, vel, parentCamera, nullptr);
             bullet->SetDamage(1);
-            bullet->SetBulletColor({ 1.0f, 0.25f, 0.85f, 1.0f });
+            bullet->SetBulletColor({ 0.62f, 0.10f, 1.0f, 1.0f }); // 濃いネオンパープル
             bullet->SetBulletScale({ 1.35f, 1.35f, 11.0f });
             bullets.push_back(std::move(bullet));
+
+            if (vfxSystem_) {
+                vfxSystem_->TriggerMuzzleFlash(muzzlePos, 1.0f);
+            }
 
             SoundManager::GetInstance()->PlaySE("shot.mp3", 0.75f);
         }
@@ -481,6 +490,26 @@ void FunnelWeapon::Draw() {
         if (f.coreObject)  f.coreObject->Draw();
         if (f.ring1Object) f.ring1Object->Draw();
         if (f.ring2Object) f.ring2Object->Draw();
+    }
+}
+
+std::vector<Vector3> FunnelWeapon::GetFunnelPositions() const {
+    std::vector<Vector3> positions;
+    positions.reserve(funnels_.size());
+    for (const auto& f : funnels_) {
+        positions.push_back(f.position);
+    }
+    return positions;
+}
+
+void FunnelWeapon::GetFunnelTrailStates(std::vector<Vector3>& outPositions, std::vector<uint8_t>& outIsAttacking) const {
+    outPositions.clear();
+    outIsAttacking.clear();
+    outPositions.reserve(funnels_.size());
+    outIsAttacking.reserve(funnels_.size());
+    for (const auto& f : funnels_) {
+        outPositions.push_back(f.position);
+        outIsAttacking.push_back(f.state != BitState::IDLE_HOVER ? 1 : 0);
     }
 }
 

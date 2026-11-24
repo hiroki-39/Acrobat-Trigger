@@ -87,6 +87,12 @@ public:
 
     std::vector<LockOnTargetHUD> GetLockOnTargets() const override;
 
+    /// <summary>
+    /// 全サイバービット（ファンネル）の現在ワールド座標と攻撃飛翔中フラグを取得（ベイパーライン描画用）
+    /// </summary>
+    std::vector<Vector3> GetBitPositions() const;
+    void GetBitTrailStates(std::vector<Vector3>& outPositions, std::vector<uint8_t>& outIsAttacking) const;
+
 private:
     Player* owner_ = nullptr;
     Object3dCommon* object3dCommon_ = nullptr;

@@ -39,6 +39,9 @@ struct CollisionContext {
     ParticleEffect* explosionEffect = nullptr;
     ParticleEffect* dodgeEffect = nullptr;
     std::function<void(const Vector3&, int, float, float)> onSpawnVoxelHit = nullptr;
+    std::function<void(const Vector3&, const Vector3&)> onSpawnBulletHit = nullptr;
+    std::function<void(const Vector3&)> onSpawnEnemyBulletTerrainHit = nullptr;
+    std::function<void(const Vector3&)> onSpawnEnemyDissolve = nullptr;
     ParticleEffect* ringEffect = nullptr;
     ParticleEffect* healRingEffect = nullptr;
 
@@ -57,6 +60,8 @@ struct CollisionContext {
 
     // 敵撃破コールバック（座標と加算スコアを通知して微小カメラシェイク＆スコアポップ演出を発火）
     std::function<void(const Vector3& pos, int score)> onEnemyKilled = nullptr;
+    // 敵の撃破エフェクト（ディゾルブ）完了時コールバック（メモリドロップなどを発火）
+    std::function<void(const Vector3& pos)> onEnemyDissolveFinished = nullptr;
 };
 
 /// <summary>

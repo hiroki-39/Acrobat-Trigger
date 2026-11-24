@@ -195,6 +195,19 @@ void Object3d::SetGlitchParams(float time, float intensity)
 	}
 }
 
+void Object3d::SetShininess(float shininess)
+{
+	if (!materialResource_ && dxCommon)
+	{
+		SetColor(GetColor());
+	}
+	if (materialData_)
+	{
+		materialData_->shininess = shininess;
+		hasCustomMaterial_ = true;
+	}
+}
+
 int32_t Object3d::GetSelectLightings() const
 {
 	if (hasCustomMaterial_ && materialData_)

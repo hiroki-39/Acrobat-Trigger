@@ -69,6 +69,12 @@ public:
     }
     std::string GetAmmoText() const override;
 
+    /// <summary>
+    /// 全ファンネルの現在ワールド座標を取得（ベイパーライン描画用）
+    /// </summary>
+    std::vector<Vector3> GetFunnelPositions() const;
+    void GetFunnelTrailStates(std::vector<Vector3>& outPositions, std::vector<uint8_t>& outIsAttacking) const;
+
 private:
     Player* owner_ = nullptr;
     Object3dCommon* object3dCommon_ = nullptr;

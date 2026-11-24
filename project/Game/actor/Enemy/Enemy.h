@@ -39,6 +39,10 @@ public:
     }
     const LevelCollider& GetCollider() const { return collider_; }
     bool IsDead() const { return isDead_; }
+    bool IsDissolving() const { return isDissolving_; }
+    bool IsReadyToErase() const { return isDead_ && !isDissolving_; }
+    bool IsDeathRewardGiven() const { return deathRewardGiven_; }
+    void MarkDeathRewardGiven() { deathRewardGiven_ = true; }
     bool IsActive() const { return isActive_; }
     const Rail* GetMovePath() const { return movePath_.get(); }
     float GetSpawnProgress() const { return spawnProgress_; }
@@ -62,6 +66,10 @@ private:
     LevelCollider collider_; // コライダー情報
     float hp_ = 3.0f;
     bool isDead_ = false;
+    bool isDissolving_ = false;
+    bool deathRewardGiven_ = false;
+    float dissolveTimer_ = 0.0f;
+    float dissolveDuration_ = 0.65f;
     std::string typeName_;
 
     // パス移動用

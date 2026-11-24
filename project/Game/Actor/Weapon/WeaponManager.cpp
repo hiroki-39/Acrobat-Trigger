@@ -23,9 +23,13 @@ void WeaponManager::Initialize(Player* owner, Object3dCommon* object3dCommon) {
     weapons_[MemoryType::SPREAD]      = std::make_unique<SpreadWeapon>();
     weapons_[MemoryType::FUNNEL]      = std::make_unique<FunnelWeapon>();
 
+    // 共通サイバーVFXシステムの初期化
+    cyberVfx_.Initialize(object3dCommon_);
+
     // 全武器の初期化
     for (auto& [type, weapon] : weapons_) {
         weapon->Initialize(owner_, object3dCommon_);
+        weapon->SetVfxSystem(&cyberVfx_);
     }
 
     // 初期状態は通常弾
@@ -49,6 +53,8 @@ void WeaponManager::Update(float gameSpeed, const std::list<std::unique_ptr<Enem
             PurgeMemory();
         }
     }
+
+    cyberVfx_.Update(gameSpeed);
 }
 
 void WeaponManager::Attack(Input* input,
@@ -67,6 +73,7 @@ void WeaponManager::Draw() {
     if (currentWeapon_) {
         currentWeapon_->Draw();
     }
+    cyberVfx_.Draw();
 }
 
 void WeaponManager::DrawUI() {
@@ -113,6 +120,36 @@ bool WeaponManager::HasActiveBombExplosion(Vector3* outPos, float* outRadius) co
         }
     }
     return false;
+}
+
+std::vector<Vector3> WeaponManager::GetFunnelPositions() const {
+    if (currentType_ == MemoryType::CYBER_BIT && currentWeapon_) {
+        auto cyberBitWeapon = dynamic_cast<CyberBitWeapon*>(currentWeapon_);
+        if (cyberBitWeapon) {
+            return cyberBitWeapon->GetBitPositions();
+        }
+    }
+    if (currentType_ == MemoryType::FUNNEL && currentWeapon_) {
+        auto funnelWeapon = dynamic_cast<FunnelWeapon*>(currentWeapon_);
+        if (funnelWeapon) {
+            return funnelWeapon->GetFunnelPositions();
+        }
+    }
+    return {};
+}
+
+void WeaponManager::GetFunnelTrailStates(std::vector<Vector3>& outPositions, std::vector<uint8_t>& outIsAttacking) const {
+    outPositions.clear();
+    outIsAttacking.clear();
+    if (currentType_ == MemoryType::CYBER_BIT && currentWeapon_) {
+        if (auto* cyberBitWeapon = dynamic_cast<CyberBitWeapon*>(currentWeapon_)) {
+            cyberBitWeapon->GetBitTrailStates(outPositions, outIsAttacking);
+        }
+    } else if (currentType_ == MemoryType::FUNNEL && currentWeapon_) {
+        if (auto* funnelWeapon = dynamic_cast<FunnelWeapon*>(currentWeapon_)) {
+            funnelWeapon->GetFunnelTrailStates(outPositions, outIsAttacking);
+        }
+    }
 }
 
 float WeaponManager::GetRemainingRatio() const {

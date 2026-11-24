@@ -5,6 +5,7 @@
 #include "KHEngine/Math/Vector4.h"
 #include "KHEngine/Math/Matrix4x4.h"
 #include <vector>
+#include <array>
 #include <deque>
 #include <random>
 #include <cstdint>
@@ -48,7 +49,9 @@ public:
 		bool isBoosting,
 		bool isRolling,
 		bool isWingVaporActive,
-		std::mt19937& randomEngine);
+		std::mt19937& randomEngine,
+		const std::vector<Vector3>* funnelPositions = nullptr,
+		const std::vector<uint8_t>* funnelIsAttacking = nullptr);
 
 	void Draw();
 
@@ -71,7 +74,8 @@ private:
 	{
 		Vector3 position;
 		Vector3 velocity;
-		Vector4 color;
+		Vector3 rotation = { 0.0f, 0.0f, 0.0f };
+		Vector3 rotSpeed = { 6.0f, 8.0f, 5.0f };
 		float scale = 0.03f;
 		float age = 0.0f;
 		float maxLife = 0.25f;
@@ -120,19 +124,23 @@ private:
 	float pulseTimer_ = 0.0f;
 	float boostBlend_ = 0.0f; // 0.0=通常(青), 1.0=ブースト(オレンジ)
 
-	// ② ウェイクトレイル（動的リボンメッシュ：中心白コア＋外周カラーグロー）
+	// ② ウェイクトレイル（動的リボンメッシュ：中心白コア＋シアン＋マゼンタアウター）
 	static constexpr uint32_t kMaxTrailPoints = 48;
-	static constexpr uint32_t kMaxRibbonVertices = 1024;
+	static constexpr uint32_t kMaxRibbonVertices = 4096;
 	ParticleRenderer trailCoreRenderer_;
 	ParticleRenderer trailGlowRenderer_;
+	ParticleRenderer trailMagentaRenderer_;
 	uint32_t trailCoreVertexCount_ = 0;
 	uint32_t trailGlowVertexCount_ = 0;
+	uint32_t trailMagentaVertexCount_ = 0;
 	bool drawTrails_ = false;
 
 	std::deque<TrailPoint> leftBurnerTrail_;
 	std::deque<TrailPoint> rightBurnerTrail_;
 	std::deque<TrailPoint> leftWingVaporTrail_;
 	std::deque<TrailPoint> rightWingVaporTrail_;
+	std::array<std::deque<TrailPoint>, 4> funnelVaporTrails_;
+	std::array<bool, 4> funnelVaporAttacking_{};
 
 	// ③ デジタルスパーク（極小ドット粒子）
 	static constexpr uint32_t kMaxSparks = 128;
@@ -141,11 +149,13 @@ private:
 	uint32_t sparkInstanceCount_ = 0;
 	float sparkSpawnAccum_ = 0.0f;
 
-	// ④ ブースト開始時ハニカム（六角形）衝撃波リング
+	// ④ ブースト開始時サイバー破線衝撃波リング＆クロス閃光
 	static constexpr uint32_t kMaxRings = 16;
 	ParticleRenderer ringRenderer_;
+	ParticleRenderer flashRenderer_;
 	std::vector<HoneycombRing> rings_;
 	uint32_t ringInstanceCount_ = 0;
+	uint32_t flashInstanceCount_ = 0;
 
 	bool prevBoosting_ = false;
 	bool hasPrevPos_ = false;

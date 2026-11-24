@@ -21,6 +21,7 @@
 #include "KHEngine/UI/UITextManager.h"
 #include "externals/nlohmann/json.hpp"
 #include "Game/System/TerrainCollisionDebugger.h"
+#include "Game/System/CyberVfxConfig.h"
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
@@ -90,6 +91,14 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 
 		// オーディオ・ミュートコントロール
 		SoundManager::GetInstance()->DrawImGuiAudioControls();
+
+		// サイバーVFX設定ウィンドウの表示切替
+		static bool showCyberVfxConfig = false;
+		ImGui::Checkbox("サイバーVFX設定 (JSON)", &showCyberVfxConfig);
+		if (showCyberVfxConfig)
+		{
+			CyberVfxConfig::GetInstance()->DrawImGui(&showCyberVfxConfig);
+		}
 
 		// 最下部にパフォーマンス情報を常時表示
 		ImGui::Spacing();

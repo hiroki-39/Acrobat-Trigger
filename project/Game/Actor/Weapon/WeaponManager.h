@@ -1,6 +1,7 @@
 #pragma once
 #include "IWeapon.h"
 #include "MemoryType.h"
+#include "Game/System/CyberVfxSystem.h"
 #include "KHEngine/Math/Vector3.h"
 #include <map>
 #include <memory>
@@ -46,6 +47,8 @@ public:
     IWeapon* GetCurrentWeapon() const { return currentWeapon_; }
 
     bool HasActiveBombExplosion(Vector3* outPos = nullptr, float* outRadius = nullptr) const;
+    std::vector<Vector3> GetFunnelPositions() const;
+    void GetFunnelTrailStates(std::vector<Vector3>& outPositions, std::vector<uint8_t>& outIsAttacking) const;
 
     float GetRemainingRatio() const;
     std::string GetAmmoText() const;
@@ -64,4 +67,5 @@ private:
     IWeapon* currentWeapon_ = nullptr;
 
     std::map<MemoryType, std::unique_ptr<IWeapon>> weapons_;
+    CyberVfxSystem cyberVfx_;
 };

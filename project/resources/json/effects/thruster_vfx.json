@@ -1,0 +1,60 @@
+{
+    "boostConeLength": 2.25,
+    "boostFlashAlpha": 0.75,
+    "boostFlashScaleRatio": 0.72,
+    "boostMagentaGlow": [
+        1.38,
+        0.1,
+        0.92,
+        0.54
+    ],
+    "boostRingCount": 3,
+    "boostRingEndBase": 2.0,
+    "boostRingFirstColor": [
+        0.35,
+        0.92,
+        1.55,
+        0.6
+    ],
+    "boostRingLifeBase": 0.45,
+    "boostRingOtherColor": [
+        1.4,
+        0.08,
+        0.92,
+        0.52
+    ],
+    "boostRingStartBase": 0.45,
+    "boostSparkRate": 0.0,
+    "boostTrailLife": 0.09,
+    "coneRadius": 0.22,
+    "coreTrailWidth": 0.036,
+    "glowTrailWidth": 0.09,
+    "magentaTrailWidth": 0.155,
+    "normalConeLength": 1.25,
+    "normalCyanGlow": [
+        0.14,
+        0.72,
+        1.5,
+        0.48
+    ],
+    "normalSparkRate": 0.0,
+    "normalTrailLife": 0.06,
+    "rollTrailLife": 0.13,
+    "sparkAlpha": 0.72,
+    "sparkMaxLife": 0.34,
+    "sparkMaxScale": 0.072,
+    "sparkMinLife": 0.2,
+    "sparkMinScale": 0.042,
+    "trailMagentaColor": [
+        1.35,
+        0.06,
+        0.9,
+        0.24
+    ],
+    "whiteCoreColor": [
+        1.0,
+        1.0,
+        1.0,
+        0.56
+    ]
+}

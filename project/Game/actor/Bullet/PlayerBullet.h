@@ -33,6 +33,7 @@ public:
 
     const Vector3& GetPosition() const { return object_ ? object_->GetTranslate() : velocity_; }
     const Vector3& GetPreviousPosition() const { return previousPosition_; }
+    const Vector3& GetVelocity() const { return velocity_; }
 
     void OnCollision() {
         if (isPenetrating_) {

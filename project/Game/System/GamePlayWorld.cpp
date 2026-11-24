@@ -172,7 +172,7 @@ void GamePlayWorld::UpdateActorsAndCollisions(float dt, float unscaledGameSpeed,
 		// メモリドロップアイテムの更新・マグネット吸引・回収判定
 		for (auto it = (*ctx.memoryItems).begin(); it != (*ctx.memoryItems).end(); )
 		{
-			(*it)->Update(ctx.gameSpeed, ctx.player);
+			(*it)->Update(ctx.gameSpeed, ctx.player, ctx.vfx);
 			if ((*it)->IsDead())
 			{
 				it = (*ctx.memoryItems).erase(it);
@@ -210,6 +210,15 @@ void GamePlayWorld::UpdateActorsAndCollisions(float dt, float unscaledGameSpeed,
 		colCtx.onSpawnVoxelHit = [ctx, this](const Vector3& pos, int count, float minSz, float maxSz) {
 			ctx.vfx->SpawnVoxelHitParticles(pos, ctx.activeCamera, count, minSz, maxSz);
 		};
+		colCtx.onSpawnBulletHit = [ctx](const Vector3& pos, const Vector3& vel) {
+			ctx.vfx->SpawnBulletHitVoxelParticles(pos, vel);
+		};
+		colCtx.onSpawnEnemyBulletTerrainHit = [ctx](const Vector3& pos) {
+			ctx.vfx->SpawnPlayerDamageParticles(pos);
+		};
+		colCtx.onSpawnEnemyDissolve = [ctx](const Vector3& pos) {
+			ctx.vfx->SpawnEnemyDissolveShards(pos);
+		};
 		colCtx.dodgeEffect = &ctx.vfx->Dodge();
 		colCtx.ringEffect = &ctx.vfx->Ring();
 		colCtx.healRingEffect = &ctx.vfx->HealRing();
@@ -239,16 +248,17 @@ void GamePlayWorld::UpdateActorsAndCollisions(float dt, float unscaledGameSpeed,
 			(*ctx.enemyKillShakeFrames) = 2;
 			// 2. 敵撃破座標にスコア加算ポップアップ演出を登録
 			ctx.hud->AddScorePopup(pos, addScore, 0.65f);
-			// 3. 敵撃破時のメモリドロップ（40%の確率でビットメモリをドロップ）
+		};
+
+		// 撃破エフェクト（ディゾルブ）完了後にメモリをドロップ
+		colCtx.onEnemyDissolveFinished = [ctx, this](const Vector3& pos) {
 			static std::mt19937 memRng(1337);
 			std::uniform_real_distribution<float> memDist(0.0f, 1.0f);
 			if (memDist(memRng) < 0.40f) {
 				const MemoryType kDropTypes[] = {
 					MemoryType::CYBER_BIT,
-
 					MemoryType::BOMB,
 					MemoryType::SPREAD,
-
 				};
 				std::uniform_int_distribution<size_t> typeDist(0, 2);
 				SpawnMemoryItem(pos, kDropTypes[typeDist(memRng)], (*ctx.memoryItems));
@@ -763,6 +773,13 @@ void GamePlayWorld::UpdateCameraAndEnvironment(const GamePlayWorldContext& ctx)
 			pos.x += ((rand() % 100) / 50.0f - 1.0f) * killShakePower;
 			pos.y += ((rand() % 100) / 50.0f - 1.0f) * killShakePower;
 			ctx.activeCamera->SetTranslate(pos);
+		}
+		// 3. 被弾時のカメラパンチ（Zロール傾き・バネ減衰）
+		if (ctx.player)
+		{
+			Vector3 camRot = ctx.activeCamera->GetRotation();
+			camRot.z = ctx.player->GetCameraPunchRoll();
+			ctx.activeCamera->SetRotation(camRot);
 		}
 		ctx.activeCamera->Update();
 	}

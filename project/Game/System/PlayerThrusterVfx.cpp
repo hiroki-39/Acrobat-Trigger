@@ -1,5 +1,6 @@
 #define NOMINMAX
 #include "PlayerThrusterVfx.h"
+#include "CyberVfxConfig.h"
 #include "KHEngine/Core/Graphics/DirectXCommon.h"
 #include "KHEngine/Graphics/Resource/Descriptor/SrvManager.h"
 #include "KHEngine/Graphics/Resource/Texture/TextureManager.h"
@@ -38,12 +39,27 @@ namespace
 			a.w + (b.w - a.w) * t
 		};
 	}
+
+	// ボムVFXと統一した3段階サイバーカラーカーブ（JSON共通パレット参照）
+	Vector4 EvaluateThreeStageColor(float ratio, float alphaScale)
+	{
+		return CyberVfxConfig::GetInstance()->EvaluateThreeStageColor(ratio, alphaScale);
+	}
 }
 
 void PlayerThrusterVfx::Initialize(DirectXCommon* dxCommon, SrvManager* srvManager)
 {
+	CyberVfxConfig::GetInstance()->EnsureLoaded();
 	dxCommon_ = dxCommon;
 	srvManager_ = srvManager;
+
+	if (auto* texMgr = TextureManager::GetInstance())
+	{
+		texMgr->LoadTexture("circle2.png");
+		texMgr->LoadTexture("sprites/white.png");
+		texMgr->LoadTexture("digital_ring.png");
+		texMgr->LoadTexture("star_blink.png");
+	}
 
 	InitConeMesh();
 	InitTrailMesh();
@@ -59,13 +75,18 @@ void PlayerThrusterVfx::Clear()
 	rightBurnerTrail_.clear();
 	leftWingVaporTrail_.clear();
 	rightWingVaporTrail_.clear();
+	for (auto& ft : funnelVaporTrails_) ft.clear();
+	funnelVaporAttacking_.fill(false);
 	sparks_.clear();
 	rings_.clear();
 
 	coneInstanceCount_ = 0;
 	trailCoreVertexCount_ = 0;
 	trailGlowVertexCount_ = 0;
+	trailMagentaVertexCount_ = 0;
 	sparkInstanceCount_ = 0;
+	ringInstanceCount_ = 0;
+	flashInstanceCount_ = 0;
 	ringInstanceCount_ = 0;
 	drawTrails_ = false;
 	prevBoosting_ = false;
@@ -140,20 +161,44 @@ void PlayerThrusterVfx::InitTrailMesh()
 	trailGlowRenderer_.Initialize(dxCommon_, srvManager_, 1);
 	trailGlowRenderer_.CreateVertexBuffer(dummyVerts.data(), kMaxRibbonVertices, sizeof(VertexData));
 	trailGlowRenderer_.CreateMaterialBuffer(sizeof(ParticleMaterialCB), &mat);
+
+	trailMagentaRenderer_.Initialize(dxCommon_, srvManager_, 1);
+	trailMagentaRenderer_.CreateVertexBuffer(dummyVerts.data(), kMaxRibbonVertices, sizeof(VertexData));
+	trailMagentaRenderer_.CreateMaterialBuffer(sizeof(ParticleMaterialCB), &mat);
 }
 
 void PlayerThrusterVfx::InitSparkMesh()
 {
 	sparkRenderer_.Initialize(dxCommon_, srvManager_, kMaxSparks);
 
-	std::vector<VertexData> verts = {
-		{ { -1.0f,  1.0f, 0.0f, 1.0f }, { 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
-		{ {  1.0f,  1.0f, 0.0f, 1.0f }, { 1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
-		{ { -1.0f, -1.0f, 0.0f, 1.0f }, { 0.0f, 1.0f }, { 0.0f, 0.0f, 1.0f } },
-		{ {  1.0f,  1.0f, 0.0f, 1.0f }, { 1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
-		{ {  1.0f, -1.0f, 0.0f, 1.0f }, { 1.0f, 1.0f }, { 0.0f, 0.0f, 1.0f } },
-		{ { -1.0f, -1.0f, 0.0f, 1.0f }, { 0.0f, 1.0f }, { 0.0f, 0.0f, 1.0f } },
+	// 3Dボクセルブロック（立方体：6面 × 2三角形 = 36頂点）を生成
+	auto addQuad = [](std::vector<VertexData>& out,
+		const Vector3& p0, const Vector3& p1, const Vector3& p2, const Vector3& p3,
+		const Vector3& n) {
+		out.push_back({ { p0.x, p0.y, p0.z, 1.0f }, { 0.0f, 0.0f }, n });
+		out.push_back({ { p1.x, p1.y, p1.z, 1.0f }, { 1.0f, 0.0f }, n });
+		out.push_back({ { p2.x, p2.y, p2.z, 1.0f }, { 0.0f, 1.0f }, n });
+		out.push_back({ { p1.x, p1.y, p1.z, 1.0f }, { 1.0f, 0.0f }, n });
+		out.push_back({ { p3.x, p3.y, p3.z, 1.0f }, { 1.0f, 1.0f }, n });
+		out.push_back({ { p2.x, p2.y, p2.z, 1.0f }, { 0.0f, 1.0f }, n });
 	};
+
+	std::vector<VertexData> verts;
+	verts.reserve(36);
+	const float h = 1.0f;
+	// +Z (Front)
+	addQuad(verts, { -h,  h,  h }, {  h,  h,  h }, { -h, -h,  h }, {  h, -h,  h }, {  0.0f,  0.0f,  1.0f });
+	// -Z (Back)
+	addQuad(verts, {  h,  h, -h }, { -h,  h, -h }, {  h, -h, -h }, { -h, -h, -h }, {  0.0f,  0.0f, -1.0f });
+	// +X (Right)
+	addQuad(verts, {  h,  h,  h }, {  h,  h, -h }, {  h, -h,  h }, {  h, -h, -h }, {  1.0f,  0.0f,  0.0f });
+	// -X (Left)
+	addQuad(verts, { -h,  h, -h }, { -h,  h,  h }, { -h, -h, -h }, { -h, -h,  h }, { -1.0f,  0.0f,  0.0f });
+	// +Y (Top)
+	addQuad(verts, { -h,  h, -h }, {  h,  h, -h }, { -h,  h,  h }, {  h,  h,  h }, {  0.0f,  1.0f,  0.0f });
+	// -Y (Bottom)
+	addQuad(verts, { -h, -h,  h }, {  h, -h,  h }, { -h, -h, -h }, {  h, -h, -h }, {  0.0f, -1.0f,  0.0f });
+
 	sparkRenderer_.CreateVertexBuffer(verts.data(), static_cast<uint32_t>(verts.size()), sizeof(VertexData));
 
 	ParticleMaterialCB mat{};
@@ -167,17 +212,14 @@ void PlayerThrusterVfx::InitSparkMesh()
 
 void PlayerThrusterVfx::InitHoneycombMesh()
 {
-	ringRenderer_.Initialize(dxCommon_, srvManager_, kMaxRings);
-
-	// 六角形（ハニカム）リングを生成
-	auto ringVerts = KHPrimitive::CreateRingVertices(6, 0.78f, 1.0f);
-	std::vector<VertexData> verts;
-	verts.reserve(ringVerts.size());
-	for (const auto& rv : ringVerts)
-	{
-		verts.push_back({ rv.position, rv.texcoord, rv.normal });
-	}
-	ringRenderer_.CreateVertexBuffer(verts.data(), static_cast<uint32_t>(verts.size()), sizeof(VertexData));
+	std::vector<VertexData> quadVerts = {
+		{ { -1.0f,  1.0f, 0.0f, 1.0f }, { 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
+		{ {  1.0f,  1.0f, 0.0f, 1.0f }, { 1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
+		{ { -1.0f, -1.0f, 0.0f, 1.0f }, { 0.0f, 1.0f }, { 0.0f, 0.0f, 1.0f } },
+		{ {  1.0f,  1.0f, 0.0f, 1.0f }, { 1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
+		{ {  1.0f, -1.0f, 0.0f, 1.0f }, { 1.0f, 1.0f }, { 0.0f, 0.0f, 1.0f } },
+		{ { -1.0f, -1.0f, 0.0f, 1.0f }, { 0.0f, 1.0f }, { 0.0f, 0.0f, 1.0f } },
+	};
 
 	ParticleMaterialCB mat{};
 	mat.color = { 1.0f, 1.0f, 1.0f, 1.0f };
@@ -185,7 +227,14 @@ void PlayerThrusterVfx::InitHoneycombMesh()
 	mat.enableLightingAsInt = 0;
 	mat.alphaReference = 0.0f;
 	mat.uvTransform = Matrix4x4::Identity();
+
+	ringRenderer_.Initialize(dxCommon_, srvManager_, kMaxRings);
+	ringRenderer_.CreateVertexBuffer(quadVerts.data(), static_cast<uint32_t>(quadVerts.size()), sizeof(VertexData));
 	ringRenderer_.CreateMaterialBuffer(sizeof(ParticleMaterialCB), &mat);
+
+	flashRenderer_.Initialize(dxCommon_, srvManager_, kMaxRings);
+	flashRenderer_.CreateVertexBuffer(quadVerts.data(), static_cast<uint32_t>(quadVerts.size()), sizeof(VertexData));
+	flashRenderer_.CreateMaterialBuffer(sizeof(ParticleMaterialCB), &mat);
 }
 
 Vector3 PlayerThrusterVfx::TransformPoint(const Vector3& p, const Matrix4x4& m)
@@ -349,20 +398,24 @@ void PlayerThrusterVfx::Update(
 	bool isBoosting,
 	bool isRolling,
 	bool isWingVaporActive,
-	std::mt19937& randomEngine)
+	std::mt19937& randomEngine,
+	const std::vector<Vector3>* funnelPositions,
+	const std::vector<uint8_t>* funnelIsAttacking)
 {
 	if (dt <= 0.0f) dt = 0.0f;
 	pulseTimer_ += dt;
 
-	// 通常(紫: 0.0) <-> ブースト(オレンジ: 1.0) の滑らかなカラー補間
+	const auto& cfg = CyberVfxConfig::GetInstance()->Thruster();
+
+	// 通常(サイバーシアンブルー: 0.0) <-> ブースト(ネオンマゼンタ: 1.0) の滑らかなカラー補間
 	float targetBoost = (isActive && isBoosting) ? 1.0f : 0.0f;
 	float blendSpeed = isBoosting ? 14.0f : 8.0f;
 	boostBlend_ += (targetBoost - boostBlend_) * std::clamp(blendSpeed * dt, 0.0f, 1.0f);
 
-	const Vector4 kNormalPurpleGlow = { 0.65f, 0.18f, 1.00f, 0.44f }; // 通常時：紫色グロー（背景シアンと分離）
-	const Vector4 kBoostOrangeGlow  = { 1.00f, 0.44f, 0.08f, 0.48f }; // ブースト時：オレンジグロー（低アルファ加算）
-	const Vector4 kWhiteCore        = { 1.00f, 1.00f, 1.00f, 0.50f }; // 中心核：純白
-	Vector4 outerGlowColor = LerpVec4(kNormalPurpleGlow, kBoostOrangeGlow, boostBlend_);
+	const Vector4& kNormalCyanGlow   = cfg.normalCyanGlow;
+	const Vector4& kBoostMagentaGlow = cfg.boostMagentaGlow;
+	const Vector4& kWhiteCore        = cfg.whiteCoreColor;
+	Vector4 outerGlowColor = LerpVec4(kNormalCyanGlow, kBoostMagentaGlow, boostBlend_);
 
 	Vector3 shipPos     = { playerWorldMatrix.m[3][0], playerWorldMatrix.m[3][1], playerWorldMatrix.m[3][2] };
 	Vector3 shipRight   = ExtractNormalizedAxis(playerWorldMatrix, 0);
@@ -406,7 +459,7 @@ void PlayerThrusterVfx::Update(
 	{
 		// 高周波の伸縮・明滅パルス
 		float flicker = 0.92f + 0.14f * std::sin(pulseTimer_ * 55.0f) + 0.06f * std::cos(pulseTimer_ * 93.0f);
-		float lengthScale = std::lerp(1.25f, 2.25f, boostBlend_) * flicker; // ブースト時は約1.8倍へ鋭く伸長
+		float lengthScale = std::lerp(cfg.normalConeLength, cfg.boostConeLength, boostBlend_) * flicker;
 		float radiusScale = std::lerp(1.0f, 1.20f, boostBlend_);
 
 		// UVスクロールによるエネルギー流動感
@@ -422,9 +475,9 @@ void PlayerThrusterVfx::Update(
 			const Vector3 nozzles[2] = { leftNozzlePos, rightNozzlePos };
 			for (int i = 0; i < 2; ++i)
 			{
-				// 外周グローコーン（青 / オレンジ）
+				// 外周グローコーン（シアン / マゼンタ）
 				{
-					Matrix4x4 s = Matrix4x4::Scale({ 0.22f * radiusScale, 0.22f * radiusScale, lengthScale });
+					Matrix4x4 s = Matrix4x4::Scale({ cfg.coneRadius * radiusScale, cfg.coneRadius * radiusScale, lengthScale });
 					Matrix4x4 t = Matrix4x4::Translation(nozzles[i]);
 					Matrix4x4 world = s * shipBasis * t;
 					coneBuf[coneInstanceCount_].World = world;
@@ -434,7 +487,7 @@ void PlayerThrusterVfx::Update(
 				}
 				// 中心核コアコーン（純白・細身）
 				{
-					Matrix4x4 s = Matrix4x4::Scale({ 0.11f * radiusScale, 0.11f * radiusScale, lengthScale * 0.85f });
+					Matrix4x4 s = Matrix4x4::Scale({ (cfg.coneRadius * 0.5f) * radiusScale, (cfg.coneRadius * 0.5f) * radiusScale, lengthScale * 0.85f });
 					Matrix4x4 t = Matrix4x4::Translation(nozzles[i]);
 					Matrix4x4 world = s * shipBasis * t;
 					coneBuf[coneInstanceCount_].World = world;
@@ -450,7 +503,7 @@ void PlayerThrusterVfx::Update(
 	// ② ウェイクトレイル（細い光の帯）＋ ロール時主翼端ベイパー
 	// =========================================================
 	// 前進速度が速いため寿命を短く抑え、機体移動時に前方視界を遮らない長さにする
-	float burnerTrailLife = isRolling ? 0.13f : (isBoosting ? 0.09f : 0.06f);
+	float burnerTrailLife = isRolling ? cfg.rollTrailLife : (isBoosting ? cfg.boostTrailLife : cfg.normalTrailLife);
 	UpdateTrailQueue(leftBurnerTrail_,  leftNozzlePos,  dt, burnerTrailLife, isActive);
 	UpdateTrailQueue(rightBurnerTrail_, rightNozzlePos, dt, burnerTrailLife, isActive);
 
@@ -458,26 +511,58 @@ void PlayerThrusterVfx::Update(
 	UpdateTrailQueue(leftWingVaporTrail_,  leftWingPos,  dt, 0.15f, isActive && isWingVaporActive);
 	UpdateTrailQueue(rightWingVaporTrail_, rightWingPos, dt, 0.15f, isActive && isWingVaporActive);
 
+	// ファンネル展開中のベイパーライン更新（発射・飛翔時は長く、待機時は極短）
+	for (size_t i = 0; i < funnelVaporTrails_.size(); ++i)
+	{
+		bool emitFunnel = (funnelPositions && i < funnelPositions->size());
+		bool isAtk = (emitFunnel && funnelIsAttacking && i < funnelIsAttacking->size() && (*funnelIsAttacking)[i] != 0);
+		funnelVaporAttacking_[i] = isAtk;
+		float trailLife = isAtk ? 0.32f : 0.045f;
+		Vector3 fPos = emitFunnel ? (*funnelPositions)[i] : Vector3{ 0.0f, 0.0f, 0.0f };
+		UpdateTrailQueue(funnelVaporTrails_[i], fPos, dt, trailLife, emitFunnel);
+	}
+
 	Vector3 cameraPos = ExtractCameraPosition(viewMatrix);
 	std::vector<VertexData> coreVerts;
 	std::vector<VertexData> glowVerts;
+	std::vector<VertexData> magentaVerts;
 	coreVerts.reserve(kMaxRibbonVertices);
 	glowVerts.reserve(kMaxRibbonVertices);
+	magentaVerts.reserve(kMaxRibbonVertices);
 
-	// バーニア口径以内の極細リボン（視認性を損なわない太さ）
-	BuildRibbonVertices(leftBurnerTrail_,  cameraPos, 0.038f, coreVerts);
-	BuildRibbonVertices(rightBurnerTrail_, cameraPos, 0.038f, coreVerts);
-	BuildRibbonVertices(leftWingVaporTrail_,  cameraPos, 0.028f, coreVerts);
-	BuildRibbonVertices(rightWingVaporTrail_, cameraPos, 0.028f, coreVerts);
+	// バーニア口径以内の極細リボン（白コア＋シアン＋マゼンタの3層グラデーション）
+	BuildRibbonVertices(leftBurnerTrail_,  cameraPos, cfg.coreTrailWidth, coreVerts);
+	BuildRibbonVertices(rightBurnerTrail_, cameraPos, cfg.coreTrailWidth, coreVerts);
+	BuildRibbonVertices(leftWingVaporTrail_,  cameraPos, cfg.coreTrailWidth * 0.72f, coreVerts);
+	BuildRibbonVertices(rightWingVaporTrail_, cameraPos, cfg.coreTrailWidth * 0.72f, coreVerts);
 
-	BuildRibbonVertices(leftBurnerTrail_,  cameraPos, 0.095f, glowVerts);
-	BuildRibbonVertices(rightBurnerTrail_, cameraPos, 0.095f, glowVerts);
-	BuildRibbonVertices(leftWingVaporTrail_,  cameraPos, 0.060f, glowVerts);
-	BuildRibbonVertices(rightWingVaporTrail_, cameraPos, 0.060f, glowVerts);
+	BuildRibbonVertices(leftBurnerTrail_,  cameraPos, cfg.glowTrailWidth, glowVerts);
+	BuildRibbonVertices(rightBurnerTrail_, cameraPos, cfg.glowTrailWidth, glowVerts);
+	BuildRibbonVertices(leftWingVaporTrail_,  cameraPos, cfg.glowTrailWidth * 0.62f, glowVerts);
+	BuildRibbonVertices(rightWingVaporTrail_, cameraPos, cfg.glowTrailWidth * 0.62f, glowVerts);
+
+	BuildRibbonVertices(leftBurnerTrail_,  cameraPos, cfg.magentaTrailWidth, magentaVerts);
+	BuildRibbonVertices(rightBurnerTrail_, cameraPos, cfg.magentaTrailWidth, magentaVerts);
+	BuildRibbonVertices(leftWingVaporTrail_,  cameraPos, cfg.magentaTrailWidth * 0.60f, magentaVerts);
+	BuildRibbonVertices(rightWingVaporTrail_, cameraPos, cfg.magentaTrailWidth * 0.60f, magentaVerts);
+
+	// ファンネル軌道ベイパーラインを3層リボンへ追加（発射時は太め・待機時は極細）
+	for (size_t i = 0; i < funnelVaporTrails_.size(); ++i)
+	{
+		const auto& ft = funnelVaporTrails_[i];
+		bool isAtk = funnelVaporAttacking_[i];
+		float coreW = isAtk ? 0.080f : 0.022f;
+		float glowW = isAtk ? 0.200f : 0.052f;
+		float magW  = isAtk ? 0.340f : 0.088f;
+		BuildRibbonVertices(ft, cameraPos, coreW, coreVerts);
+		BuildRibbonVertices(ft, cameraPos, glowW, glowVerts);
+		BuildRibbonVertices(ft, cameraPos, magW,  magentaVerts);
+	}
 
 	trailCoreVertexCount_ = static_cast<uint32_t>(coreVerts.size());
 	trailGlowVertexCount_ = static_cast<uint32_t>(glowVerts.size());
-	drawTrails_ = (trailCoreVertexCount_ > 0 || trailGlowVertexCount_ > 0);
+	trailMagentaVertexCount_ = static_cast<uint32_t>(magentaVerts.size());
+	drawTrails_ = (trailCoreVertexCount_ > 0 || trailGlowVertexCount_ > 0 || trailMagentaVertexCount_ > 0);
 
 	if (trailCoreVertexCount_ > 0)
 	{
@@ -486,7 +571,7 @@ void PlayerThrusterVfx::Update(
 		{
 			buf[0].World = Matrix4x4::Identity();
 			buf[0].WVP = vpMatrix;
-			buf[0].color = { 1.0f, 1.0f, 1.0f, 0.30f };
+			buf[0].color = { 1.0f, 1.0f, 1.0f, 0.38f };
 		}
 	}
 	if (trailGlowVertexCount_ > 0)
@@ -496,92 +581,34 @@ void PlayerThrusterVfx::Update(
 		{
 			buf[0].World = Matrix4x4::Identity();
 			buf[0].WVP = vpMatrix;
-			buf[0].color = { outerGlowColor.x, outerGlowColor.y, outerGlowColor.z, 0.30f };
+			buf[0].color = { outerGlowColor.x, outerGlowColor.y, outerGlowColor.z, 0.34f };
+		}
+	}
+	if (trailMagentaVertexCount_ > 0)
+	{
+		trailMagentaRenderer_.UpdateVertexBuffer(magentaVerts.data(), trailMagentaVertexCount_);
+		if (auto* buf = trailMagentaRenderer_.GetInstancingData())
+		{
+			buf[0].World = Matrix4x4::Identity();
+			buf[0].WVP = vpMatrix;
+			buf[0].color = cfg.trailMagentaColor; // アウター尾層：ネオンマゼンタ
 		}
 	}
 
 	// =========================================================
-	// ③ デジタルスパーク（極小ドット粒子：現在の1/4以下・少量）
+	// ③ 3Dデジタルボクセル粒子（ユーザー要望により無効化・消去）
 	// =========================================================
-	for (auto it = sparks_.begin(); it != sparks_.end();)
-	{
-		it->age += dt;
-		if (it->age >= it->maxLife)
-		{
-			it = sparks_.erase(it);
-			continue;
-		}
-		it->position = it->position + it->velocity * dt;
-		++it;
-	}
-
-	if (isActive)
-	{
-		float spawnRate = isBoosting ? 120.0f : 65.0f; // 視界を遮らない程度の細かい粒子を連続放出
-		sparkSpawnAccum_ += dt * spawnRate;
-		std::uniform_real_distribution<float> distSpread(-0.10f, 0.10f);
-		std::uniform_real_distribution<float> distSpeed(5.0f, 12.0f);
-		std::uniform_real_distribution<float> distScale(0.045f, 0.075f); // 視認できる極小ドット粒子
-		std::uniform_real_distribution<float> distLife(0.18f, 0.30f);
-		std::uniform_real_distribution<float> distWhite(0.0f, 1.0f);
-
-		while (sparkSpawnAccum_ >= 1.0f)
-		{
-			sparkSpawnAccum_ -= 1.0f;
-			if (sparks_.size() >= kMaxSparks) break;
-
-			const Vector3& basePos = (sparks_.size() % 2 == 0) ? leftNozzlePos : rightNozzlePos;
-			DigitalSpark sp;
-			sp.position = basePos
-				+ shipRight * distSpread(randomEngine)
-				+ shipUp * distSpread(randomEngine)
-				- shipForward * 0.25f;
-			float spd = distSpeed(randomEngine) * (isBoosting ? 1.5f : 1.0f);
-			sp.velocity = shipForward * (-spd)
-				+ shipRight * (distSpread(randomEngine) * 5.0f)
-				+ shipUp * (distSpread(randomEngine) * 5.0f);
-			sp.scale = distScale(randomEngine);
-			sp.age = 0.0f;
-			sp.maxLife = distLife(randomEngine);
-
-			// 白核と紫/オレンジを混ぜ、加算合成でキラッと光らせる
-			bool isWhite = (distWhite(randomEngine) < 0.35f);
-			sp.color = isWhite
-				? Vector4{ 1.0f, 1.0f, 1.0f, 0.68f }
-				: Vector4{ outerGlowColor.x, outerGlowColor.y, outerGlowColor.z, 0.62f };
-			sparks_.push_back(sp);
-		}
-	}
-
+	sparks_.clear();
 	sparkInstanceCount_ = 0;
-	if (auto* sparkBuf = sparkRenderer_.GetInstancingData())
-	{
-		for (const auto& sp : sparks_)
-		{
-			if (sparkInstanceCount_ >= kMaxSparks) break;
-			float ratio = std::clamp(sp.age / sp.maxLife, 0.0f, 1.0f);
-			float fade = 1.0f - ratio;
-			float sc = sp.scale * (0.5f + 0.5f * fade);
-
-			Matrix4x4 s = Matrix4x4::Scale({ sc, sc, sc });
-			Matrix4x4 t = Matrix4x4::Translation(sp.position);
-			Matrix4x4 world = s * billboardMatrix * t;
-
-			sparkBuf[sparkInstanceCount_].World = world;
-			sparkBuf[sparkInstanceCount_].WVP = world * vpMatrix;
-			sparkBuf[sparkInstanceCount_].color = { sp.color.x, sp.color.y, sp.color.z, sp.color.w * fade };
-			++sparkInstanceCount_;
-		}
-	}
 
 	// =========================================================
-	// ④ ブースト開始時のハニカム（六角形）回転衝撃波リング
+	// ④ ブースト開始時のサイバー破線リング＆クロス閃光
 	// =========================================================
 	if (isActive && isBoosting && !prevBoosting_)
 	{
-		// ブースト開始の瞬間に3枚の六角形リングを連続生成
+		// ブースト開始の瞬間にサイバー破線リングを連続生成
 		Vector3 emitCenter = (leftNozzlePos + rightNozzlePos) * 0.5f;
-		for (int i = 0; i < 3; ++i)
+		for (int i = 0; i < cfg.boostRingCount; ++i)
 		{
 			if (rings_.size() >= kMaxRings) break;
 			HoneycombRing ring;
@@ -590,16 +617,16 @@ void PlayerThrusterVfx::Update(
 			ring.forward = shipForward;
 			ring.right = shipRight;
 			ring.up = shipUp;
-			ring.startScale = 0.45f + 0.12f * static_cast<float>(i);
-			ring.endScale = 2.10f + 0.35f * static_cast<float>(i);
-			ring.rotZ = static_cast<float>(i) * 0.52f; // 約30度ずつ位相をずらす
+			ring.startScale = cfg.boostRingStartBase + 0.12f * static_cast<float>(i);
+			ring.endScale = cfg.boostRingEndBase + 0.32f * static_cast<float>(i);
+			ring.rotZ = static_cast<float>(i) * 0.52f;
 			ring.rotSpeed = (i % 2 == 0) ? 5.0f : -4.2f;
 			ring.delay = 0.05f * static_cast<float>(i);
 			ring.age = 0.0f;
-			ring.maxLife = 0.45f + 0.07f * static_cast<float>(i);
+			ring.maxLife = cfg.boostRingLifeBase + 0.07f * static_cast<float>(i);
 			ring.color = (i == 0)
-				? Vector4{ 1.0f, 0.90f, 0.65f, 0.46f }  // 1枚目は白熱オレンジ
-				: Vector4{ 1.0f, 0.48f, 0.10f, 0.40f }; // 2〜3枚目はオレンジ
+				? cfg.boostRingFirstColor
+				: cfg.boostRingOtherColor;
 			rings_.push_back(ring);
 		}
 	}
@@ -626,18 +653,20 @@ void PlayerThrusterVfx::Update(
 	}
 
 	ringInstanceCount_ = 0;
-	if (auto* ringBuf = ringRenderer_.GetInstancingData())
+	flashInstanceCount_ = 0;
+	auto* ringBuf = ringRenderer_.GetInstancingData();
+	auto* flashBuf = flashRenderer_.GetInstancingData();
+	for (const auto& r : rings_)
 	{
-		for (const auto& r : rings_)
+		if (r.delay > 0.0f) continue;
+
+		float t = std::clamp(r.age / r.maxLife, 0.0f, 1.0f);
+		float easeOut = 1.0f - (1.0f - t) * (1.0f - t);
+		float sc = std::lerp(r.startScale, r.endScale, easeOut);
+		Vector4 ringColor = EvaluateThreeStageColor(t, r.color.w);
+
+		if (ringBuf && ringInstanceCount_ < kMaxRings)
 		{
-			if (r.delay > 0.0f) continue;
-			if (ringInstanceCount_ >= kMaxRings) break;
-
-			float t = std::clamp(r.age / r.maxLife, 0.0f, 1.0f);
-			float easeOut = 1.0f - (1.0f - t) * (1.0f - t);
-			float sc = std::lerp(r.startScale, r.endScale, easeOut);
-			float alpha = r.color.w * (1.0f - t);
-
 			Matrix4x4 s = Matrix4x4::Scale({ sc, sc, sc });
 			Matrix4x4 rot = Matrix4x4::RotateZ(r.rotZ);
 			Matrix4x4 basis = MakeBasisMatrix(r.right, r.up, r.forward);
@@ -646,8 +675,22 @@ void PlayerThrusterVfx::Update(
 
 			ringBuf[ringInstanceCount_].World = world;
 			ringBuf[ringInstanceCount_].WVP = world * vpMatrix;
-			ringBuf[ringInstanceCount_].color = { r.color.x, r.color.y, r.color.z, alpha };
+			ringBuf[ringInstanceCount_].color = ringColor;
 			++ringInstanceCount_;
+		}
+
+		// 発生直後（t < 0.35）のみ、中心にクロス閃光（star_blink.png）を重ねる
+		if (flashBuf && flashInstanceCount_ < kMaxRings && t < 0.35f)
+		{
+			float ft = t / 0.35f;
+			float fsc = sc * cfg.boostFlashScaleRatio * (1.0f - ft * 0.4f);
+			Matrix4x4 s = Matrix4x4::Scale({ fsc, fsc, fsc });
+			Matrix4x4 tMat = Matrix4x4::Translation(r.position);
+			Matrix4x4 world = s * billboardMatrix * tMat;
+			flashBuf[flashInstanceCount_].World = world;
+			flashBuf[flashInstanceCount_].WVP = world * vpMatrix;
+			flashBuf[flashInstanceCount_].color = { 1.0f, 1.0f, 1.0f, cfg.boostFlashAlpha * (1.0f - ft) };
+			++flashInstanceCount_;
 		}
 	}
 }
@@ -658,11 +701,17 @@ void PlayerThrusterVfx::Draw()
 	if (!texMgr) return;
 
 	uint32_t circleTex = texMgr->GetSrvIndex("circle2.png");
-	uint32_t sparkTex = texMgr->GetSrvIndex("prticle_kira.png");
+	uint32_t sparkTex = texMgr->GetSrvIndex("sprites/white.png");
+	uint32_t ringTex = texMgr->GetSrvIndex("digital_ring.png");
+	uint32_t starTex = texMgr->GetSrvIndex("star_blink.png");
 
-	// 1. ウェイクトレイル（外周グロー -> 中心白コア）
+	// 1. ウェイクトレイル（アウターマゼンタ -> シアングロー -> 中心白コア）
 	if (drawTrails_)
 	{
+		if (trailMagentaVertexCount_ > 0)
+		{
+			trailMagentaRenderer_.Draw(1, circleTex, BlendMode::Additive);
+		}
 		if (trailGlowVertexCount_ > 0)
 		{
 			trailGlowRenderer_.Draw(1, circleTex, BlendMode::Additive);
@@ -679,13 +728,17 @@ void PlayerThrusterVfx::Draw()
 		coneRenderer_.Draw(coneInstanceCount_, circleTex, BlendMode::Additive);
 	}
 
-	// 3. ハニカム衝撃波リング
+	// 3. サイバー破線衝撃波リング＆クロス閃光
 	if (ringInstanceCount_ > 0)
 	{
-		ringRenderer_.Draw(ringInstanceCount_, circleTex, BlendMode::Additive);
+		ringRenderer_.Draw(ringInstanceCount_, ringTex, BlendMode::Additive);
+	}
+	if (flashInstanceCount_ > 0)
+	{
+		flashRenderer_.Draw(flashInstanceCount_, starTex, BlendMode::Additive);
 	}
 
-	// 4. デジタルスパーク（極小ドット粒子）
+	// 4. デジタルボクセル粒子（回転四角片）
 	if (sparkInstanceCount_ > 0)
 	{
 		sparkRenderer_.Draw(sparkInstanceCount_, sparkTex, BlendMode::Additive);

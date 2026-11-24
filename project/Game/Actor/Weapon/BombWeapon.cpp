@@ -1,5 +1,6 @@
 #define NOMINMAX
 #include "BombWeapon.h"
+#include "Game/System/CyberVfxConfig.h"
 #include "Game/Actor/Player/Player.h"
 #include "Game/Actor/Enemy/Enemy.h"
 #include "Game/Actor/Enemy/ArmoredTrainBoss.h"
@@ -37,27 +38,7 @@ namespace {
 }
 
 Vector4 BombWeapon::EvaluateThreeStageColor(float ratio, float alphaScale) {
-    ratio = std::clamp(ratio, 0.0f, 1.0f);
-    const Vector4 kWhite      = { 1.3f, 1.4f, 1.6f, 1.0f };
-    const Vector4 kBlue       = { 0.08f, 0.48f, 1.65f, 0.98f };
-    const Vector4 kMagenta    = { 1.45f, 0.0f, 0.88f, 0.88f };
-    const Vector4 kMagentaEnd = { 1.30f, 0.0f, 0.80f, 0.0f };
-
-    Vector4 result;
-    if (ratio < 0.08f) {
-        result = kWhite;
-    } else if (ratio < 0.45f) {
-        float t = (ratio - 0.08f) / 0.37f;
-        result = LerpColor(kWhite, kBlue, t);
-    } else if (ratio < 0.80f) {
-        float t = (ratio - 0.45f) / 0.35f;
-        result = LerpColor(kBlue, kMagenta, t);
-    } else {
-        float t = (ratio - 0.80f) / 0.20f;
-        result = LerpColor(kMagenta, kMagentaEnd, t);
-    }
-    result.w *= alphaScale;
-    return result;
+    return CyberVfxConfig::GetInstance()->EvaluateThreeStageColor(ratio, alphaScale);
 }
 
 void BombWeapon::InitBillboardRenderers() {
@@ -325,18 +306,21 @@ void BombWeapon::TriggerMuzzleFlash(const Vector3& muzzlePos) {
 }
 
 void BombWeapon::TriggerExplosionVfx(const Vector3& center) {
+    CyberVfxConfig::GetInstance()->EnsureLoaded();
+    const auto& cfg = CyberVfxConfig::GetInstance()->Weapon().bombExplosion;
+
     // =========================================================
     // レイヤー①：立体コア閃光（0.0s 〜 0.16s）
     // =========================================================
     BillboardVfxParticle coreGlow;
     coreGlow.texKind = VfxTexKind::SoftFade;
     coreGlow.position = center;
-    coreGlow.startScale = { 12.0f, 12.0f, 1.0f };
+    coreGlow.startScale = { cfg.coreStartScale, cfg.coreStartScale, 1.0f };
     coreGlow.endScale = { 0.3f, 0.3f, 1.0f };
-    coreGlow.maxLife = 0.16f;
+    coreGlow.maxLife = cfg.coreLife;
     coreGlow.useCustomColor = true;
-    coreGlow.startColor = { 2.2f, 2.3f, 2.5f, 1.0f };
-    coreGlow.endColor = { 0.10f, 0.55f, 1.65f, 0.0f };
+    coreGlow.startColor = cfg.coreStartColor;
+    coreGlow.endColor = cfg.coreEndColor;
     coreGlow.rapidShrink = true;
     SpawnBillboardVfx(coreGlow);
 
@@ -347,17 +331,17 @@ void BombWeapon::TriggerExplosionVfx(const Vector3& center) {
         flareH.position = center;
         flareH.useBillboard = (k == 0);
         flareH.rotEuler = (k == 0) ? Vector3{ 0.0f, 0.0f, 0.0f } : Vector3{ 0.65f, 0.75f, 0.0f };
-        flareH.startScale = { 18.0f, 2.8f, 1.0f };
+        flareH.startScale = { cfg.flareHLength, cfg.flareThickness, 1.0f };
         flareH.endScale = { 1.0f, 0.1f, 1.0f };
-        flareH.maxLife = 0.16f;
+        flareH.maxLife = cfg.flareLife;
         flareH.useCustomColor = true;
-        flareH.startColor = { 2.0f, 2.2f, 2.4f, 1.0f };
-        flareH.endColor = { 0.10f, 0.55f, 1.65f, 0.0f };
+        flareH.startColor = cfg.flareStartColor;
+        flareH.endColor = cfg.coreEndColor;
         flareH.rapidShrink = true;
         SpawnBillboardVfx(flareH);
 
         BillboardVfxParticle flareV = flareH;
-        flareV.startScale = { 2.8f, 15.0f, 1.0f };
+        flareV.startScale = { cfg.flareThickness, cfg.flareVLength, 1.0f };
         flareV.endScale = { 0.1f, 0.8f, 1.0f };
         SpawnBillboardVfx(flareV);
     }
@@ -381,16 +365,16 @@ void BombWeapon::TriggerExplosionVfx(const Vector3& center) {
             ring.position = center;
             ring.useBillboard = (i == 3);
             ring.rotEuler = ringTilts[i];
-            ring.startScale = { (1.6f + 0.6f * i) * widthOffset, (1.6f + 0.6f * i) * widthOffset, 1.0f };
-            ring.endScale = { (8.5f + 2.2f * i) * widthOffset, (8.5f + 2.2f * i) * widthOffset, 1.0f };
+            ring.startScale = { (cfg.ringStartBase + cfg.ringStartStep * i) * widthOffset, (cfg.ringStartBase + cfg.ringStartStep * i) * widthOffset, 1.0f };
+            ring.endScale = { (cfg.ringEndBase + cfg.ringEndStep * i) * widthOffset, (cfg.ringEndBase + cfg.ringEndStep * i) * widthOffset, 1.0f };
             ring.rotZ = static_cast<float>(i) * 0.85f;
             ring.rotSpeed = (i % 2 == 0) ? 5.0f : -6.0f;
             ring.delay = 0.025f * static_cast<float>(i);
-            ring.maxLife = 0.45f + 0.04f * static_cast<float>(i);
+            ring.maxLife = cfg.ringLifeBase + cfg.ringLifeStep * static_cast<float>(i);
             ring.useCustomColor = true;
             // 全リング統一：爆発始め＝鮮烈な青 → 終わり＝ネオンマゼンタ
-            ring.startColor = { 0.08f, 0.52f, 1.75f, 1.0f };
-            ring.endColor   = { 1.55f, 0.02f, 0.95f, 0.0f };
+            ring.startColor = cfg.ringStartColor;
+            ring.endColor   = cfg.ringEndColor;
             SpawnBillboardVfx(ring);
         }
     }
@@ -399,21 +383,21 @@ void BombWeapon::TriggerExplosionVfx(const Vector3& center) {
     // レイヤー③：3D破片＆立体グリッチ（0.05s 〜 0.60s）
     // =========================================================
     // 小型化・高密度化した3Dキューブ破片（白→シアン→マゼンタの3段階カーブ）
-    const int burstCount = 96;
+    const int burstCount = cfg.burstVoxelCount;
     for (int i = 0; i < burstCount; ++i) {
         float phi = static_cast<float>(rand() % 628) * 0.01f;
         float cosT = (static_cast<float>(rand() % 200) - 100.0f) * 0.01f;
         float sinT = std::sqrtf((std::max)(0.0f, 1.0f - cosT * cosT));
         Vector3 dir = { sinT * std::cosf(phi), cosT, sinT * std::sinf(phi) };
 
-        float spd = 16.0f + (static_cast<float>(rand() % 100) / 100.0f) * 46.0f;
-        float sz = 0.45f + (static_cast<float>(rand() % 100) / 100.0f) * 0.75f;
+        float spd = cfg.burstVoxelSpeedMin + (static_cast<float>(rand() % 100) / 100.0f) * cfg.burstVoxelSpeedRange;
+        float sz = cfg.burstVoxelSizeMin + (static_cast<float>(rand() % 100) / 100.0f) * cfg.burstVoxelSizeRange;
         Vector3 rotSpd = {
             ((rand() % 100) - 50) * 0.18f,
             ((rand() % 100) - 50) * 0.18f,
             ((rand() % 100) - 50) * 0.18f
         };
-        float maxLife = 0.45f + (static_cast<float>(rand() % 10)) * 0.02f;
+        float maxLife = cfg.burstVoxelLifeBase + (static_cast<float>(rand() % 10)) * 0.02f;
 
         SpawnVoxel(
             { center.x + dir.x * 0.8f, center.y + dir.y * 0.8f, center.z + dir.z * 0.8f },
@@ -427,7 +411,7 @@ void BombWeapon::TriggerExplosionVfx(const Vector3& center) {
     }
 
     // 立体的に交差して走るグリッチ線（X方向＋斜め・奥行き方向）
-    const int glitchCount = 12;
+    const int glitchCount = cfg.glitchCount;
     for (int i = 0; i < glitchCount; ++i) {
         float dirSign = (i % 2 == 0) ? 1.0f : -1.0f;
         float offsetY = ((rand() % 100) - 50) * 0.14f;
