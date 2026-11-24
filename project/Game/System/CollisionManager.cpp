@@ -504,10 +504,9 @@ void CollisionManager::CheckEnhanceRingsVsPlayer(CollisionContext& ctx)
                     }
                     SoundManager::GetInstance()->PlaySE("powerup.mp3", 0.9f);
 
-                    if (ctx.ringEffect)
+                    if (ctx.onSpawnRingPass)
                     {
-                        ctx.ringEffect->SetPosition((*it)->GetPosition());
-                        ctx.ringEffect->Play();
+                        ctx.onSpawnRingPass((*it)->GetPosition(), false);
                     }
                 }
                 else if ((*it)->GetType() == RingType::HEAL)
@@ -515,10 +514,9 @@ void CollisionManager::CheckEnhanceRingsVsPlayer(CollisionContext& ctx)
                     ctx.player->Heal(3000);
                     SoundManager::GetInstance()->PlaySE("powerup.mp3", 0.8f);
 
-                    if (ctx.healRingEffect)
+                    if (ctx.onSpawnRingPass)
                     {
-                        ctx.healRingEffect->SetPosition((*it)->GetPosition());
-                        ctx.healRingEffect->Play();
+                        ctx.onSpawnRingPass((*it)->GetPosition(), true);
                     }
                 }
 

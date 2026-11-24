@@ -219,6 +219,9 @@ void GamePlayWorld::UpdateActorsAndCollisions(float dt, float unscaledGameSpeed,
 		colCtx.onSpawnEnemyDissolve = [ctx](const Vector3& pos) {
 			ctx.vfx->SpawnEnemyDissolveShards(pos);
 		};
+		colCtx.onSpawnRingPass = [ctx](const Vector3& pos, bool isHeal) {
+			ctx.vfx->SpawnRingPassParticles(pos, isHeal);
+		};
 		colCtx.dodgeEffect = &ctx.vfx->Dodge();
 		colCtx.ringEffect = &ctx.vfx->Ring();
 		colCtx.healRingEffect = &ctx.vfx->HealRing();

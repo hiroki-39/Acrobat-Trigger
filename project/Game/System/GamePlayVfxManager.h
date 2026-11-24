@@ -61,6 +61,11 @@ public:
 	void SpawnMemoryAmbientVoxel(const Vector3& centerPos, const Vector4& color, float modelRadius);
 
 	/// <summary>
+	/// 強化リング・回復リング通過時のサイバーボクセル＆リングスパークを生成
+	/// </summary>
+	void SpawnRingPassParticles(const Vector3& centerPos, bool isHeal);
+
+	/// <summary>
 	/// スラスター・ウィンド以外のエフェクトおよびボクセル粒子の更新
 	/// </summary>
 	void UpdateEffects(float dt, const Matrix4x4& viewMatrix, const Matrix4x4& projectionMatrix, const Matrix4x4& billboardMatrix);

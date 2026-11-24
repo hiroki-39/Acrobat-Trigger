@@ -825,6 +825,80 @@ void GamePlayVfxManager::SpawnMemoryAmbientVoxel(const Vector3& centerPos, const
 	voxelHitParticles_.push_back(std::move(vp));
 }
 
+void GamePlayVfxManager::SpawnRingPassParticles(const Vector3& centerPos, bool isHeal)
+{
+	auto services = EngineServices::GetInstance();
+	Object3dCommon* object3dCommon = services ? services->GetObject3dCommon() : nullptr;
+	if (!object3dCommon) return;
+
+	// 強化リング（赤系＋白コア） / 回復リング（緑系＋白・シアン）
+	const Vector4 kPowerColors[4] = {
+		{ 1.00f, 0.22f, 0.22f, 1.0f },
+		{ 1.00f, 0.22f, 0.22f, 1.0f },
+		{ 1.00f, 0.55f, 0.15f, 1.0f },
+		{ 1.00f, 1.00f, 1.00f, 1.0f }
+	};
+	const Vector4 kHealColors[4] = {
+		{ 0.20f, 1.00f, 0.35f, 1.0f },
+		{ 0.20f, 1.00f, 0.35f, 1.0f },
+		{ 0.15f, 0.95f, 0.85f, 1.0f },
+		{ 1.00f, 1.00f, 1.00f, 1.0f }
+	};
+
+	const int kCount = 28;
+	for (int i = 0; i < kCount; ++i)
+	{
+		if (voxelHitParticles_.size() > 160) break;
+
+		// リング円周上に沿って配置し、放射状＋少し前進方向へ弾けさせる
+		float angle = (static_cast<float>(i) / static_cast<float>(kCount)) * 6.2831853f
+			+ ((std::rand() % 100) - 50) * 0.004f;
+		float r = 2.6f + static_cast<float>(std::rand() % 100) * 0.015f;
+		float radSpeed = 9.0f + static_cast<float>(std::rand() % 100) * 0.10f;
+		float sz = 0.26f + static_cast<float>(std::rand() % 12) * 0.016f;
+
+		VoxelHitParticle vp;
+		vp.obj = std::make_unique<Object3d>();
+		vp.obj->Initialize(object3dCommon);
+		vp.obj->SetModel("cube.obj");
+		vp.obj->SetEnableLighting(false);
+		vp.obj->SetEnvironmentCoefficient(0.0f);
+		vp.obj->SetSelectLightings(10);
+
+		vp.position = {
+			centerPos.x + std::cosf(angle) * r,
+			centerPos.y + std::sinf(angle) * r,
+			centerPos.z + ((std::rand() % 100) - 50) * 0.02f
+		};
+		vp.velocity = {
+			std::cosf(angle) * radSpeed,
+			std::sinf(angle) * radSpeed + (isHeal ? 2.5f : 0.0f),
+			5.0f + static_cast<float>(std::rand() % 100) * 0.06f
+		};
+		vp.rotation = {
+			static_cast<float>(std::rand() % 628) * 0.01f,
+			static_cast<float>(std::rand() % 628) * 0.01f,
+			angle
+		};
+		vp.rotSpeed = {
+			((std::rand() % 100) - 50) * 0.18f,
+			((std::rand() % 100) - 50) * 0.18f,
+			((std::rand() % 100) - 50) * 0.18f
+		};
+		vp.scale = { sz, sz, sz * 1.4f };
+		vp.color = isHeal ? kHealColors[i % 4] : kPowerColors[i % 4];
+		vp.life = 0.0f;
+		vp.maxLife = 0.48f + static_cast<float>(std::rand() % 10) * 0.025f;
+
+		vp.obj->SetTranslate(vp.position);
+		vp.obj->SetRotation(vp.rotation);
+		vp.obj->SetScale(vp.scale);
+		vp.obj->SetColor(vp.color);
+		vp.obj->Update();
+		voxelHitParticles_.push_back(std::move(vp));
+	}
+}
+
 void GamePlayVfxManager::SpawnPlayerDamageParticles(const Vector3& hitPos)
 {
 	// 1. 視認性を邪魔しない小さめの3D三角形プリズム破片を16個放出

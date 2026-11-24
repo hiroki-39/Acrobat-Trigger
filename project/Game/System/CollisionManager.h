@@ -42,6 +42,7 @@ struct CollisionContext {
     std::function<void(const Vector3&, const Vector3&)> onSpawnBulletHit = nullptr;
     std::function<void(const Vector3&)> onSpawnEnemyBulletTerrainHit = nullptr;
     std::function<void(const Vector3&)> onSpawnEnemyDissolve = nullptr;
+    std::function<void(const Vector3&, bool)> onSpawnRingPass = nullptr;
     ParticleEffect* ringEffect = nullptr;
     ParticleEffect* healRingEffect = nullptr;
 

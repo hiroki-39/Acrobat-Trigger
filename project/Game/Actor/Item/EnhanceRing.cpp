@@ -4,9 +4,13 @@
 #include <cmath>
 
 void EnhanceRing::Initialize(Object3dCommon* object3dCommon, const Vector3& pos, const Vector3& scale, const Vector3& rotation, const std::string& fileName, RingType type, uint32_t skyboxTexIndex, const LevelCollider& colliderInfo) {
+    (void)rotation;
     position_ = pos;
-    baseScale_ = scale;
-    rotation_ = rotation;
+    // ring_coreがX-Z平面で保存されているため、全軸均一スケールにして楕円化を防ぐ
+    float uniformScale = scale.x > scale.y ? scale.x : scale.y;
+    baseScale_ = { uniformScale, uniformScale, uniformScale };
+    // ring_coreはX-Z平面（寝た状態）のためX軸90度回転で正面に起こす
+    rotation_ = { 1.5707963f, 0.0f, 0.0f };
     type_ = type;
     collider_ = colliderInfo;
 
@@ -28,31 +32,45 @@ void EnhanceRing::Initialize(Object3dCommon* object3dCommon, const Vector3& pos,
         collider_.size = scale; // スケールをそのままBOXのサイズ(半辺長)として扱う
     }
 
+    animTimer_ = 0.0f;
+    ring1RotZ_ = 0.0f;
+
+    // 新リングモデル（ring_core と ring_1）をロード
+    ModelManager::GetInstance()->LoadModel("ring/ring_core/ring_core.obj");
+    ModelManager::GetInstance()->LoadModel("ring/ring_1/ring_1.obj");
+
+    // 1. ring_core：強化リング（赤）・回復リング（緑）の色分け＋サイバーシェーダー
     object_ = std::make_unique<Object3d>();
     object_->Initialize(object3dCommon);
+    object_->SetModel("ring/ring_core/ring_core.obj");
     object_->SetTranslate(position_);
     object_->SetScale(baseScale_);
     object_->SetRotation(rotation_);
-
-    // タイプに応じて読み込むモデルを分ける（共有されると全て同じ色になってしまうため）
-    std::string modelName = "Ring.obj";
-    if (type_ == RingType::HEAL) {
-        modelName = "Heal.obj";
+    object_->SetEnableLighting(false);
+    object_->SetEnvironmentCoefficient(0.0f);
+    object_->SetSelectLightings(15);
+    object_->SetShininess(0.0f);
+    if (type_ == RingType::POWER_UP) {
+        object_->SetColor({ 1.0f, 0.22f, 0.22f, 1.0f }); // 赤色
+    } else if (type_ == RingType::HEAL) {
+        object_->SetColor({ 0.20f, 1.0f, 0.35f, 1.0f }); // 緑色
     }
 
-    ModelManager::GetInstance()->LoadModel(modelName);
-    object_->SetModel(modelName);
-
-    // タイプに応じて色を変える
-    if (object_->GetModel()) {
-        if (type_ == RingType::POWER_UP) {
-            object_->GetModel()->SetColor({1.0f, 0.2f, 0.2f, 1.0f}); // 赤系
-        } else if (type_ == RingType::HEAL) {
-            object_->GetModel()->SetColor({0.2f, 1.0f, 0.2f, 1.0f}); // 緑系
-        }
-    }
+    // 2. ring_1：強化・回復共通の白色＋サイバーシェーダー（元々X-Y平面で正面向きのためX回転なしでZ軸回転）
+    ring1Object_ = std::make_unique<Object3d>();
+    ring1Object_->Initialize(object3dCommon);
+    ring1Object_->SetModel("ring/ring_1/ring_1.obj");
+    ring1Object_->SetTranslate(position_);
+    ring1Object_->SetScale(baseScale_);
+    ring1Object_->SetRotation({ 0.0f, 0.0f, 0.0f });
+    ring1Object_->SetEnableLighting(false);
+    ring1Object_->SetEnvironmentCoefficient(0.0f);
+    ring1Object_->SetSelectLightings(15);
+    ring1Object_->SetShininess(0.0f);
+    ring1Object_->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f }); // 白色
 
     object_->SetEnvironmentTextureIndex(skyboxTexIndex);
+    ring1Object_->SetEnvironmentTextureIndex(skyboxTexIndex);
     
     // デバッグ用コライダー表示の初期化
     if (collider_.type == "SPHERE" || (collider_.type == "BOX" || collider_.type == "OBB" || collider_.type == "AABB")) {
@@ -76,9 +94,12 @@ void EnhanceRing::Initialize(Object3dCommon* object3dCommon, const Vector3& pos,
 }
 
 void EnhanceRing::Update() {
+    animTimer_ += 0.05f;
+
     if (isShrinking_) {
         shrinkScale_ -= 0.0333f; // 約0.5秒(30フレーム)で消滅するように調整
-        rotation_.z += 0.5f;     // 回転
+        rotation_.z += 0.12f;
+        ring1RotZ_ += 0.55f;     // くぐった時は ring_1 を高速でぐるぐる回転
         
         if (targetPlayer_) {
             // プレイヤーの位置に追従する(機体に取り込まれる演出)
@@ -90,14 +111,28 @@ void EnhanceRing::Update() {
             shrinkScale_ = 0.0f;
             isDead_ = true;
         }
-        Vector3 newScale = { baseScale_.x * shrinkScale_, baseScale_.y * shrinkScale_, baseScale_.z * shrinkScale_ };
-        object_->SetScale(newScale);
+    } else {
+        // 通常待機時は ring_1 を滑らかに回転させる
+        ring1RotZ_ += 0.035f;
     }
-    
+
+    Vector3 currentScale = { baseScale_.x * shrinkScale_, baseScale_.y * shrinkScale_, baseScale_.z * shrinkScale_ };
+
     if (object_) {
+        object_->SetScale(currentScale);
         object_->SetTranslate(position_);
         object_->SetRotation(rotation_);
+        object_->SetShininess(animTimer_);
         object_->Update();
+    }
+
+    if (ring1Object_) {
+        ring1Object_->SetScale(currentScale);
+        ring1Object_->SetTranslate(position_);
+        // ring_1は元々正面向き（X-Y平面）のため、X軸90度回転は掛けずZ軸のみで回転させる
+        ring1Object_->SetRotation({ 0.0f, 0.0f, rotation_.z + ring1RotZ_ });
+        ring1Object_->SetShininess(animTimer_);
+        ring1Object_->Update();
     }
     
     if (colliderObject_) {
@@ -113,8 +148,12 @@ void EnhanceRing::Update() {
 }
 
 void EnhanceRing::Draw() {
-    if (object_ && !isDead_) {
+    if (isDead_) return;
+    if (object_) {
         object_->Draw();
+    }
+    if (ring1Object_) {
+        ring1Object_->Draw();
     }
 }
 
