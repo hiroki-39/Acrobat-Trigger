@@ -39,6 +39,10 @@ public:
     void SetDebugEnabled(bool enable) { isDebugEnabled_ = enable; }
     void ToggleDebugEnabled() { isDebugEnabled_ = !isDebugEnabled_; }
 
+    bool IsShowImGuiMonitor() const { return showImGuiMonitor_; }
+    void SetShowImGuiMonitor(bool show) { showImGuiMonitor_ = show; }
+    void ToggleImGuiMonitor() { showImGuiMonitor_ = !showImGuiMonitor_; }
+
     const CollisionResult& GetLastHitResult() const { return lastHitResult_; }
 
 private:
@@ -109,6 +113,6 @@ private:
     bool showTestedTriangles_ = true;        // 検査対象ポリゴン（黄色）
     bool showHitTriangles_ = true;           // 激突ポリゴン（赤色）
     bool showHitPointAndNormal_ = true;      // 接触点マーカー＆法線矢印
-    bool showImGuiMonitor_ = false;          // ImGuiパネル表示（不要なためデフォルト非表示）
+    bool showImGuiMonitor_ = true;           // ImGuiパネル表示（F6で表示切替）
     float hitHoldTimer_ = 0.0f;              // ヒット時の余韻表示タイマー
 };

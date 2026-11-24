@@ -191,6 +191,7 @@ void TerrainCollisionDebugger::Draw(Camera* camera) {
 
 void TerrainCollisionDebugger::DrawImGui() {
     if (!showImGuiMonitor_) return;
+    if (!ImGui::GetCurrentContext() || ImGui::GetFrameCount() <= 0) return;
 
     ImGui::SetNextWindowPos(ImVec2(10, 80), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(340, 290), ImGuiCond_FirstUseEver);
