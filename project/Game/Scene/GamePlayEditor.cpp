@@ -411,6 +411,12 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 				ImGui::Checkbox("コライダーを表示 [F2]", &scene.isDrawCollider_);
 				ImGui::SameLine();
 				ImGui::Checkbox("判定計算ポリゴンのみ表示 [F3]", &scene.isDrawTerrainWireframe_);
+
+				bool showColMonitor = TerrainCollisionDebugger::GetInstance()->IsShowImGuiMonitor();
+				if (ImGui::Checkbox("地形コリジョン解析モニター [F6]", &showColMonitor))
+				{
+					TerrainCollisionDebugger::GetInstance()->SetShowImGuiMonitor(showColMonitor);
+				}
 			}
 
 			if (scene.railCameraController_)

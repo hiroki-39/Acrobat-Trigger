@@ -357,6 +357,7 @@ void GamePlayScene::Update()
 
 #ifdef ENABLE_EDITOR
 	editor_.Draw(*this);
+	TerrainCollisionDebugger::GetInstance()->DrawImGui();
 #endif // ENABLE_EDITOR
 }
 
@@ -381,6 +382,11 @@ void GamePlayScene::HandleGlobalHotkeys(EngineServices* services, Input* input)
 	if (input && input->TriggerKey(DIK_F5))
 	{
 		ReloadLevel();
+	}
+
+	if (input && input->TriggerKey(DIK_F6))
+	{
+		TerrainCollisionDebugger::GetInstance()->ToggleImGuiMonitor();
 	}
 
 	if (input && input->TriggerKey(DIK_M))
