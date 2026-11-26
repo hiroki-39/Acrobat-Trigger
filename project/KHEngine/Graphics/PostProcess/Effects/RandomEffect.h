@@ -11,6 +11,20 @@ public:
         data_->noiseStrength = 0.1f;
     }
 
+    void ApplyToData(PostProcessData& data) const override {
+        data.enableRandom = 1;
+    }
+
+    void SaveToJson(nlohmann::json& effectJson) const override {
+        effectJson["glitchStrength"] = data_->glitchStrength;
+        effectJson["noiseStrength"] = data_->noiseStrength;
+    }
+
+    void LoadFromJson(const nlohmann::json& effectJson) override {
+        if (effectJson.contains("glitchStrength")) data_->glitchStrength = effectJson["glitchStrength"];
+        if (effectJson.contains("noiseStrength")) data_->noiseStrength = effectJson["noiseStrength"];
+    }
+
     void DrawImGui() override {
 #ifdef USE_IMGUI
         ImGui::SliderFloat("Glitch Strength", &data_->glitchStrength, 0.0f, 0.2f);

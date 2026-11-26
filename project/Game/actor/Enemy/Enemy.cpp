@@ -4,6 +4,138 @@
 #include "Game/Actor/Player/Player.h"
 #include "Game/Actor/Bullet/EnemyBullet.h"
 #include "EnemyPresetManager.h"
+#include <algorithm>
+#include <cmath>
+
+void IEnemyBehavior::LookAtPlayer(Object3d* object, const Vector3& pos, const Vector3& target) {
+    if (!object) return;
+    Vector3 toPlayer = { target.x - pos.x, target.y - pos.y, target.z - pos.z };
+    float yaw = std::atan2(toPlayer.x, toPlayer.z);
+    float distXZ = std::sqrt(toPlayer.x * toPlayer.x + toPlayer.z * toPlayer.z);
+    float pitch = std::asin(std::clamp(-toPlayer.y / (std::max)(1.0f, std::sqrt(distXZ * distXZ + toPlayer.y * toPlayer.y)), -1.0f, 1.0f));
+    object->SetRotation({ pitch, yaw, 0.0f });
+}
+
+namespace {
+
+class PathBehavior final : public IEnemyBehavior {
+public:
+    void Update(Context& ctx) override {
+        if (ctx.movePath && ctx.movePath->IsValid()) {
+            ctx.pathProgress += (ctx.moveSpeed * 0.5f * ctx.gameSpeed) / ctx.movePath->GetTotalLength();
+            if (ctx.pathProgress > 1.0f) {
+                ctx.isDead = true;
+            } else {
+                ctx.position = ctx.movePath->GetPosition(ctx.pathProgress);
+                Vector3 forward = ctx.movePath->GetForward(ctx.pathProgress);
+                float yaw = std::atan2(forward.x, forward.z);
+                float pitch = std::asin(std::clamp(-forward.y, -1.0f, 1.0f));
+                if (ctx.object) ctx.object->SetRotation({ pitch, yaw, 0.0f });
+            }
+        }
+    }
+};
+
+class PatrolHorizontalBehavior final : public IEnemyBehavior {
+public:
+    void Update(Context& ctx) override {
+        float amp = (ctx.moveAmplitude > 0.0f) ? ctx.moveAmplitude : 15.0f;
+        ctx.position.x = ctx.spawnPos.x + std::sin(ctx.activeTimer * ctx.moveSpeed * 0.04f) * amp;
+        ctx.position.y = ctx.spawnPos.y;
+        ctx.position.z = ctx.spawnPos.z;
+        LookAtPlayer(ctx.object, ctx.position, ctx.playerWorldPos);
+        if (ctx.position.z < ctx.cameraPos.z - 30.0f) ctx.isDead = true;
+    }
+};
+
+class PatrolVerticalBehavior final : public IEnemyBehavior {
+public:
+    void Update(Context& ctx) override {
+        float amp = (ctx.moveAmplitude > 0.0f) ? ctx.moveAmplitude : 8.0f;
+        ctx.position.x = ctx.spawnPos.x;
+        ctx.position.y = ctx.spawnPos.y + std::sin(ctx.activeTimer * ctx.moveSpeed * 0.04f) * amp;
+        ctx.position.z = ctx.spawnPos.z;
+        LookAtPlayer(ctx.object, ctx.position, ctx.playerWorldPos);
+        if (ctx.position.z < ctx.cameraPos.z - 30.0f) ctx.isDead = true;
+    }
+};
+
+class HoverShootBehavior final : public IEnemyBehavior {
+public:
+    void Update(Context& ctx) override {
+        float amp = (ctx.moveAmplitude > 0.0f) ? ctx.moveAmplitude : 8.0f;
+        ctx.position.x = ctx.spawnPos.x + std::sin(ctx.activeTimer * 0.03f) * (amp * 0.3f);
+        ctx.position.y = ctx.spawnPos.y + std::sin(ctx.activeTimer * 0.06f) * (amp * 0.2f);
+        ctx.position.z = ctx.spawnPos.z;
+        LookAtPlayer(ctx.object, ctx.position, ctx.playerWorldPos);
+        if (ctx.position.z < ctx.cameraPos.z - 30.0f) ctx.isDead = true;
+    }
+};
+
+class SinWaveBehavior final : public IEnemyBehavior {
+public:
+    void Update(Context& ctx) override {
+        float amp = (ctx.moveAmplitude > 0.0f) ? ctx.moveAmplitude : 12.0f;
+        ctx.position.z -= ctx.moveSpeed * 0.5f * ctx.gameSpeed;
+        ctx.position.x = ctx.spawnPos.x + std::sin(ctx.activeTimer * 0.04f) * amp;
+        LookAtPlayer(ctx.object, ctx.position, ctx.playerWorldPos);
+        if (ctx.position.z < ctx.cameraPos.z - 30.0f) ctx.isDead = true;
+    }
+};
+
+class StraightBehavior final : public IEnemyBehavior {
+public:
+    void Update(Context& ctx) override {
+        ctx.position.z -= ctx.moveSpeed * 0.7f * ctx.gameSpeed;
+        LookAtPlayer(ctx.object, ctx.position, ctx.playerWorldPos);
+        if (ctx.position.z < ctx.cameraPos.z - 30.0f) ctx.isDead = true;
+    }
+};
+
+class TurretBehavior final : public IEnemyBehavior {
+public:
+    void Update(Context& ctx) override {
+        if (!ctx.object) return;
+        Vector3 rot = ctx.object->GetRotation();
+        Vector3 toPlayer = { ctx.playerWorldPos.x - ctx.position.x, ctx.playerWorldPos.y - ctx.position.y, ctx.playerWorldPos.z - ctx.position.z };
+        float yaw = std::atan2(toPlayer.x, toPlayer.z);
+        float distXZ = std::sqrt(toPlayer.x * toPlayer.x + toPlayer.z * toPlayer.z);
+        float pitch = std::asin(std::clamp(-toPlayer.y / (std::max)(1.0f, std::sqrt(distXZ * distXZ + toPlayer.y * toPlayer.y)), -1.0f, 1.0f));
+        rot.y += (yaw - rot.y) * 0.1f;
+        rot.x += (pitch - rot.x) * 0.1f;
+        ctx.object->SetRotation(rot);
+        if (ctx.position.z < ctx.cameraPos.z - 30.0f) ctx.isDead = true;
+    }
+    bool ShouldClampHeight() const override { return false; }
+};
+
+class FallbackBehavior final : public IEnemyBehavior {
+public:
+    void Update(Context& ctx) override {
+        ctx.position.z -= ctx.moveSpeed * 0.5f * ctx.gameSpeed;
+        if (ctx.object) {
+            Vector3 toPlayer = { ctx.playerWorldPos.x - ctx.position.x, ctx.playerWorldPos.y - ctx.position.y, ctx.playerWorldPos.z - ctx.position.z };
+            float yaw = std::atan2(toPlayer.x, toPlayer.z);
+            ctx.object->SetRotation({ 0.0f, yaw, 0.0f });
+        }
+        if (ctx.position.z < ctx.cameraPos.z - 30.0f) ctx.isDead = true;
+    }
+};
+
+std::unique_ptr<IEnemyBehavior> CreateEnemyBehavior(const std::string& behavior) {
+    if (behavior == "PATH") return std::make_unique<PathBehavior>();
+    if (behavior == "PATROL_H") return std::make_unique<PatrolHorizontalBehavior>();
+    if (behavior == "PATROL_V") return std::make_unique<PatrolVerticalBehavior>();
+    if (behavior == "HOVER_SHOOT" || behavior == "HOVER") return std::make_unique<HoverShootBehavior>();
+    if (behavior == "SIN_WAVE") return std::make_unique<SinWaveBehavior>();
+    if (behavior == "STRAIGHT") return std::make_unique<StraightBehavior>();
+    if (behavior == "TURRET" || behavior == "STAY") return std::make_unique<TurretBehavior>();
+    return std::make_unique<FallbackBehavior>();
+}
+
+} // namespace
+
+Enemy::~Enemy() = default;
 
 void Enemy::Initialize(Object3dCommon* object3dCommon, const LevelObjectData& nodeData, uint32_t skyboxTexIndex) {
     object3dCommon_ = object3dCommon;
@@ -180,129 +312,19 @@ void Enemy::Update(const Vector3& cameraPos, const Vector3& cameraForward, Playe
 
     activeTimer_ += gameSpeed;
 
-    // --- 行動パターンの実行 ---
-    if (behavior_ == "PATH") {
-        if (movePath_ && movePath_->IsValid()) {
-            pathProgress_ += (moveSpeed_ * 0.5f * gameSpeed) / movePath_->GetTotalLength();
-            if (pathProgress_ > 1.0f) {
-                isDead_ = true; // パスの終端で消滅
-            } else {
-                position_ = movePath_->GetPosition(pathProgress_);
-                Vector3 forward = movePath_->GetForward(pathProgress_);
-                float yaw = std::atan2(forward.x, forward.z);
-                float pitch = std::asin(std::clamp(-forward.y, -1.0f, 1.0f));
-                object_->SetRotation({pitch, yaw, 0.0f});
-            }
-        }
-    } else if (behavior_ == "PATROL_H") {
-        // ★左右往復（水平パトロール）: 初期位置を中心に左右へ行き来し、プレイヤーを正面に狙う
-        float amp = (moveAmplitude_ > 0.0f) ? moveAmplitude_ : 15.0f;
-        position_.x = spawnPos_.x + std::sin(activeTimer_ * moveSpeed_ * 0.04f) * amp;
-        position_.y = spawnPos_.y;
-        position_.z = spawnPos_.z;
-
-        Vector3 toPlayer = { playerWorldPos.x - position_.x, playerWorldPos.y - position_.y, playerWorldPos.z - position_.z };
-        float yaw = std::atan2(toPlayer.x, toPlayer.z);
-        float distXZ = std::sqrt(toPlayer.x * toPlayer.x + toPlayer.z * toPlayer.z);
-        float pitch = std::asin(std::clamp(-toPlayer.y / (std::max)(1.0f, std::sqrt(distXZ * distXZ + toPlayer.y * toPlayer.y)), -1.0f, 1.0f));
-        object_->SetRotation({ pitch, yaw, 0.0f });
-
-        // プレイヤー／カメラが大きく通り過ぎたら消滅
-        if (position_.z < cameraPos.z - 30.0f) {
-            isDead_ = true;
-        }
-    } else if (behavior_ == "PATROL_V") {
-        // ★上下往復（垂直パトロール）: 初期位置を中心に上下へ行き来し、プレイヤーを正面に狙う
-        float amp = (moveAmplitude_ > 0.0f) ? moveAmplitude_ : 8.0f;
-        position_.x = spawnPos_.x;
-        position_.y = spawnPos_.y + std::sin(activeTimer_ * moveSpeed_ * 0.04f) * amp;
-        position_.z = spawnPos_.z;
-
-        Vector3 toPlayer = { playerWorldPos.x - position_.x, playerWorldPos.y - position_.y, playerWorldPos.z - position_.z };
-        float yaw = std::atan2(toPlayer.x, toPlayer.z);
-        float distXZ = std::sqrt(toPlayer.x * toPlayer.x + toPlayer.z * toPlayer.z);
-        float pitch = std::asin(std::clamp(-toPlayer.y / (std::max)(1.0f, std::sqrt(distXZ * distXZ + toPlayer.y * toPlayer.y)), -1.0f, 1.0f));
-        object_->SetRotation({ pitch, yaw, 0.0f });
-
-        // プレイヤー／カメラが大きく通り過ぎたら消滅
-        if (position_.z < cameraPos.z - 30.0f) {
-            isDead_ = true;
-        }
-    } else if (behavior_ == "HOVER_SHOOT" || behavior_ == "HOVER") {
-        // ★滞空浮遊（ホバリング）: 初期位置付近に留まってフワフワ浮遊し、プレイヤーをじっくり狙撃
-        float amp = (moveAmplitude_ > 0.0f) ? moveAmplitude_ : 8.0f;
-        position_.x = spawnPos_.x + std::sin(activeTimer_ * 0.03f) * (amp * 0.3f);
-        position_.y = spawnPos_.y + std::sin(activeTimer_ * 0.06f) * (amp * 0.2f);
-        position_.z = spawnPos_.z;
-
-        Vector3 toPlayer = { playerWorldPos.x - position_.x, playerWorldPos.y - position_.y, playerWorldPos.z - position_.z };
-        float yaw = std::atan2(toPlayer.x, toPlayer.z);
-        float distXZ = std::sqrt(toPlayer.x * toPlayer.x + toPlayer.z * toPlayer.z);
-        float pitch = std::asin(std::clamp(-toPlayer.y / (std::max)(1.0f, std::sqrt(distXZ * distXZ + toPlayer.y * toPlayer.y)), -1.0f, 1.0f));
-        object_->SetRotation({ pitch, yaw, 0.0f });
-
-        // プレイヤー／カメラが通り過ぎたら消滅
-        if (position_.z < cameraPos.z - 30.0f) {
-            isDead_ = true;
-        }
-    } else if (behavior_ == "SIN_WAVE") {
-        // ★蛇行前進: サイン波で左右に揺れながら穏やかな速度で接近
-        float amp = (moveAmplitude_ > 0.0f) ? moveAmplitude_ : 12.0f;
-        position_.z -= moveSpeed_ * 0.5f * gameSpeed;
-        position_.x = spawnPos_.x + std::sin(activeTimer_ * 0.04f) * amp;
-
-        Vector3 toPlayer = { playerWorldPos.x - position_.x, playerWorldPos.y - position_.y, playerWorldPos.z - position_.z };
-        float yaw = std::atan2(toPlayer.x, toPlayer.z);
-        float distXZ = std::sqrt(toPlayer.x * toPlayer.x + toPlayer.z * toPlayer.z);
-        float pitch = std::asin(std::clamp(-toPlayer.y / (std::max)(1.0f, std::sqrt(distXZ * distXZ + toPlayer.y * toPlayer.y)), -1.0f, 1.0f));
-        object_->SetRotation({ pitch, yaw, 0.0f });
-
-        if (position_.z < cameraPos.z - 30.0f) {
-            isDead_ = true;
-        }
-    } else if (behavior_ == "STRAIGHT") {
-        // ★直進突撃: 適正速度で前進し、正面から撃ち落としやすく
-        position_.z -= moveSpeed_ * 0.7f * gameSpeed;
-        
-        Vector3 toPlayer = { playerWorldPos.x - position_.x, playerWorldPos.y - position_.y, playerWorldPos.z - position_.z };
-        float yaw = std::atan2(toPlayer.x, toPlayer.z);
-        float distXZ = std::sqrt(toPlayer.x * toPlayer.x + toPlayer.z * toPlayer.z);
-        float pitch = std::asin(std::clamp(-toPlayer.y / (std::max)(1.0f, std::sqrt(distXZ * distXZ + toPlayer.y * toPlayer.y)), -1.0f, 1.0f));
-        object_->SetRotation({ pitch, yaw, 0.0f });
-
-        // カメラの後ろを通り過ぎたら消滅
-        if (position_.z < cameraPos.z - 30.0f) {
-            isDead_ = true;
-        }
-    } else if (behavior_ == "TURRET" || behavior_ == "STAY") {
-        // 固定砲台（動かずプレイヤーを向く）
-        Vector3 rot = object_->GetRotation();
-        Vector3 toPlayer = { playerWorldPos.x - position_.x, playerWorldPos.y - position_.y, playerWorldPos.z - position_.z };
-        float yaw = std::atan2(toPlayer.x, toPlayer.z);
-        float distXZ = std::sqrt(toPlayer.x * toPlayer.x + toPlayer.z * toPlayer.z);
-        float pitch = std::asin(std::clamp(-toPlayer.y / (std::max)(1.0f, std::sqrt(distXZ * distXZ + toPlayer.y * toPlayer.y)), -1.0f, 1.0f));
-        rot.y += (yaw - rot.y) * 0.1f;
-        rot.x += (pitch - rot.x) * 0.1f;
-        object_->SetRotation(rot);
-
-        if (position_.z < cameraPos.z - 30.0f) {
-            isDead_ = true;
-        }
-    } else {
-        // フォールバック: プレイヤー方向へ移動しながらプレイヤーを向く
-        position_.z -= moveSpeed_ * 0.5f * gameSpeed;
-        Vector3 toPlayer = { playerWorldPos.x - position_.x, playerWorldPos.y - position_.y, playerWorldPos.z - position_.z };
-        float yaw = std::atan2(toPlayer.x, toPlayer.z);
-        object_->SetRotation({ 0.0f, yaw, 0.0f });
-        if (position_.z < cameraPos.z - 30.0f) {
-            isDead_ = true;
-        }
+    // --- 行動パターンの実行（ポリモーフィズム） ---
+    if (!behaviorStrategy_) {
+        behaviorStrategy_ = CreateEnemyBehavior(behavior_);
     }
-
-    // (isAutoAI_ のブロックは削除済)
+    IEnemyBehavior::Context behaviorCtx{
+        position_, spawnPos_, object_.get(), movePath_.get(), pathProgress_,
+        moveSpeed_, moveAmplitude_, activeTimer_, isDead_,
+        playerWorldPos, cameraPos, gameSpeed
+    };
+    behaviorStrategy_->Update(behaviorCtx);
 
     // 高さの制限（クランプ：明示的に制限が設定されている移動敵のみ適用）
-    if (hasHeightLimit_ && behavior_ != "TURRET" && behavior_ != "STAY") {
+    if (hasHeightLimit_ && behaviorStrategy_->ShouldClampHeight()) {
         if (position_.y > maxY_) position_.y = maxY_;
         if (position_.y < minY_) position_.y = minY_;
     }

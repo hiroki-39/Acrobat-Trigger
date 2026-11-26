@@ -52,10 +52,23 @@ public:
 
     float GetRemainingRatio() const;
     std::string GetAmmoText() const;
-    int GetAmmo() const { return currentWeapon_ ? currentWeapon_->GetAmmo() : 0; }
-    int GetMaxAmmo() const { return currentWeapon_ ? currentWeapon_->GetMaxAmmo() : 0; }
+    int GetAmmo() const {
+        if (const auto* ammoWeapon = dynamic_cast<const IAmmoWeapon*>(currentWeapon_)) {
+            return ammoWeapon->GetAmmo();
+        }
+        return 0;
+    }
+    int GetMaxAmmo() const {
+        if (const auto* ammoWeapon = dynamic_cast<const IAmmoWeapon*>(currentWeapon_)) {
+            return ammoWeapon->GetMaxAmmo();
+        }
+        return 0;
+    }
     std::vector<LockOnTargetHUD> GetLockOnTargets() const {
-        return currentWeapon_ ? currentWeapon_->GetLockOnTargets() : std::vector<LockOnTargetHUD>{};
+        if (const auto* lockOnWeapon = dynamic_cast<const ILockOnWeapon*>(currentWeapon_)) {
+            return lockOnWeapon->GetLockOnTargets();
+        }
+        return {};
     }
 
 private:

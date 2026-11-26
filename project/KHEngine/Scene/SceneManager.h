@@ -10,6 +10,21 @@
 #include "KHEngine/Graphics/Transition/TransitionRenderer.h"
 
 class Sprite;
+class SceneManager;
+
+/// <summary>
+/// シーン遷移（トランジション）の各フェーズを表すState基底クラス
+/// </summary>
+class ITransitionState
+{
+public:
+	virtual ~ITransitionState() = default;
+	virtual void Update(SceneManager& mgr, float dt) = 0;
+	virtual int GetStateIndex() const = 0;
+	virtual bool IsTransitioning() const { return true; }
+	virtual bool IsOpening() const { return false; }
+	virtual bool ShouldHoldFullBlack() const { return false; }
+};
 
 class SceneManager
 {
@@ -44,8 +59,10 @@ public:
 	/// <summary>
 	/// 遷移中かどうか
 	/// </summary>
-	bool IsTransitioning() const { return transitionState_ != TransitionState::None; }
-	TransitionState GetTransitionState() const { return transitionState_; }
+	bool IsTransitioning() const { return state_ && state_->IsTransitioning(); }
+	TransitionState GetTransitionState() const {
+		return state_ ? static_cast<TransitionState>(state_->GetStateIndex()) : TransitionState::None;
+	}
 	float GetTransitionProgress() const { return transitionProgress_; }
 
 	void SetSceneFactory(AbstractSceneFactory* factory) { sceneFactory_ = factory; }
@@ -80,7 +97,18 @@ public:
 	void DrawTransitionSettingsUI();
 
 private:
+	class NoneTransitionState;
+	class FadeOutTransitionState;
+	class FadeOutHoldTransitionState;
+	class LoadingTransitionState;
+	class FadeInWaitTransitionState;
+	class FadeInTransitionState;
+
 	void InitTransition();
+	void ChangeTransitionState(std::unique_ptr<ITransitionState> nextState);
+	void UpdateCurrentScene();
+	void PerformSceneLoad();
+	void ResetTransitionParamsAfterComplete();
 
 private:
 	std::unique_ptr<BaseScene> nextScene_ = nullptr;
@@ -89,10 +117,10 @@ private:
 
 	std::string currentSceneName_ = "TITLE";
 
-	// トランジション管理
+	// トランジション管理 (StatePattern)
 	TransitionType defaultTransitionType_ = TransitionType::Hexagon;
 	TransitionType transitionType_ = TransitionType::Hexagon; // デフォルト: ヘキサゴン
-	TransitionState transitionState_ = TransitionState::None;
+	std::unique_ptr<ITransitionState> state_;
 	std::string nextSceneName_;
 	float fadeDuration_ = 0.9f; // Hexagonのデフォルト仕様 (片道0.9秒、往復トータル1.8秒)
 	float fadeTimer_ = 0.0f;

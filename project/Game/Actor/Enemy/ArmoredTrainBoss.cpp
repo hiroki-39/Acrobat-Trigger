@@ -877,8 +877,8 @@ void ArmoredTrainBoss::ExecuteAttacks(Player* player, std::list<std::unique_ptr<
                             trainInertia.z
                         };
 
-                        auto missile = std::make_unique<EnemyBullet>();
-                        missile->InitializeMissile(object3dCommon_, spawnWorld, launchVel, player, missileFiredCount_);
+                        auto missile = std::make_unique<EnemyMissile>();
+                        missile->Initialize(object3dCommon_, spawnWorld, launchVel, player, missileFiredCount_);
                         enemyBullets.push_back(std::move(missile));
 
                         missileFiredCount_++;

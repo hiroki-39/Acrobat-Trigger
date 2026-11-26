@@ -14,6 +14,26 @@ public:
         data_->dissolveEdgeColor[2] = 0.0f;
     }
 
+    void ApplyToData(PostProcessData& data) const override {
+        data.enableDissolve = 1;
+    }
+
+    void SaveToJson(nlohmann::json& effectJson) const override {
+        effectJson["threshold"] = data_->dissolveThreshold;
+        effectJson["edgeWidth"] = data_->dissolveEdgeWidth;
+        effectJson["edgeColor"] = { data_->dissolveEdgeColor[0], data_->dissolveEdgeColor[1], data_->dissolveEdgeColor[2] };
+    }
+
+    void LoadFromJson(const nlohmann::json& effectJson) override {
+        if (effectJson.contains("threshold")) data_->dissolveThreshold = effectJson["threshold"];
+        if (effectJson.contains("edgeWidth")) data_->dissolveEdgeWidth = effectJson["edgeWidth"];
+        if (effectJson.contains("edgeColor")) {
+            data_->dissolveEdgeColor[0] = effectJson["edgeColor"][0];
+            data_->dissolveEdgeColor[1] = effectJson["edgeColor"][1];
+            data_->dissolveEdgeColor[2] = effectJson["edgeColor"][2];
+        }
+    }
+
     void DrawImGui() override {
 #ifdef USE_IMGUI
         ImGui::SliderFloat("Threshold", &data_->dissolveThreshold, 0.0f, 1.0f);

@@ -1,4 +1,4 @@
-#define NOMINMAX
+﻿#define NOMINMAX
 #include "BossBattleController.h"
 #include "Game/System/Rail.h"
 #include "Game/System/RailCameraController.h"
@@ -25,6 +25,92 @@
 #include <filesystem>
 #include <fstream>
 #include <cstdio>
+
+class BossBattleController::NotActiveState final : public BossBattleController::State
+{
+public:
+	void Update(BossBattleController& /*ctrl*/, float /*dt*/, const BossBattleContext& /*ctx*/) override {}
+	BossBattleController::Step GetStep() const override { return BossBattleController::Step::NOT_ACTIVE; }
+};
+
+class BossBattleController::FinishedState final : public BossBattleController::State
+{
+public:
+	void Update(BossBattleController& /*ctrl*/, float /*dt*/, const BossBattleContext& /*ctx*/) override {}
+	BossBattleController::Step GetStep() const override { return BossBattleController::Step::FINISHED; }
+};
+
+class BossBattleController::DefeatedSequenceState final : public BossBattleController::State
+{
+public:
+	void Update(BossBattleController& ctrl, float dt, const BossBattleContext& ctx) override;
+	BossBattleController::Step GetStep() const override { return BossBattleController::Step::DEFEATED_SEQUENCE; }
+};
+
+class BossBattleController::TimeOverAttackState final : public BossBattleController::State
+{
+public:
+	void Update(BossBattleController& ctrl, float dt, const BossBattleContext& ctx) override;
+	BossBattleController::Step GetStep() const override { return BossBattleController::Step::TIME_OVER_ATTACK; }
+};
+
+class BossBattleController::BattleState final : public BossBattleController::State
+{
+public:
+	void Update(BossBattleController& ctrl, float dt, const BossBattleContext& ctx) override;
+	BossBattleController::Step GetStep() const override { return BossBattleController::Step::BATTLE; }
+};
+
+class BossBattleController::WarningAlertState final : public BossBattleController::State
+{
+public:
+	void Update(BossBattleController& ctrl, float dt, const BossBattleContext& ctx) override;
+	BossBattleController::Step GetStep() const override { return BossBattleController::Step::WARNING_ALERT; }
+};
+
+BossBattleController::BossBattleController()
+{
+	state_ = std::make_unique<NotActiveState>();
+}
+
+BossBattleController::~BossBattleController() = default;
+
+void BossBattleController::ChangeState(std::unique_ptr<State> nextState)
+{
+	state_ = std::move(nextState);
+}
+
+void BossBattleController::SetDefeated()
+{
+	bossDefeatTimer_ = 0.0f;
+	ChangeState(std::make_unique<DefeatedSequenceState>());
+}
+
+void BossBattleController::ForceStartBattle()
+{
+	bossRemainingTime_ = bossTimeLimit_;
+	bossTimeOverTimer_ = 0.0f;
+	isBossTimeOverFired_ = false;
+	ChangeState(std::make_unique<BattleState>());
+}
+
+void BossBattleController::AbortTimeOverTest()
+{
+	bossRemainingTime_ = 60.0f;
+	bossTimeOverTimer_ = 0.0f;
+	isBossTimeOverFired_ = false;
+	isTimeOverDebugLoop_ = false;
+	ChangeState(std::make_unique<BattleState>());
+}
+
+void BossBattleController::ResetToNotActive()
+{
+	bossWarningTimer_ = 0.0f;
+	bossDefeatTimer_ = 0.0f;
+	bossDisplayedHpRate_ = 1.0f;
+	ChangeState(std::make_unique<NotActiveState>());
+}
+
 void BossBattleController::Initialize(Object3dCommon* object3dCommon, SpriteCommon* spriteCommon, uint32_t whiteTexIndex)
 {
 	bossTimeOverChargeSphere_ = std::make_unique<Object3d>();
@@ -118,7 +204,7 @@ void BossBattleController::Initialize(Object3dCommon* object3dCommon, SpriteComm
 
 void BossBattleController::Reset()
 {
-	bossBattleStep_ = Step::NOT_ACTIVE;
+	ChangeState(std::make_unique<NotActiveState>());
 	bossWarningTimer_ = 0.0f;
 	bossDefeatTimer_ = 0.0f;
 	bossDisplayedHpRate_ = 1.0f;
@@ -130,7 +216,7 @@ void BossBattleController::Reset()
 
 void BossBattleController::Draw3D()
 {
-	if (bossBattleStep_ == Step::TIME_OVER_ATTACK)
+	if (GetStep() == Step::TIME_OVER_ATTACK)
 	{
 		if (bossTimeOverChargeSphere_) bossTimeOverChargeSphere_->Draw();
 		if (bossTimeOverBeam_) bossTimeOverBeam_->Draw();
@@ -139,7 +225,8 @@ void BossBattleController::Draw3D()
 
 void BossBattleController::DrawHpSprites(float hpRate)
 {
-	if (bossBattleStep_ == Step::BATTLE || bossBattleStep_ == Step::DEFEATED_SEQUENCE)
+	Step step = GetStep();
+	if (step == Step::BATTLE || step == Step::DEFEATED_SEQUENCE)
 	{
 		float barW = 600.0f;
 		if (bossHpBarBgSprite_) { bossHpBarBgSprite_->Update(); bossHpBarBgSprite_->Draw(); }
@@ -162,7 +249,7 @@ void BossBattleController::TriggerTimeOverCannonSequence(bool nonLethal, const B
 {
 	isTimeOverDebugNonLethal_ = nonLethal;
 	(*ctx.isBossSpawned) = true;
-	bossBattleStep_ = Step::TIME_OVER_ATTACK;
+	ChangeState(std::make_unique<TimeOverAttackState>());
 	bossRemainingTime_ = 0.0f;
 	bossTimeOverTimer_ = 0.0f;
 	isBossTimeOverFired_ = false;
@@ -199,9 +286,9 @@ void BossBattleController::TriggerTimeOverCannonSequence(bool nonLethal, const B
 
 void BossBattleController::StartWarningSequence(const BossBattleContext& ctx)
 {
-	if (bossBattleStep_ != Step::NOT_ACTIVE) return;
+	if (GetStep() != Step::NOT_ACTIVE) return;
 
-	bossBattleStep_ = Step::WARNING_ALERT;
+	ChangeState(std::make_unique<WarningAlertState>());
 	bossWarningTimer_ = 0.0f;
 	bossWarningSirenTimer_ = 0.0f;
 	bossRemainingTime_ = bossTimeLimit_;
@@ -242,145 +329,142 @@ void BossBattleController::Update(float dt, const BossBattleContext& ctx)
 	if (ctx.bossFinisherSequence && ctx.bossFinisherSequence->IsActive())
 	{
 		(*ctx.isBossSpawned) = true;
-		if (bossBattleStep_ == Step::NOT_ACTIVE)
+		if (GetStep() == Step::NOT_ACTIVE)
 		{
-			bossBattleStep_ = Step::BATTLE;
+			ChangeState(std::make_unique<BattleState>());
 		}
 		ctx.bossFinisherSequence->Update(dt, ctx.armoredTrainBoss, ctx.player, (*ctx.gameSpeed));
 		if (ctx.bossFinisherSequence->IsCompleted())
 		{
-			bossBattleStep_ = Step::FINISHED;
+			ChangeState(std::make_unique<FinishedState>());
 			if (ctx.onClear) ctx.onClear();
 		}
 		return;
 	}
 
-	if (bossBattleStep_ == Step::NOT_ACTIVE) return;
-
-	if (bossBattleStep_ == Step::WARNING_ALERT)
+	if (state_)
 	{
-		bossWarningTimer_ += dt;
-		bossWarningSirenTimer_ += dt;
-
-		// 0.85秒ごとにサイレンSEを反復再生
-		if (bossWarningSirenTimer_ >= 0.85f && bossWarningTimer_ < kBossWarningDuration - 0.4f)
-		{
-			bossWarningSirenTimer_ = 0.0f;
-			SoundManager::GetInstance()->PlaySE("Alarm01.wav", 0.85f);
-		}
-
-		// 警告時間終了 -> ボス戦開始！
-		if (bossWarningTimer_ >= kBossWarningDuration)
-		{
-			bossBattleStep_ = Step::BATTLE;
-			(*ctx.isBossSpawned) = true;
-			bossRemainingTime_ = bossTimeLimit_;
-			bossTimeOverTimer_ = 0.0f;
-			isBossTimeOverFired_ = false;
-			if (ctx.railCameraController)
-			{
-				ctx.railCameraController->SetBaseSpeed(50.0f);
-			}
-			if (ctx.armoredTrainBoss)
-			{
-				auto services = EngineServices::GetInstance();
-				if (services && services->IsDemoMode() && ctx.player)
-				{
-					Vector3 pPos = ctx.player->GetWorldPosition();
-					Rail* targetRail = (ctx.bossRail && ctx.bossRail->IsValid()) ? ctx.bossRail : (!(*ctx.mainRails).empty() ? (*ctx.mainRails)[0].get() : nullptr);
-					if (targetRail && targetRail->IsValid())
-					{
-						float closestProg = targetRail->GetClosestProgress(pPos);
-						Vector3 railClosestPos = targetRail->GetPosition(closestProg);
-						float dx = railClosestPos.x - pPos.x;
-						float dy = railClosestPos.y - pPos.y;
-						float dz = railClosestPos.z - pPos.z;
-						float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-						// ctx.bossRail がプレイヤーから遠すぎる場合はメインレール上に配置して即座に視界へ出す
-						if (dist > 150.0f && !(*ctx.mainRails).empty() && (*ctx.mainRails)[0] && (*ctx.mainRails)[0]->IsValid())
-						{
-							targetRail = (*ctx.mainRails)[0].get();
-							closestProg = targetRail->GetClosestProgress(pPos);
-						}
-						float totalLen = (std::max)(1.0f, targetRail->GetTotalLength());
-						// 先頭車両がプレイヤーの前方約90m（最後尾が横〜後方）になる位置から一気に追い抜いて登場させる
-						float spawnProg = (std::clamp)(closestProg + (90.0f / totalLen), 0.0f, 0.95f);
-						ctx.armoredTrainBoss->SetRail(targetRail);
-						ctx.armoredTrainBoss->SetRailProgress(spawnProg);
-					}
-				}
-				ctx.armoredTrainBoss->SetActive(true);
-			}
-			SoundManager::GetInstance()->PlaySE("explosion.mp3", 0.9f);
-			(*ctx.cameraShakeTimer) = 0.5f;
-		}
+		state_->Update(*this, dt, ctx);
 	}
-	else if (bossBattleStep_ == Step::BATTLE)
+}
+
+void BossBattleController::WarningAlertState::Update(BossBattleController& ctrl, float dt, const BossBattleContext& ctx)
+{
+	ctrl.bossWarningTimer_ += dt;
+	ctrl.bossWarningSirenTimer_ += dt;
+
+	// 0.85秒ごとにサイレンSEを反復再生
+	if (ctrl.bossWarningSirenTimer_ >= 0.85f && ctrl.bossWarningTimer_ < kBossWarningDuration - 0.4f)
 	{
-		// 1. レール終端接近チェック（0.98f到達で進行不能となるのを完全防止）
-		bool reachRailEnd = false;
-		if (ctx.railCameraController && ctx.railCameraController->GetProgress() >= 0.98f)
+		ctrl.bossWarningSirenTimer_ = 0.0f;
+		SoundManager::GetInstance()->PlaySE("Alarm01.wav", 0.85f);
+	}
+
+	// 警告時間終了 -> ボス戦開始！
+	if (ctrl.bossWarningTimer_ >= kBossWarningDuration)
+	{
+		(*ctx.isBossSpawned) = true;
+		ctrl.bossRemainingTime_ = ctrl.bossTimeLimit_;
+		ctrl.bossTimeOverTimer_ = 0.0f;
+		ctrl.isBossTimeOverFired_ = false;
+		if (ctx.railCameraController)
 		{
-			reachRailEnd = true;
+			ctx.railCameraController->SetBaseSpeed(50.0f);
 		}
-
-		// 2. ボス戦制限時間のカウントダウン & ボス戦経過時間計測
-		bossRemainingTime_ -= dt;
-		(*ctx.bossElapsedTime) += dt;
-
-		// 残り10秒以下でのサイレン警告演出
-		if (bossRemainingTime_ <= 10.0f && bossRemainingTime_ > 0.0f)
-		{
-			static float lowTimeAlarmTimer = 0.0f;
-			lowTimeAlarmTimer += dt;
-			if (lowTimeAlarmTimer >= 1.0f)
-			{
-				lowTimeAlarmTimer = 0.0f;
-				SoundManager::GetInstance()->PlaySE("Alarm01.wav", 0.65f);
-			}
-		}
-
-		// 3. タイムオーバー判定（時間切れ または レール終端到達 -> 即死殲滅攻撃シークエンス発動！）
-		if (bossRemainingTime_ <= 0.0f || reachRailEnd)
-		{
-			bossRemainingTime_ = 0.0f;
-			bossBattleStep_ = Step::TIME_OVER_ATTACK;
-			bossTimeOverTimer_ = 0.0f;
-			isBossTimeOverFired_ = false;
-			(*ctx.cameraShakeTimer) = 0.8f;
-			SoundManager::GetInstance()->PlaySE("Alarm01.wav", 1.0f);
-		}
-
 		if (ctx.armoredTrainBoss)
 		{
-			// HPゲージのスムーズ遅延追従（格闘ゲーム風のダメージ可視化演出）
-			float currentHpRate = ctx.armoredTrainBoss->GetTotalHpRate();
-			if (bossDisplayedHpRate_ > currentHpRate)
+			auto services = EngineServices::GetInstance();
+			if (services && services->IsDemoMode() && ctx.player)
 			{
-				bossDisplayedHpRate_ -= 0.35f * dt;
-				if (bossDisplayedHpRate_ < currentHpRate)
+				Vector3 pPos = ctx.player->GetWorldPosition();
+				Rail* targetRail = (ctx.bossRail && ctx.bossRail->IsValid()) ? ctx.bossRail : (!(*ctx.mainRails).empty() ? (*ctx.mainRails)[0].get() : nullptr);
+				if (targetRail && targetRail->IsValid())
 				{
-					bossDisplayedHpRate_ = currentHpRate;
+					float closestProg = targetRail->GetClosestProgress(pPos);
+					Vector3 railClosestPos = targetRail->GetPosition(closestProg);
+					float dx = railClosestPos.x - pPos.x;
+					float dy = railClosestPos.y - pPos.y;
+					float dz = railClosestPos.z - pPos.z;
+					float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+					if (dist > 150.0f && !(*ctx.mainRails).empty() && (*ctx.mainRails)[0] && (*ctx.mainRails)[0]->IsValid())
+					{
+						targetRail = (*ctx.mainRails)[0].get();
+						closestProg = targetRail->GetClosestProgress(pPos);
+					}
+					float totalLen = (std::max)(1.0f, targetRail->GetTotalLength());
+					float spawnProg = (std::clamp)(closestProg + (90.0f / totalLen), 0.0f, 0.95f);
+					ctx.armoredTrainBoss->SetRail(targetRail);
+					ctx.armoredTrainBoss->SetRailProgress(spawnProg);
 				}
 			}
-			else
-			{
-				bossDisplayedHpRate_ = currentHpRate;
-			}
+			ctx.armoredTrainBoss->SetActive(true);
+		}
+		SoundManager::GetInstance()->PlaySE("explosion.mp3", 0.9f);
+		(*ctx.cameraShakeTimer) = 0.5f;
+		ctrl.ChangeState(std::make_unique<BattleState>());
+	}
+}
+void BossBattleController::BattleState::Update(BossBattleController& ctrl, float dt, const BossBattleContext& ctx)
+{
+	bool reachRailEnd = false;
+	if (ctx.railCameraController && ctx.railCameraController->GetProgress() >= 0.98f)
+	{
+		reachRailEnd = true;
+	}
 
-			// ★ 電脳処刑フィニッシャーへの自動移行（HP1耐え：総HP率が5%以下または撃破判定時）
-			if ((currentHpRate <= 0.05f || ctx.armoredTrainBoss->IsDefeated()) &&
-				ctx.bossFinisherSequence && !ctx.bossFinisherSequence->IsActive() && !ctx.bossFinisherSequence->IsCompleted())
-			{
-				(*ctx.bullets).clear();
-				(*ctx.missiles).clear();
-				ctx.bossFinisherSequence->StartSequence(ctx.armoredTrainBoss, ctx.player);
-			}
+	ctrl.bossRemainingTime_ -= dt;
+	(*ctx.bossElapsedTime) += dt;
+
+	if (ctrl.bossRemainingTime_ <= 10.0f && ctrl.bossRemainingTime_ > 0.0f)
+	{
+		static float lowTimeAlarmTimer = 0.0f;
+		lowTimeAlarmTimer += dt;
+		if (lowTimeAlarmTimer >= 1.0f)
+		{
+			lowTimeAlarmTimer = 0.0f;
+			SoundManager::GetInstance()->PlaySE("Alarm01.wav", 0.65f);
 		}
 	}
-	else if (bossBattleStep_ == Step::TIME_OVER_ATTACK)
+
+	if (ctx.armoredTrainBoss)
 	{
-		bossTimeOverTimer_ += dt;
+		float currentHpRate = ctx.armoredTrainBoss->GetTotalHpRate();
+		if (ctrl.bossDisplayedHpRate_ > currentHpRate)
+		{
+			ctrl.bossDisplayedHpRate_ -= 0.35f * dt;
+			if (ctrl.bossDisplayedHpRate_ < currentHpRate)
+			{
+				ctrl.bossDisplayedHpRate_ = currentHpRate;
+			}
+		}
+		else
+		{
+			ctrl.bossDisplayedHpRate_ = currentHpRate;
+		}
+
+		if ((currentHpRate <= 0.05f || ctx.armoredTrainBoss->IsDefeated()) &&
+			ctx.bossFinisherSequence && !ctx.bossFinisherSequence->IsActive() && !ctx.bossFinisherSequence->IsCompleted())
+		{
+			(*ctx.bullets).clear();
+			(*ctx.missiles).clear();
+			ctx.bossFinisherSequence->StartSequence(ctx.armoredTrainBoss, ctx.player);
+		}
+	}
+
+	if (ctrl.bossRemainingTime_ <= 0.0f || reachRailEnd)
+	{
+		ctrl.bossRemainingTime_ = 0.0f;
+		ctrl.bossTimeOverTimer_ = 0.0f;
+		ctrl.isBossTimeOverFired_ = false;
+		(*ctx.cameraShakeTimer) = 0.8f;
+		SoundManager::GetInstance()->PlaySE("Alarm01.wav", 1.0f);
+		ctrl.ChangeState(std::make_unique<TimeOverAttackState>());
+	}
+}
+
+void BossBattleController::TimeOverAttackState::Update(BossBattleController& ctrl, float dt, const BossBattleContext& ctx)
+	{
+		ctrl.bossTimeOverTimer_ += dt;
 
 		// プレイヤーの移動操作入力を完全遮断し拘束
 		if (ctx.player)
@@ -394,27 +478,27 @@ void BossBattleController::Update(float dt, const BossBattleContext& ctx)
 		// 1. 3両目の超巨大主砲をプレイヤーへ正確に旋回・照準
 		if (ctx.armoredTrainBoss)
 		{
-			ctx.armoredTrainBoss->UpdateTimeOverCannon(playerPos, bossTimeOverTimer_, dt);
+			ctx.armoredTrainBoss->UpdateTimeOverCannon(playerPos, ctrl.bossTimeOverTimer_, dt);
 		}
 
 		// 砲口（マズル）のワールド位置を取得
 		Vector3 muzzlePos = ctx.armoredTrainBoss ? ctx.armoredTrainBoss->GetBigCannonMuzzlePosition() : Vector3(0.0f, 15.0f, -60.0f);
 
 		// 2. 砲撃照準ロックオン演出（0.0s 〜 2.2s：タイムオーバーUI表示〜消滅中）
-		if (bossTimeOverTimer_ < 2.2f)
+		if (ctrl.bossTimeOverTimer_ < 2.2f)
 		{
-			float chargeRatio = std::clamp(bossTimeOverTimer_ / 2.2f, 0.0f, 1.0f);
+			float chargeRatio = std::clamp(ctrl.bossTimeOverTimer_ / 2.2f, 0.0f, 1.0f);
 			(*ctx.cameraShakeTimer) = 0.20f + 0.50f * chargeRatio;
 
 			// チャージ球の収縮・脈動は不要なため非表示に設定
-			if (bossTimeOverChargeSphere_)
+			if (ctrl.bossTimeOverChargeSphere_)
 			{
-				bossTimeOverChargeSphere_->SetScale({ 0.0f, 0.0f, 0.0f });
-				bossTimeOverChargeSphere_->Update();
+				ctrl.bossTimeOverChargeSphere_->SetScale({ 0.0f, 0.0f, 0.0f });
+				ctrl.bossTimeOverChargeSphere_->Update();
 			}
 
 			// 照準レーザー線（UI表示中、砲口からプレイヤーへ細いロックオンレーザーを照射）
-			if (bossTimeOverBeam_)
+			if (ctrl.bossTimeOverBeam_)
 			{
 				Vector3 aimVec = playerPos - muzzlePos;
 				float aimDist = aimVec.Length();
@@ -428,20 +512,20 @@ void BossBattleController::Update(float dt, const BossBattleContext& ctx)
 
 					// 発射直前（UI消滅時）に向けて徐々に赤熱化
 					float aimWidth = 0.45f + 0.25f * chargeRatio;
-					bossTimeOverBeam_->SetTranslate(aimCenter);
-					bossTimeOverBeam_->SetRotation({ rotX, rotY, 0.0f });
-					bossTimeOverBeam_->SetScale({ aimWidth, aimWidth, aimDist / 2.2f });
-					bossTimeOverBeam_->SetColor({ 1.0f, 0.2f * (1.0f - chargeRatio), 0.2f * (1.0f - chargeRatio), 0.85f });
-					bossTimeOverBeam_->Update();
+					ctrl.bossTimeOverBeam_->SetTranslate(aimCenter);
+					ctrl.bossTimeOverBeam_->SetRotation({ rotX, rotY, 0.0f });
+					ctrl.bossTimeOverBeam_->SetScale({ aimWidth, aimWidth, aimDist / 2.2f });
+					ctrl.bossTimeOverBeam_->SetColor({ 1.0f, 0.2f * (1.0f - chargeRatio), 0.2f * (1.0f - chargeRatio), 0.85f });
+					ctrl.bossTimeOverBeam_->Update();
 				}
 			}
 		}
 		else
 		{
 			// 3. タイムオーバーUIが完全に消滅してから極太主砲発射！（2.2s 〜 3.4s）
-			if (!isBossTimeOverFired_)
+			if (!ctrl.isBossTimeOverFired_)
 			{
-				isBossTimeOverFired_ = true;
+				ctrl.isBossTimeOverFired_ = true;
 				(*ctx.cameraShakeTimer) = 3.0f; // 画面超大激震
 
 				// プレイヤーHPをゼロにして死亡
@@ -468,33 +552,33 @@ void BossBattleController::Update(float dt, const BossBattleContext& ctx)
 				float xzLen = std::sqrt(beamDir.x * beamDir.x + beamDir.z * beamDir.z);
 				float rotX = std::atan2(-beamDir.y, (std::max)(xzLen, 0.001f));
 
-				float beamFade = std::clamp((3.4f - bossTimeOverTimer_) / 1.2f, 0.0f, 1.0f);
-				float beamThickness = (15.0f + 2.0f * std::sin(bossTimeOverTimer_ * 50.0f)) * beamFade; // 直径15m以上の超極太レールガン光柱
+				float beamFade = std::clamp((3.4f - ctrl.bossTimeOverTimer_) / 1.2f, 0.0f, 1.0f);
+				float beamThickness = (15.0f + 2.0f * std::sin(ctrl.bossTimeOverTimer_ * 50.0f)) * beamFade; // 直径15m以上の超極太レールガン光柱
 
-				if (bossTimeOverBeam_)
+				if (ctrl.bossTimeOverBeam_)
 				{
-					bossTimeOverBeam_->SetTranslate(beamCenter);
-					bossTimeOverBeam_->SetRotation({ rotX, rotY, 0.0f });
-					bossTimeOverBeam_->SetScale({ beamThickness, beamThickness, totalBeamLen / 2.2f });
-					bossTimeOverBeam_->SetColor({ 1.0f, 0.95f, 0.35f, beamFade });
-					bossTimeOverBeam_->Update();
+					ctrl.bossTimeOverBeam_->SetTranslate(beamCenter);
+					ctrl.bossTimeOverBeam_->SetRotation({ rotX, rotY, 0.0f });
+					ctrl.bossTimeOverBeam_->SetScale({ beamThickness, beamThickness, totalBeamLen / 2.2f });
+					ctrl.bossTimeOverBeam_->SetColor({ 1.0f, 0.95f, 0.35f, beamFade });
+					ctrl.bossTimeOverBeam_->Update();
 				}
 
 				// 発射時：プレイヤー位置に直撃している巨大エネルギー球頭
-				if (bossTimeOverChargeSphere_)
+				if (ctrl.bossTimeOverChargeSphere_)
 				{
 					float hitSphereSize = 18.0f * beamFade;
-					bossTimeOverChargeSphere_->SetTranslate(playerPos);
-					bossTimeOverChargeSphere_->SetScale({ hitSphereSize, hitSphereSize, hitSphereSize });
-					bossTimeOverChargeSphere_->SetColor({ 1.0f, 0.98f, 0.6f, beamFade });
-					bossTimeOverChargeSphere_->Update();
+					ctrl.bossTimeOverChargeSphere_->SetTranslate(playerPos);
+					ctrl.bossTimeOverChargeSphere_->SetScale({ hitSphereSize, hitSphereSize, hitSphereSize });
+					ctrl.bossTimeOverChargeSphere_->SetColor({ 1.0f, 0.98f, 0.6f, beamFade });
+					ctrl.bossTimeOverChargeSphere_->Update();
 				}
 			}
 
 			// プレイヤー位置で連続大爆発（ビーム照射中）
 			static float timeOverExpSubTimer = 0.0f;
 			timeOverExpSubTimer += dt;
-			if (timeOverExpSubTimer >= 0.08f && bossTimeOverTimer_ < 3.4f)
+			if (timeOverExpSubTimer >= 0.08f && ctrl.bossTimeOverTimer_ < 3.4f)
 			{
 				timeOverExpSubTimer = 0.0f;
 				Vector3 jitter = {
@@ -506,13 +590,13 @@ void BossBattleController::Update(float dt, const BossBattleContext& ctx)
 				(*ctx.explosionEffect).Play();
 			}
 		}
-		if (bossTimeOverTimer_ >= kBossTimeOverDuration)
+		if (ctrl.bossTimeOverTimer_ >= kBossTimeOverDuration)
 		{
-			if (isTimeOverDebugLoop_)
+			if (ctrl.isTimeOverDebugLoop_)
 			{
 				// ループデバッグ：再度最初から即座にリプレイ
-				bossTimeOverTimer_ = 0.0f;
-				isBossTimeOverFired_ = false;
+				ctrl.bossTimeOverTimer_ = 0.0f;
+				ctrl.isBossTimeOverFired_ = false;
 				(*ctx.cameraShakeTimer) = 0.8f;
 				if (ctx.player)
 				{
@@ -521,43 +605,44 @@ void BossBattleController::Update(float dt, const BossBattleContext& ctx)
 					ctx.player->SetEnableInput(false);
 				}
 			}
-			else if (isTimeOverDebugNonLethal_)
+			else if (ctrl.isTimeOverDebugNonLethal_)
 			{
 				// 非致死デバッグ：演出完了後、プレイヤーの操作を復帰させて通常戦闘へ戻す（何度でも再確認可能）
-				bossBattleStep_ = Step::BATTLE;
-				bossRemainingTime_ = 60.0f;
-				bossTimeOverTimer_ = 0.0f;
-				isBossTimeOverFired_ = false;
+				// 非致死デバッグ
+				ctrl.bossRemainingTime_ = 60.0f;
+				ctrl.bossTimeOverTimer_ = 0.0f;
+				ctrl.isBossTimeOverFired_ = false;
 				if (ctx.player)
 				{
 					ctx.player->SetDead(false);
 					ctx.player->SetHp(ctx.player->GetMaxHp());
 					ctx.player->SetEnableInput(true);
 				}
+				ctrl.ChangeState(std::make_unique<BattleState>());
 			}
 			else
 			{
-				bossBattleStep_ = Step::FINISHED;
 				if (ctx.player)
 				{
 					ctx.player->SetHp(0);
 				}
 				if (ctx.onGameOver)
 				{
-					if (ctx.onGameOver) ctx.onGameOver();
+					ctx.onGameOver();
 				}
+				ctrl.ChangeState(std::make_unique<FinishedState>());
 			}
 		}
 	}
-	else if (bossBattleStep_ == Step::DEFEATED_SEQUENCE)
+void BossBattleController::DefeatedSequenceState::Update(BossBattleController& ctrl, float dt, const BossBattleContext& ctx)
 	{
-		// 繝懊せ謦・ｴ譎ゅ・繝ｬ繝ｼ繝ｫ騾溷ｺｦ繧帝壼ｸｸ騾溷ｺｦ縺ｸ蠕ｩ蟶ｰ
+	// ボス撃破時のレール速度復帰
 		if (ctx.railCameraController)
 		{
 			ctx.railCameraController->SetBaseSpeed(50.0f);
 		}
 
-		bossDefeatTimer_ += dt;
+	ctrl.bossDefeatTimer_ += dt;
 
 		// 連続大爆発演出（0.12秒ごと）
 		static float defeatExplodeSubTimer = 0.0f;
@@ -584,14 +669,13 @@ void BossBattleController::Update(float dt, const BossBattleContext& ctx)
 		}
 
 		// 撃破演出終了 -> ゲームクリア画面へ移行！
-		if (bossDefeatTimer_ >= kBossDefeatDuration)
+		if (ctrl.bossDefeatTimer_ >= kBossDefeatDuration)
 		{
-			bossBattleStep_ = Step::FINISHED;
 			(*ctx.isBossSpawned) = false;
 			if (ctx.onClear) ctx.onClear();
+			ctrl.ChangeState(std::make_unique<FinishedState>());
 		}
 	}
-}
 
 
 void BossBattleController::DrawUI(bool isStartCutscene, bool isGameOver, bool isClear, const BossBattleContext& ctx)
@@ -629,7 +713,7 @@ void BossBattleController::DrawUI(bool isStartCutscene, bool isGameOver, bool is
 	if (!fontMplus) fontMplus = ImGui::GetFont();
 
 	// 1. WARNING警告演出（赤フラッシュ、警告ストライプ、点滅テキスト）
-	if (bossBattleStep_ == Step::WARNING_ALERT)
+	if (GetStep() == Step::WARNING_ALERT)
 	{
 		float warnT = bossWarningTimer_;
 		float pulse = 0.5f + 0.5f * std::sin(warnT * 12.0f); // 高速明滅パルス
@@ -746,7 +830,7 @@ void BossBattleController::DrawUI(bool isStartCutscene, bool isGameOver, bool is
 	}
 
 	// 2. ボスHPゲージUI（戦闘中・撃破演出中）
-	if ((bossBattleStep_ == Step::BATTLE || bossBattleStep_ == Step::TIME_OVER_ATTACK || bossBattleStep_ == Step::DEFEATED_SEQUENCE) && ctx.armoredTrainBoss)
+	if ((GetStep() == Step::BATTLE || GetStep() == Step::TIME_OVER_ATTACK || GetStep() == Step::DEFEATED_SEQUENCE) && ctx.armoredTrainBoss)
 	{
 		float barW = 600.0f * scale;
 		float barH = 18.0f * scale;
@@ -868,7 +952,7 @@ void BossBattleController::DrawUI(bool isStartCutscene, bool isGameOver, bool is
 		}
 
 		// 4. ボス戦制限時間タイマー表示（戦闘中・タイムオーバー時：JSON設定連動 ＆ 超大型ハイビジビリティ表示！）
-		if (bossBattleStep_ == Step::BATTLE || bossBattleStep_ == Step::TIME_OVER_ATTACK)
+		if (GetStep() == Step::BATTLE || GetStep() == Step::TIME_OVER_ATTACK)
 		{
 			const UITextItem* timerItem = textMgr ? textMgr->GetTextItem("BossTimer", "GAMEPLAY") : nullptr;
 
@@ -937,7 +1021,7 @@ void BossBattleController::DrawUI(bool isStartCutscene, bool isGameOver, bool is
 		}
 
 		// 6. 撃破演出中の「TARGET DESTROYED」テキスト表示（JSON設定連動）
-		if (bossBattleStep_ == Step::DEFEATED_SEQUENCE)
+		if (GetStep() == Step::DEFEATED_SEQUENCE)
 		{
 			const UITextItem* defItem = textMgr ? textMgr->GetTextItem("BossDefeatedTitle", "GAMEPLAY") : nullptr;
 			const char* clearText = (defItem && !defItem->text.empty()) ? defItem->text.c_str() : "TARGET DESTROYED";

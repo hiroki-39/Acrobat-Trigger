@@ -10,6 +10,10 @@ public:
         // 初期化処理があればここに
     }
 
+    void ApplyToData(PostProcessData& data) const override {
+        data.enableGrayscale = 1;
+    }
+
     void DrawImGui() override {
 #ifdef USE_IMGUI
         // グレースケールは特に調整パラメータがないのでテキストのみ

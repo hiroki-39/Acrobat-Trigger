@@ -51,6 +51,16 @@ public:
         CLEAR
     };
 
+    class PhaseState {
+    public:
+        virtual ~PhaseState() = default;
+        virtual void Update(GamePlayScene& scene, float dt, float& unscaledGameSpeed) = 0;
+        virtual GamePhase GetPhase() const = 0;
+    };
+
+    GamePlayScene();
+    ~GamePlayScene() override;
+
     void Initialize() override;
     void Update() override;
     void Draw() override;
@@ -114,8 +124,8 @@ public:
     float GetTerrainMaterializeProgress() const { return terrainMaterializeProgress_; }
     void SetTerrainMaterializeProgress(float p) { terrainMaterializeProgress_ = p; }
     float GetLastLoadTimeMs() const { return lastLoadTimeMs_; }
-    GamePhase GetGamePhase() const { return gamePhase_; }
-    void SetGamePhase(GamePhase phase) { gamePhase_ = phase; }
+    GamePhase GetGamePhase() const { return phaseState_ ? phaseState_->GetPhase() : GamePhase::START_CUTSCENE; }
+    void SetGamePhase(GamePhase phase);
     void ResetCameraState(const Vector3& rot = {0.0f, 0.0f, 0.0f}, float yaw = 0.0f, float bank = 0.0f)
     {
         currentCameraRot_ = rot;
@@ -230,7 +240,12 @@ private:
     float stageElapsedTime_ = 0.0f;
     float bossElapsedTime_ = 0.0f;
 
-    GamePhase gamePhase_ = GamePhase::START_CUTSCENE;
+    class StartCutscenePhaseState;
+    class PlayingPhaseState;
+    class GameOverPhaseState;
+    class ClearPhaseState;
+    void ChangePhaseState(std::unique_ptr<PhaseState> nextState);
+    std::unique_ptr<PhaseState> phaseState_;
 
     // スタート演出（仮想空間地形形成 ＆ 自機復元マテリアライズ）用進行度（ゲームオーバー演出でも共有）
     float terrainMaterializeProgress_ = 1.0f;

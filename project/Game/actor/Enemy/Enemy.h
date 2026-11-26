@@ -10,8 +10,38 @@
 class Player;
 class EnemyBullet;
 
+/// <summary>
+/// 敵の行動パターンを多態化するための基底インターフェース
+/// </summary>
+class IEnemyBehavior {
+public:
+    struct Context {
+        Vector3& position;
+        const Vector3& spawnPos;
+        Object3d* object;
+        Rail* movePath;
+        float& pathProgress;
+        float moveSpeed;
+        float moveAmplitude;
+        float activeTimer;
+        bool& isDead;
+        const Vector3& playerWorldPos;
+        const Vector3& cameraPos;
+        float gameSpeed;
+    };
+
+    virtual ~IEnemyBehavior() = default;
+    virtual void Update(Context& ctx) = 0;
+    virtual bool ShouldClampHeight() const { return true; }
+
+protected:
+    static void LookAtPlayer(Object3d* object, const Vector3& pos, const Vector3& target);
+};
+
 class Enemy {
 public:
+    Enemy() = default;
+    ~Enemy();
     void Initialize(Object3dCommon* object3dCommon, const LevelObjectData& nodeData, uint32_t skyboxTexIndex);
     void Update(const Vector3& cameraPos, const Vector3& cameraForward, Player* player, std::list<std::unique_ptr<EnemyBullet>>& enemyBullets, float gameSpeed = 1.0f);
     void Update3DObjectOnly() {
@@ -85,6 +115,7 @@ private:
 
     // 拡張AI用プロパティ（新規追加分）
     std::string behavior_ = "STRAIGHT"; // 行動パターン
+    std::unique_ptr<IEnemyBehavior> behaviorStrategy_;
     float moveSpeed_ = 1.0f;            // 移動速度
     float moveAmplitude_ = 10.0f;       // 移動幅（往復の振幅）
     float shootInterval_ = 180.0f;      // 射撃間隔

@@ -16,12 +16,153 @@
 #include <cmath>
 #include <algorithm>
 
+struct BossFinisherSequence::UIDrawContext {
+    ImDrawList* drawList = nullptr;
+    ImFont* fontMplus = nullptr;
+    ImVec2 viewPos = { 0.0f, 0.0f };
+    float screenW = 1280.0f;
+    float screenH = 720.0f;
+    float uniformScale = 1.0f;
+};
+
+class BossFinisherSequence::InactivePhaseState : public BossFinisherSequence::IPhaseState {
+public:
+    Phase GetPhase() const override { return Phase::INACTIVE; }
+    void Update(BossFinisherSequence&, float, ArmoredTrainBoss*, Player*, float&) override {}
+};
+
+class BossFinisherSequence::Phase1TransitionState : public BossFinisherSequence::IPhaseState {
+public:
+    Phase GetPhase() const override { return Phase::PHASE_1_TRANSITION; }
+    void Update(BossFinisherSequence& seq, float dt, ArmoredTrainBoss* boss, Player* player, float&) override {
+        seq.UpdatePhase1Transition(dt, boss, player);
+    }
+    void Draw3D(BossFinisherSequence& seq) override {
+        if (!seq.isRedMemoryAbsorbed_ && seq.redMemoryObj_) {
+            seq.redMemoryObj_->Draw();
+        }
+    }
+};
+
+class BossFinisherSequence::Phase2AutoLockOnState : public BossFinisherSequence::IPhaseState {
+public:
+    Phase GetPhase() const override { return Phase::PHASE_2_AUTO_LOCKON; }
+    void Update(BossFinisherSequence& seq, float dt, ArmoredTrainBoss* boss, Player* player, float&) override {
+        seq.UpdatePhase2AutoLockOn(dt, boss, player);
+    }
+    void Draw3D(BossFinisherSequence& seq) override {
+        for (const auto& cp : seq.chargeParticles_) {
+            if (cp.obj) cp.obj->Draw();
+        }
+    }
+    void DrawUI(BossFinisherSequence& seq, const UIDrawContext& uiCtx) override {
+        if (seq.spaceHoldTimer_ > 0.0f) {
+            seq.DrawChargeBarUI(uiCtx);
+            seq.DrawLockOnReticleUI(uiCtx);
+        }
+    }
+};
+
+class BossFinisherSequence::Phase3FinisherFireState : public BossFinisherSequence::IPhaseState {
+public:
+    Phase GetPhase() const override { return Phase::PHASE_3_FINISHER_FIRE; }
+    void Update(BossFinisherSequence& seq, float dt, ArmoredTrainBoss* boss, Player* player, float& inOutGameSpeed) override {
+        seq.UpdatePhase3FinisherFire(dt, boss, player, inOutGameSpeed);
+    }
+    void Draw3D(BossFinisherSequence& seq) override {
+        for (const auto& m : seq.missiles_) {
+            if (!m.isHit && m.obj) {
+                m.obj->Draw();
+            }
+        }
+        for (const auto& ring : seq.shockwaveRings_) {
+            if (ring) ring->Draw();
+        }
+    }
+    void DrawUI(BossFinisherSequence& seq, const UIDrawContext& uiCtx) override {
+        float barProgress = std::clamp(seq.phaseTimer_ / 0.25f, 0.0f, 1.0f);
+        seq.DrawLetterboxUI(uiCtx, barProgress);
+    }
+};
+
+class BossFinisherSequence::Phase4DataCollapseState : public BossFinisherSequence::IPhaseState {
+public:
+    Phase GetPhase() const override { return Phase::PHASE_4_DATA_COLLAPSE; }
+    void Update(BossFinisherSequence& seq, float dt, ArmoredTrainBoss* boss, Player* player, float&) override {
+        seq.UpdatePhase4DataCollapse(dt, boss, player);
+    }
+    void Draw3D(BossFinisherSequence& seq) override {
+        seq.DrawCollapseAndTrailParticles3D();
+    }
+    void DrawUI(BossFinisherSequence& seq, const UIDrawContext& uiCtx) override {
+        seq.DrawLetterboxUI(uiCtx, 1.0f);
+    }
+};
+
+class BossFinisherSequence::Phase5MissionAccomplishedState : public BossFinisherSequence::IPhaseState {
+public:
+    Phase GetPhase() const override { return Phase::PHASE_5_MISSION_ACCOMPLISHED; }
+    void Update(BossFinisherSequence& seq, float dt, ArmoredTrainBoss* boss, Player* player, float&) override {
+        seq.UpdatePhase5MissionAccomplished(dt, boss, player);
+    }
+    void Draw3D(BossFinisherSequence& seq) override {
+        seq.DrawCollapseAndTrailParticles3D();
+    }
+    void DrawUI(BossFinisherSequence& seq, const UIDrawContext& uiCtx) override {
+        seq.DrawLetterboxUI(uiCtx, 1.0f);
+    }
+};
+
+class BossFinisherSequence::CompletedPhaseState : public BossFinisherSequence::IPhaseState {
+public:
+    Phase GetPhase() const override { return Phase::COMPLETED; }
+    void Update(BossFinisherSequence&, float, ArmoredTrainBoss*, Player*, float&) override {}
+};
+
+BossFinisherSequence::BossFinisherSequence()
+    : phaseState_(std::make_unique<InactivePhaseState>()) {
+}
+
+BossFinisherSequence::~BossFinisherSequence() = default;
+
+void BossFinisherSequence::ChangePhaseState(std::unique_ptr<IPhaseState> nextState) {
+    if (nextState) {
+        phaseState_ = std::move(nextState);
+    }
+}
+
+void BossFinisherSequence::SetPhase(Phase phase) {
+    switch (phase) {
+    case Phase::INACTIVE:
+        ChangePhaseState(std::make_unique<InactivePhaseState>());
+        break;
+    case Phase::PHASE_1_TRANSITION:
+        ChangePhaseState(std::make_unique<Phase1TransitionState>());
+        break;
+    case Phase::PHASE_2_AUTO_LOCKON:
+        ChangePhaseState(std::make_unique<Phase2AutoLockOnState>());
+        break;
+    case Phase::PHASE_3_FINISHER_FIRE:
+        ChangePhaseState(std::make_unique<Phase3FinisherFireState>());
+        break;
+    case Phase::PHASE_4_DATA_COLLAPSE:
+        ChangePhaseState(std::make_unique<Phase4DataCollapseState>());
+        break;
+    case Phase::PHASE_5_MISSION_ACCOMPLISHED:
+        ChangePhaseState(std::make_unique<Phase5MissionAccomplishedState>());
+        break;
+    case Phase::COMPLETED:
+        ChangePhaseState(std::make_unique<CompletedPhaseState>());
+        break;
+    }
+}
+
 void BossFinisherSequence::Initialize(Object3dCommon* object3dCommon, Camera* camera, RailCameraController* railCam, uint32_t skyboxTexIndex) {
     object3dCommon_ = object3dCommon;
     camera_ = camera;
     railCam_ = railCam;
     skyboxTexIndex_ = skyboxTexIndex;
-    phase_ = Phase::INACTIVE;
+    SetPhase(Phase::INACTIVE);
     phaseTimer_ = 0.0f;
 
     if (camera_) {
@@ -69,7 +210,7 @@ void BossFinisherSequence::StartSequence(ArmoredTrainBoss* boss, Player* player)
     player->SetEnableInput(true);
     player->SetCutsceneOverride(false);
 
-    phase_ = Phase::PHASE_1_TRANSITION;
+    SetPhase(Phase::PHASE_1_TRANSITION);
     phaseTimer_ = 0.0f;
     spaceHoldTimer_ = 0.0f;
     isAllCoresLocked_ = false;
@@ -111,7 +252,7 @@ void BossFinisherSequence::StartSequence(ArmoredTrainBoss* boss, Player* player)
 }
 
 void BossFinisherSequence::Reset(Player* player) {
-    phase_ = Phase::INACTIVE;
+    SetPhase(Phase::INACTIVE);
     phaseTimer_ = 0.0f;
     spaceHoldTimer_ = 0.0f;
     isAllCoresLocked_ = false;
@@ -193,7 +334,8 @@ void BossFinisherSequence::SetupCores(ArmoredTrainBoss* boss) {
 }
 
 void BossFinisherSequence::Update(float dt, ArmoredTrainBoss* boss, Player* player, float& inOutGameSpeed) {
-    if (phase_ == Phase::INACTIVE || phase_ == Phase::COMPLETED) return;
+    Phase currentPhase = GetCurrentPhase();
+    if (currentPhase == Phase::INACTIVE || currentPhase == Phase::COMPLETED) return;
     boss_ = boss;
     player_ = player;
 
@@ -208,25 +350,9 @@ void BossFinisherSequence::Update(float dt, ArmoredTrainBoss* boss, Player* play
         }
     }
 
-    // 各フェーズの更新
-    switch (phase_) {
-    case Phase::PHASE_1_TRANSITION:
-        UpdatePhase1Transition(dt, boss, player);
-        break;
-    case Phase::PHASE_2_AUTO_LOCKON:
-        UpdatePhase2AutoLockOn(dt, boss, player);
-        break;
-    case Phase::PHASE_3_FINISHER_FIRE:
-        UpdatePhase3FinisherFire(dt, boss, player, inOutGameSpeed);
-        break;
-    case Phase::PHASE_4_DATA_COLLAPSE:
-        UpdatePhase4DataCollapse(dt, boss, player);
-        break;
-    case Phase::PHASE_5_MISSION_ACCOMPLISHED:
-        UpdatePhase5MissionAccomplished(dt, boss, player);
-        break;
-    default:
-        break;
+    // 各フェーズの更新（StatePatternによる委譲）
+    if (phaseState_) {
+        phaseState_->Update(*this, dt, boss, player, inOutGameSpeed);
     }
 }
 
@@ -279,7 +405,7 @@ void BossFinisherSequence::UpdatePhase1Transition(float dt, ArmoredTrainBoss* bo
 
     // 飛来吸収完了後、フェーズ②（自動ロックオン）へ遷移
     if (phaseTimer_ >= 1.4f) {
-        phase_ = Phase::PHASE_2_AUTO_LOCKON;
+        ChangePhaseState(std::make_unique<Phase2AutoLockOnState>());
         phaseTimer_ = 0.0f;
         spaceHoldTimer_ = 0.0f;
     }
@@ -370,7 +496,7 @@ void BossFinisherSequence::UpdatePhase2AutoLockOn(float dt, ArmoredTrainBoss* bo
         if (isAllCoresLocked_) {
             // 全ロック完了後に離した -> 処刑ミサイル一斉射出！
             FireExecutionMissiles(player);
-            phase_ = Phase::PHASE_3_FINISHER_FIRE;
+            ChangePhaseState(std::make_unique<Phase3FinisherFireState>());
             phaseTimer_ = 0.0f;
             return;
         } else {
@@ -619,7 +745,7 @@ void BossFinisherSequence::UpdatePhase3FinisherFire(float dt, ArmoredTrainBoss* 
 
     // フェーズ1（発射アングル 0.0s〜1.8s）完了後、フェーズ2（1車両目の正面が見える位置へカメラを引く）へ移行
     if (allMissilesHit && phaseTimer_ >= 1.80f) {
-        phase_ = Phase::PHASE_4_DATA_COLLAPSE;
+        ChangePhaseState(std::make_unique<Phase4DataCollapseState>());
         phaseTimer_ = 0.0f;
         if (railCam_) {
             cinematicCamStartPos_ = railCam_->GetCinematicLocalPos();
@@ -863,7 +989,7 @@ void BossFinisherSequence::UpdatePhase4DataCollapse(float dt, ArmoredTrainBoss* 
 
         // 0.8秒経過で、ボス実体を残したままフェーズ3（ボスの真上通過＆2車両目後半通過後に消滅開始）へ移行
         if (phaseTimer_ >= 0.80f) {
-            phase_ = Phase::PHASE_5_MISSION_ACCOMPLISHED;
+            ChangePhaseState(std::make_unique<Phase5MissionAccomplishedState>());
             phaseTimer_ = 0.0f;
             hasDissolveStarted_ = false;
             dissolveTimer_ = 0.0f;
@@ -1088,7 +1214,7 @@ void BossFinisherSequence::UpdatePhase5MissionAccomplished(float dt, ArmoredTrai
     // 4.80秒経過で完了（COMPLETED）し、任務完了UI展開フェーズへ引き渡す
     if (phaseTimer_ >= 4.80f) {
         if (boss) boss->SetActive(false);
-        phase_ = Phase::COMPLETED;
+        ChangePhaseState(std::make_unique<CompletedPhaseState>());
         phaseTimer_ = 0.0f;
         if (player) {
             player->SetExecutionMode(false);
@@ -1102,8 +1228,21 @@ void BossFinisherSequence::UpdatePhase5MissionAccomplished(float dt, ArmoredTrai
     }
 }
 
+void BossFinisherSequence::DrawCollapseAndTrailParticles3D() {
+    for (const auto& s : collapseShards_) {
+        if (s.obj && s.color.w > 0.01f) {
+            s.obj->Draw();
+        }
+    }
+    for (const auto& wp : wingTrailParticles_) {
+        if (wp.obj && wp.color.w > 0.01f) {
+            wp.obj->Draw();
+        }
+    }
+}
+
 void BossFinisherSequence::Draw3D() {
-    if (phase_ == Phase::INACTIVE) return;
+    if (!phaseState_ || GetCurrentPhase() == Phase::INACTIVE) return;
 
     if (object3dCommon_) {
         object3dCommon_->SetCommonDrawSetting();
@@ -1113,48 +1252,11 @@ void BossFinisherSequence::Draw3D() {
     }
 
     // ※弱点コアの3D球体（黄色い弾に見えるオブジェクト）は邪魔にならないよう非表示にし、2Dの電脳ヘキサゴン照準で表現
-
-    // 赤データメモリ
-    if (phase_ == Phase::PHASE_1_TRANSITION && !isRedMemoryAbsorbed_ && redMemoryObj_) {
-        redMemoryObj_->Draw();
-    }
-
-    // チャージ粒子
-    if (phase_ == Phase::PHASE_2_AUTO_LOCKON) {
-        for (const auto& cp : chargeParticles_) {
-            if (cp.obj) cp.obj->Draw();
-        }
-    }
-
-    // 処刑ミサイル
-    if (phase_ == Phase::PHASE_3_FINISHER_FIRE) {
-        for (const auto& m : missiles_) {
-            if (!m.isHit && m.obj) {
-                m.obj->Draw();
-            }
-        }
-        for (const auto& ring : shockwaveRings_) {
-            if (ring) ring->Draw();
-        }
-    }
-
-    // 崩壊シャード・翼端螺旋トレイル粒子
-    if (phase_ == Phase::PHASE_4_DATA_COLLAPSE || phase_ == Phase::PHASE_5_MISSION_ACCOMPLISHED) {
-        for (const auto& s : collapseShards_) {
-            if (s.obj && s.color.w > 0.01f) {
-                s.obj->Draw();
-            }
-        }
-        for (const auto& wp : wingTrailParticles_) {
-            if (wp.obj && wp.color.w > 0.01f) {
-                wp.obj->Draw();
-            }
-        }
-    }
+    phaseState_->Draw3D(*this);
 }
 
 void BossFinisherSequence::DrawUI() {
-    if (phase_ == Phase::INACTIVE) return;
+    if (!phaseState_ || GetCurrentPhase() == Phase::INACTIVE) return;
 
     ImGuiViewport* viewport = ImGui::GetMainViewport();
     if (!viewport) return;
@@ -1182,216 +1284,18 @@ void BossFinisherSequence::DrawUI() {
     drawList->PushClipRect(viewPos, ImVec2(viewPos.x + screenW, viewPos.y + screenH), true);
 
     auto imguiManager = EngineServices::GetInstance()->GetImGuiManager();
-    auto textMgr = UITextManager::GetInstance();
+    ImFont* fontMplus = imguiManager ? imguiManager->GetFont(ImGuiManager::FontType::Japanese_MPLUS) : ImGui::GetFont();
+    if (!fontMplus) fontMplus = ImGui::GetFont();
 
-    // -------------------------------------------------------------
-    // 処刑ミサイル発射後（フェーズ③〜⑤）：シネマティック・ムービー上下黒帯（レターボックス）
-    // -------------------------------------------------------------
-    if (IsMoviePhase() && phase_ != Phase::COMPLETED) {
-        float barHeightMax = screenH * 0.12f;
-        float barProgress = 1.0f;
-        if (phase_ == Phase::PHASE_3_FINISHER_FIRE) {
-            barProgress = std::clamp(phaseTimer_ / 0.25f, 0.0f, 1.0f);
-        }
-        float barHeight = barHeightMax * barProgress;
-        if (barHeight > 0.5f) {
-            drawList->AddRectFilled(viewPos, ImVec2(viewPos.x + screenW, viewPos.y + barHeight), IM_COL32(0, 0, 0, 255));
-            drawList->AddRectFilled(ImVec2(viewPos.x, viewPos.y + screenH - barHeight), ImVec2(viewPos.x + screenW, viewPos.y + screenH), IM_COL32(0, 0, 0, 255));
-        }
-    }
+    UIDrawContext uiCtx;
+    uiCtx.drawList = drawList;
+    uiCtx.fontMplus = fontMplus;
+    uiCtx.viewPos = viewPos;
+    uiCtx.screenW = screenW;
+    uiCtx.screenH = screenH;
+    uiCtx.uniformScale = uniformScale;
 
-    // -------------------------------------------------------------
-    // ① チャージ進行バー（スペース押下時のみ表示）
-    // ※警告・ガイドテキストは UITextManager (エディタ一括管理) により描画
-    // -------------------------------------------------------------
-    if (phase_ == Phase::PHASE_2_AUTO_LOCKON && spaceHoldTimer_ > 0.0f) {
-        float barW = 320.0f * uniformScale;
-        float barH = 12.0f * uniformScale;
-        float barX = viewPos.x + screenW * 0.5f - barW * 0.5f;
-        float barY = viewPos.y + screenH * 0.72f;
-        float holdRate = std::clamp(spaceHoldTimer_ / kRequiredHoldTime_, 0.0f, 1.0f);
-        float pulse = 0.7f + 0.3f * std::sin(phaseTimer_ * 14.0f);
-
-        ImU32 fillCol = isAllCoresLocked_ ?
-            IM_COL32(255, (int)(215 + 40 * pulse), 40, 255) :
-            IM_COL32(255, 40, 160, 240);
-
-        drawList->AddRectFilled(ImVec2(barX, barY), ImVec2(barX + barW, barY + barH), IM_COL32(10, 20, 30, 200), 3.0f);
-        drawList->AddRectFilled(ImVec2(barX, barY), ImVec2(barX + barW * holdRate, barY + barH), fillCol, 3.0f);
-        drawList->AddRect(ImVec2(barX, barY), ImVec2(barX + barW, barY + barH), isAllCoresLocked_ ? fillCol : IM_COL32(0, 220, 255, 220), 3.0f, 0, 1.5f);
-    }
-
-    // 【電脳仮想空間・処刑オーバーライド照準】スペース押下でヘキサゴンが順次展開・収束（発射前のみ表示）
-    // -------------------------------------------------------------
-    if (phase_ == Phase::PHASE_2_AUTO_LOCKON && camera_) {
-        const Matrix4x4& vMat = camera_->GetViewMatrix();
-        const Matrix4x4& pMat = camera_->GetProjectionMatrix();
-        Matrix4x4 vpMat = vMat * pMat;
-
-        auto WorldToScreen = [&](const Vector3& world) -> std::pair<bool, ImVec2> {
-            float w = world.x * vpMat.m[0][3] + world.y * vpMat.m[1][3] + world.z * vpMat.m[2][3] + vpMat.m[3][3];
-            if (w < 0.1f) return { false, ImVec2(0, 0) };
-            float x = (world.x * vpMat.m[0][0] + world.y * vpMat.m[1][0] + world.z * vpMat.m[2][0] + vpMat.m[3][0]) / w;
-            float y = (world.x * vpMat.m[0][1] + world.y * vpMat.m[1][1] + world.z * vpMat.m[2][1] + vpMat.m[3][1]) / w;
-            float sx = viewPos.x + (x * 0.5f + 0.5f) * screenW;
-            float sy = viewPos.y + (-y * 0.5f + 0.5f) * screenH;
-            return { true, ImVec2(sx, sy) };
-        };
-
-        // 自機のスクリーン座標（処刑データストリーム射出起点）
-        ImVec2 ptShip(viewPos.x + screenW * 0.5f, viewPos.y + screenH * 0.80f);
-        if (player_) {
-            auto [okShip, ptS] = WorldToScreen(player_->GetWorldPosition());
-            if (okShip) ptShip = ptS;
-        }
-
-        ImFont* fontMplus = imguiManager ? imguiManager->GetFont(ImGuiManager::FontType::Japanese_MPLUS) : ImGui::GetFont();
-        if (!fontMplus) fontMplus = ImGui::GetFont();
-
-        // 処刑専用：電脳ヘキサゴン（六角形ハニカムゲート）描画ラムダ
-        auto DrawCyberHexagon = [&](const ImVec2& c, float radius, float rotAngle, ImU32 col, float thick) {
-            ImVec2 pts[6];
-            for (int k = 0; k < 6; ++k) {
-                float a = rotAngle + k * (3.14159265f / 3.0f);
-                pts[k] = ImVec2(c.x + std::cos(a) * radius, c.y + std::sin(a) * radius);
-            }
-            for (int k = 0; k < 6; ++k) {
-                drawList->AddLine(pts[k], pts[(k + 1) % 6], col, thick);
-            }
-        };
-
-        // 処刑専用：外側サイバーノッチリング（反時計回りダイヤル目盛り）描画ラムダ
-        auto DrawDialNotches = [&](const ImVec2& c, float radius, float rotAngle, ImU32 col, float notchLen, float thick) {
-            drawList->AddCircle(c, radius, col, 24, thick * 0.75f);
-            for (int k = 0; k < 8; ++k) {
-                float a = rotAngle + k * (3.14159265f / 4.0f);
-                float cosA = std::cos(a);
-                float sinA = std::sin(a);
-                ImVec2 p0(c.x + cosA * (radius - notchLen), c.y + sinA * (radius - notchLen));
-                ImVec2 p1(c.x + cosA * (radius + notchLen), c.y + sinA * (radius + notchLen));
-                drawList->AddLine(p0, p1, col, thick);
-            }
-        };
-
-        // スペースを押している時、または発射後のみ処刑照準を表示（押す前は非表示）
-        if (spaceHoldTimer_ > 0.0f || phase_ == Phase::PHASE_3_FINISHER_FIRE) {
-            for (size_t i = 0; i < cores_.size(); ++i) {
-                const auto& core = cores_[i];
-                auto [okCore, ptCore] = WorldToScreen(core.worldPos);
-                if (!okCore) continue;
-
-                // まだこのコアのロックオン順番が回っていない時は非表示
-                if (core.lockProgress <= 0.001f && !core.isLocked) {
-                    continue;
-                }
-
-                float baseSize = 32.0f * uniformScale;
-                float strokeW = 2.4f * uniformScale;
-                float shadowStroke = strokeW + 2.5f;
-                float pulse = 0.6f + 0.4f * std::sin(phaseTimer_ * 14.0f + i * 1.2f);
-                ImU32 shadowCol = IM_COL32(0, 0, 0, 230);
-
-                if (core.isLocked) {
-                    // =========================================================
-                    // 【処刑確定ロックオン】：電脳ヘキサゴン＋多重ダイヤル＋データストリーム
-                    // =========================================================
-                    float snap = core.snapTimer; // 1.0 -> 0.0
-                    float currentSize = baseSize * (1.0f + 0.5f * snap);
-
-                    ImU32 hexCol = isAllCoresLocked_ ?
-                        IM_COL32(255, (int)(215 + 40 * pulse), 40, 255) : // 全完了時は金熱発光
-                        IM_COL32(255, 30, 140, 255);                      // ネオンマゼンタ
-                    ImU32 dialCol = isAllCoresLocked_ ?
-                        IM_COL32(255, 235, 100, 240) :
-                        IM_COL32(0, 230, 255, (int)(200 + 55 * pulse));  // サイバーシアン
-
-                    // 1. 内側：時計回りにゆっくり旋回する電脳ヘキサゴン
-                    float hexAngle = phaseTimer_ * 2.0f + i * 0.5f;
-                    DrawCyberHexagon(ptCore, currentSize, hexAngle, shadowCol, shadowStroke);
-                    DrawCyberHexagon(ptCore, currentSize, hexAngle, hexCol, strokeW);
-
-                    // 3. 外側：反時計回りに回転するダイヤル目盛りリング
-                    float dialAngle = -phaseTimer_ * 1.5f;
-                    DrawDialNotches(ptCore, currentSize * 1.35f, dialAngle, shadowCol, 4.0f * uniformScale, shadowStroke);
-                    DrawDialNotches(ptCore, currentSize * 1.35f, dialAngle, dialCol, 4.0f * uniformScale, strokeW * 0.85f);
-
-                    // 4. 中心：高エネルギー処刑クロスヘア（十文字）
-                    float crossSize = 7.0f * uniformScale;
-                    drawList->AddLine(ImVec2(ptCore.x - crossSize, ptCore.y), ImVec2(ptCore.x + crossSize, ptCore.y), shadowCol, strokeW + 2.0f);
-                    drawList->AddLine(ImVec2(ptCore.x, ptCore.y - crossSize), ImVec2(ptCore.x, ptCore.y + crossSize), shadowCol, strokeW + 2.0f);
-                    drawList->AddLine(ImVec2(ptCore.x - crossSize, ptCore.y), ImVec2(ptCore.x + crossSize, ptCore.y), hexCol, strokeW);
-                    drawList->AddLine(ImVec2(ptCore.x, ptCore.y - crossSize), ImVec2(ptCore.x, ptCore.y + crossSize), hexCol, strokeW);
-                    drawList->AddCircleFilled(ptCore, 2.5f * uniformScale, IM_COL32(255, 255, 255, 255));
-
-                    // 5. 上部サイバーラベル「EXECUTE LOCK [01]」
-                    char label[48];
-                    snprintf(label, sizeof(label), "[ EXECUTE LOCK #%d ]", static_cast<int>(i + 1));
-                    float lFontSize = 13.5f * uniformScale;
-                    ImVec2 lSize = fontMplus->CalcTextSizeA(lFontSize, FLT_MAX, -1.0f, label);
-                    ImVec2 lPos(ptCore.x - lSize.x * 0.5f, ptCore.y - currentSize * 1.35f - lSize.y - 6.0f * uniformScale);
-
-                    // ラベル背景の半透明ミニプレート
-                    drawList->AddRectFilled(
-                        ImVec2(lPos.x - 4.0f * uniformScale, lPos.y - 1.0f),
-                        ImVec2(lPos.x + lSize.x + 4.0f * uniformScale, lPos.y + lSize.y + 1.0f),
-                        IM_COL32(10, 2, 20, 190), 2.0f
-                    );
-                    drawList->AddText(fontMplus, lFontSize, ImVec2(lPos.x + 1.2f, lPos.y + 1.2f), shadowCol, label);
-                    drawList->AddText(fontMplus, lFontSize, lPos, hexCol, label);
-                } else {
-                    // =========================================================
-                    // 【処刑オーバーライド接近中】：自機からヘキサゴンが旋回飛来
-                    // =========================================================
-                    float t = core.lockProgress; // 0.0 -> 1.0
-                    float s = t * t * (3.0f - 2.0f * t); // スムーズステップ
-
-                    // 自機から扇状に飛び出す中間制御点（ベジェ曲線）
-                    float sweepSpread = 180.0f * uniformScale;
-                    ImVec2 ptMid(
-                        (ptShip.x + ptCore.x) * 0.5f + std::sin(core.startAngle) * sweepSpread,
-                        (ptShip.y + ptCore.y) * 0.5f - std::abs(std::cos(core.startAngle)) * sweepSpread * 0.65f
-                    );
-
-                    // 2次ベジェ曲線上の現在位置
-                    float invS = 1.0f - s;
-                    ImVec2 curPt(
-                        invS * invS * ptShip.x + 2.0f * invS * s * ptMid.x + s * s * ptCore.x,
-                        invS * invS * ptShip.y + 2.0f * invS * s * ptMid.y + s * s * ptCore.y
-                    );
-
-                    // ヘキサゴンサイズ：最初は巨大、コアに近づくにつれて急激に収束
-                    float currentSize = baseSize * (2.8f - 1.8f * s);
-                    float hexAngle = s * 6.28f + phaseTimer_ * 3.0f; // 飛来中に激しくスピン
-
-                    // 軌跡ライン（自機からファンネル現在位置へ流れるネオン深紅・マゼンタライン）
-                    ImU32 trailCol = IM_COL32(255, 40, (int)(80 + 175 * s), (int)(200 * (1.0f - s * 0.4f)));
-                    drawList->AddLine(ptShip, curPt, IM_COL32(0, 0, 0, 80), 2.5f * uniformScale);
-                    drawList->AddLine(ptShip, curPt, trailCol, 1.4f * uniformScale);
-
-                    // 目標コアへのロック誘導破線
-                    drawList->AddLine(curPt, ptCore, IM_COL32(0, 240, 255, (int)(150 * s)), 1.2f * uniformScale);
-
-                    // 接近中の回転ヘキサゴン
-                    DrawCyberHexagon(curPt, currentSize, hexAngle, shadowCol, shadowStroke);
-                    DrawCyberHexagon(curPt, currentSize, hexAngle, trailCol, strokeW);
-
-                    // 外側収束リング
-                    float ringR = baseSize * (3.6f - 2.5f * s);
-                    drawList->AddCircle(curPt, ringR, IM_COL32(0, 240, 255, (int)(220 * s)), 20, 1.6f * uniformScale);
-
-                    // カウントアップするオーバーライド率（例: OVERRIDE 65%）
-                    char seekText[48];
-                    int percent = static_cast<int>(s * 99.0f);
-                    snprintf(seekText, sizeof(seekText), "OVERRIDE %d%%", percent);
-                    float sFontSize = 12.0f * uniformScale;
-                    ImVec2 sTextSize = fontMplus->CalcTextSizeA(sFontSize, FLT_MAX, -1.0f, seekText);
-                    ImVec2 sPos(curPt.x - sTextSize.x * 0.5f, curPt.y - currentSize - sTextSize.y - 4.0f * uniformScale);
-                    drawList->AddText(fontMplus, sFontSize, ImVec2(sPos.x + 1.0f, sPos.y + 1.0f), shadowCol, seekText);
-                    drawList->AddText(fontMplus, sFontSize, sPos, trailCol, seekText);
-                }
-            }
-        }
-    }
+    phaseState_->DrawUI(*this, uiCtx);
 
     // -------------------------------------------------------------
     // ⑤ 任務完了表示は UITextManager (エディタ一括管理) によりビューポート内に描画されます
@@ -1400,10 +1304,210 @@ void BossFinisherSequence::DrawUI() {
     drawList->PopClipRect();
 }
 
+void BossFinisherSequence::DrawLetterboxUI(const UIDrawContext& uiCtx, float barProgress) const {
+    float barHeightMax = uiCtx.screenH * 0.12f;
+    float barHeight = barHeightMax * barProgress;
+    if (barHeight > 0.5f) {
+        uiCtx.drawList->AddRectFilled(uiCtx.viewPos, ImVec2(uiCtx.viewPos.x + uiCtx.screenW, uiCtx.viewPos.y + barHeight), IM_COL32(0, 0, 0, 255));
+        uiCtx.drawList->AddRectFilled(ImVec2(uiCtx.viewPos.x, uiCtx.viewPos.y + uiCtx.screenH - barHeight), ImVec2(uiCtx.viewPos.x + uiCtx.screenW, uiCtx.viewPos.y + uiCtx.screenH), IM_COL32(0, 0, 0, 255));
+    }
+}
+
+void BossFinisherSequence::DrawChargeBarUI(const UIDrawContext& uiCtx) const {
+    float barW = 320.0f * uiCtx.uniformScale;
+    float barH = 12.0f * uiCtx.uniformScale;
+    float barX = uiCtx.viewPos.x + uiCtx.screenW * 0.5f - barW * 0.5f;
+    float barY = uiCtx.viewPos.y + uiCtx.screenH * 0.72f;
+    float holdRate = std::clamp(spaceHoldTimer_ / kRequiredHoldTime_, 0.0f, 1.0f);
+    float pulse = 0.7f + 0.3f * std::sin(phaseTimer_ * 14.0f);
+
+    ImU32 fillCol = isAllCoresLocked_ ?
+        IM_COL32(255, (int)(215 + 40 * pulse), 40, 255) :
+        IM_COL32(255, 40, 160, 240);
+
+    uiCtx.drawList->AddRectFilled(ImVec2(barX, barY), ImVec2(barX + barW, barY + barH), IM_COL32(10, 20, 30, 200), 3.0f);
+    uiCtx.drawList->AddRectFilled(ImVec2(barX, barY), ImVec2(barX + barW * holdRate, barY + barH), fillCol, 3.0f);
+    uiCtx.drawList->AddRect(ImVec2(barX, barY), ImVec2(barX + barW, barY + barH), isAllCoresLocked_ ? fillCol : IM_COL32(0, 220, 255, 220), 3.0f, 0, 1.5f);
+}
+
+void BossFinisherSequence::DrawLockOnReticleUI(const UIDrawContext& uiCtx) const {
+    if (!camera_) return;
+
+    ImDrawList* drawList = uiCtx.drawList;
+    ImFont* fontMplus = uiCtx.fontMplus;
+    const ImVec2& viewPos = uiCtx.viewPos;
+    float screenW = uiCtx.screenW;
+    float screenH = uiCtx.screenH;
+    float uniformScale = uiCtx.uniformScale;
+
+    const Matrix4x4& vMat = camera_->GetViewMatrix();
+    const Matrix4x4& pMat = camera_->GetProjectionMatrix();
+    Matrix4x4 vpMat = vMat * pMat;
+
+    auto WorldToScreen = [&](const Vector3& world) -> std::pair<bool, ImVec2> {
+        float w = world.x * vpMat.m[0][3] + world.y * vpMat.m[1][3] + world.z * vpMat.m[2][3] + vpMat.m[3][3];
+        if (w < 0.1f) return { false, ImVec2(0, 0) };
+        float x = (world.x * vpMat.m[0][0] + world.y * vpMat.m[1][0] + world.z * vpMat.m[2][0] + vpMat.m[3][0]) / w;
+        float y = (world.x * vpMat.m[0][1] + world.y * vpMat.m[1][1] + world.z * vpMat.m[2][1] + vpMat.m[3][1]) / w;
+        float sx = viewPos.x + (x * 0.5f + 0.5f) * screenW;
+        float sy = viewPos.y + (-y * 0.5f + 0.5f) * screenH;
+        return { true, ImVec2(sx, sy) };
+    };
+
+    // 自機のスクリーン座標（処刑データストリーム射出起点）
+    ImVec2 ptShip(viewPos.x + screenW * 0.5f, viewPos.y + screenH * 0.80f);
+    if (player_) {
+        auto [okShip, ptS] = WorldToScreen(player_->GetWorldPosition());
+        if (okShip) ptShip = ptS;
+    }
+
+    // 処刑専用：電脳ヘキサゴン（六角形ハニカムゲート）描画ラムダ
+    auto DrawCyberHexagon = [&](const ImVec2& c, float radius, float rotAngle, ImU32 col, float thick) {
+        ImVec2 pts[6];
+        for (int k = 0; k < 6; ++k) {
+            float a = rotAngle + k * (3.14159265f / 3.0f);
+            pts[k] = ImVec2(c.x + std::cos(a) * radius, c.y + std::sin(a) * radius);
+        }
+        for (int k = 0; k < 6; ++k) {
+            drawList->AddLine(pts[k], pts[(k + 1) % 6], col, thick);
+        }
+    };
+
+    // 処刑専用：外側サイバーノッチリング（反時計回りダイヤル目盛り）描画ラムダ
+    auto DrawDialNotches = [&](const ImVec2& c, float radius, float rotAngle, ImU32 col, float notchLen, float thick) {
+        drawList->AddCircle(c, radius, col, 24, thick * 0.75f);
+        for (int k = 0; k < 8; ++k) {
+            float a = rotAngle + k * (3.14159265f / 4.0f);
+            float cosA = std::cos(a);
+            float sinA = std::sin(a);
+            ImVec2 p0(c.x + cosA * (radius - notchLen), c.y + sinA * (radius - notchLen));
+            ImVec2 p1(c.x + cosA * (radius + notchLen), c.y + sinA * (radius + notchLen));
+            drawList->AddLine(p0, p1, col, thick);
+        }
+    };
+
+    for (size_t i = 0; i < cores_.size(); ++i) {
+        const auto& core = cores_[i];
+        auto [okCore, ptCore] = WorldToScreen(core.worldPos);
+        if (!okCore) continue;
+
+        // まだこのコアのロックオン順番が回っていない時は非表示
+        if (core.lockProgress <= 0.001f && !core.isLocked) {
+            continue;
+        }
+
+        float baseSize = 32.0f * uniformScale;
+        float strokeW = 2.4f * uniformScale;
+        float shadowStroke = strokeW + 2.5f;
+        float pulse = 0.6f + 0.4f * std::sin(phaseTimer_ * 14.0f + i * 1.2f);
+        ImU32 shadowCol = IM_COL32(0, 0, 0, 230);
+
+        if (core.isLocked) {
+            // =========================================================
+            // 【処刑確定ロックオン】：電脳ヘキサゴン＋多重ダイヤル＋データストリーム
+            // =========================================================
+            float snap = core.snapTimer; // 1.0 -> 0.0
+            float currentSize = baseSize * (1.0f + 0.5f * snap);
+
+            ImU32 hexCol = isAllCoresLocked_ ?
+                IM_COL32(255, (int)(215 + 40 * pulse), 40, 255) : // 全完了時は金熱発光
+                IM_COL32(255, 30, 140, 255);                      // ネオンマゼンタ
+            ImU32 dialCol = isAllCoresLocked_ ?
+                IM_COL32(255, 235, 100, 240) :
+                IM_COL32(0, 230, 255, (int)(200 + 55 * pulse));  // サイバーシアン
+
+            // 1. 内側：時計回りにゆっくり旋回する電脳ヘキサゴン
+            float hexAngle = phaseTimer_ * 2.0f + i * 0.5f;
+            DrawCyberHexagon(ptCore, currentSize, hexAngle, shadowCol, shadowStroke);
+            DrawCyberHexagon(ptCore, currentSize, hexAngle, hexCol, strokeW);
+
+            // 3. 外側：反時計回りに回転するダイヤル目盛りリング
+            float dialAngle = -phaseTimer_ * 1.5f;
+            DrawDialNotches(ptCore, currentSize * 1.35f, dialAngle, shadowCol, 4.0f * uniformScale, shadowStroke);
+            DrawDialNotches(ptCore, currentSize * 1.35f, dialAngle, dialCol, 4.0f * uniformScale, strokeW * 0.85f);
+
+            // 4. 中心：高エネルギー処刑クロスヘア（十文字）
+            float crossSize = 7.0f * uniformScale;
+            drawList->AddLine(ImVec2(ptCore.x - crossSize, ptCore.y), ImVec2(ptCore.x + crossSize, ptCore.y), shadowCol, strokeW + 2.0f);
+            drawList->AddLine(ImVec2(ptCore.x, ptCore.y - crossSize), ImVec2(ptCore.x, ptCore.y + crossSize), shadowCol, strokeW + 2.0f);
+            drawList->AddLine(ImVec2(ptCore.x - crossSize, ptCore.y), ImVec2(ptCore.x + crossSize, ptCore.y), hexCol, strokeW);
+            drawList->AddLine(ImVec2(ptCore.x, ptCore.y - crossSize), ImVec2(ptCore.x, ptCore.y + crossSize), hexCol, strokeW);
+            drawList->AddCircleFilled(ptCore, 2.5f * uniformScale, IM_COL32(255, 255, 255, 255));
+
+            // 5. 上部サイバーラベル「EXECUTE LOCK [01]」
+            char label[48];
+            snprintf(label, sizeof(label), "[ EXECUTE LOCK #%d ]", static_cast<int>(i + 1));
+            float lFontSize = 13.5f * uniformScale;
+            ImVec2 lSize = fontMplus->CalcTextSizeA(lFontSize, FLT_MAX, -1.0f, label);
+            ImVec2 lPos(ptCore.x - lSize.x * 0.5f, ptCore.y - currentSize * 1.35f - lSize.y - 6.0f * uniformScale);
+
+            // ラベル背景の半透明ミニプレート
+            drawList->AddRectFilled(
+                ImVec2(lPos.x - 4.0f * uniformScale, lPos.y - 1.0f),
+                ImVec2(lPos.x + lSize.x + 4.0f * uniformScale, lPos.y + lSize.y + 1.0f),
+                IM_COL32(10, 2, 20, 190), 2.0f
+            );
+            drawList->AddText(fontMplus, lFontSize, ImVec2(lPos.x + 1.2f, lPos.y + 1.2f), shadowCol, label);
+            drawList->AddText(fontMplus, lFontSize, lPos, hexCol, label);
+        } else {
+            // =========================================================
+            // 【処刑オーバーライド接近中】：自機からヘキサゴンが旋回飛来
+            // =========================================================
+            float t = core.lockProgress; // 0.0 -> 1.0
+            float s = t * t * (3.0f - 2.0f * t); // スムーズステップ
+
+            // 自機から扇状に飛び出す中間制御点（ベジェ曲線）
+            float sweepSpread = 180.0f * uniformScale;
+            ImVec2 ptMid(
+                (ptShip.x + ptCore.x) * 0.5f + std::sin(core.startAngle) * sweepSpread,
+                (ptShip.y + ptCore.y) * 0.5f - std::abs(std::cos(core.startAngle)) * sweepSpread * 0.65f
+            );
+
+            // 2次ベジェ曲線上の現在位置
+            float invS = 1.0f - s;
+            ImVec2 curPt(
+                invS * invS * ptShip.x + 2.0f * invS * s * ptMid.x + s * s * ptCore.x,
+                invS * invS * ptShip.y + 2.0f * invS * s * ptMid.y + s * s * ptCore.y
+            );
+
+            // ヘキサゴンサイズ：最初は巨大、コアに近づくにつれて急激に収束
+            float currentSize = baseSize * (2.8f - 1.8f * s);
+            float hexAngle = s * 6.28f + phaseTimer_ * 3.0f; // 飛来中に激しくスピン
+
+            // 軌跡ライン（自機からファンネル現在位置へ流れるネオン深紅・マゼンタライン）
+            ImU32 trailCol = IM_COL32(255, 40, (int)(80 + 175 * s), (int)(200 * (1.0f - s * 0.4f)));
+            drawList->AddLine(ptShip, curPt, IM_COL32(0, 0, 0, 80), 2.5f * uniformScale);
+            drawList->AddLine(ptShip, curPt, trailCol, 1.4f * uniformScale);
+
+            // 目標コアへのロック誘導破線
+            drawList->AddLine(curPt, ptCore, IM_COL32(0, 240, 255, (int)(150 * s)), 1.2f * uniformScale);
+
+            // 接近中の回転ヘキサゴン
+            DrawCyberHexagon(curPt, currentSize, hexAngle, shadowCol, shadowStroke);
+            DrawCyberHexagon(curPt, currentSize, hexAngle, trailCol, strokeW);
+
+            // 外側収束リング
+            float ringR = baseSize * (3.6f - 2.5f * s);
+            drawList->AddCircle(curPt, ringR, IM_COL32(0, 240, 255, (int)(220 * s)), 20, 1.6f * uniformScale);
+
+            // カウントアップするオーバーライド率（例: OVERRIDE 65%）
+            char seekText[48];
+            int percent = static_cast<int>(s * 99.0f);
+            snprintf(seekText, sizeof(seekText), "OVERRIDE %d%%", percent);
+            float sFontSize = 12.0f * uniformScale;
+            ImVec2 sTextSize = fontMplus->CalcTextSizeA(sFontSize, FLT_MAX, -1.0f, seekText);
+            ImVec2 sPos(curPt.x - sTextSize.x * 0.5f, curPt.y - currentSize - sTextSize.y - 4.0f * uniformScale);
+            drawList->AddText(fontMplus, sFontSize, ImVec2(sPos.x + 1.0f, sPos.y + 1.0f), shadowCol, seekText);
+            drawList->AddText(fontMplus, sFontSize, sPos, trailCol, seekText);
+        }
+    }
+}
+
 void BossFinisherSequence::DrawImGuiDebug(ArmoredTrainBoss* boss, Player* player) {
     if (ImGui::CollapsingHeader("クリア演出・電脳フィニッシャー", ImGuiTreeNodeFlags_DefaultOpen)) {
+        Phase currentPhase = GetCurrentPhase();
         const char* phaseName = "通常戦闘中";
-        switch (phase_) {
+        switch (currentPhase) {
         case Phase::PHASE_1_TRANSITION: phaseName = "① 処刑移行（赤メモリ飛来・換装）"; break;
         case Phase::PHASE_2_AUTO_LOCKON: phaseName = "② 自動ロックオン・チャージ待機中"; break;
         case Phase::PHASE_3_FINISHER_FIRE: phaseName = "③ 処刑ミサイル一斉発射"; break;
@@ -1412,7 +1516,7 @@ void BossFinisherSequence::DrawImGuiDebug(ArmoredTrainBoss* boss, Player* player
         case Phase::COMPLETED: phaseName = "シークエンス完了（リザルトへ）"; break;
         default: break;
         }
-        ImGui::Text("現在のフェーズ: %d (%s)", static_cast<int>(phase_), phaseName);
+        ImGui::Text("現在のフェーズ: %d (%s)", static_cast<int>(currentPhase), phaseName);
 
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.85f, 0.15f, 0.35f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 0.25f, 0.50f, 1.0f));
@@ -1435,14 +1539,14 @@ void BossFinisherSequence::DrawImGuiDebug(ArmoredTrainBoss* boss, Player* player
 
         ImGui::Separator();
         ImGui::Text("各フェーズ直接ジャンプ:");
-        if (ImGui::Button("① 処刑移行")) { phase_ = Phase::PHASE_1_TRANSITION; phaseTimer_ = 0.0f; }
+        if (ImGui::Button("① 処刑移行")) { SetPhase(Phase::PHASE_1_TRANSITION); phaseTimer_ = 0.0f; }
         ImGui::SameLine();
-        if (ImGui::Button("② ロックオン")) { phase_ = Phase::PHASE_2_AUTO_LOCKON; phaseTimer_ = 0.0f; spaceHoldTimer_ = 0.0f; }
+        if (ImGui::Button("② ロックオン")) { SetPhase(Phase::PHASE_2_AUTO_LOCKON); phaseTimer_ = 0.0f; spaceHoldTimer_ = 0.0f; }
         ImGui::SameLine();
-        if (ImGui::Button("③ ミサイル発射")) { FireExecutionMissiles(player); phase_ = Phase::PHASE_3_FINISHER_FIRE; phaseTimer_ = 0.0f; }
+        if (ImGui::Button("③ ミサイル発射")) { FireExecutionMissiles(player); SetPhase(Phase::PHASE_3_FINISHER_FIRE); phaseTimer_ = 0.0f; }
         ImGui::SameLine();
-        if (ImGui::Button("④ データ崩壊")) { phase_ = Phase::PHASE_4_DATA_COLLAPSE; phaseTimer_ = 0.0f; SpawnCollapseShards(boss); }
+        if (ImGui::Button("④ データ崩壊")) { SetPhase(Phase::PHASE_4_DATA_COLLAPSE); phaseTimer_ = 0.0f; SpawnCollapseShards(boss); }
         ImGui::SameLine();
-        if (ImGui::Button("⑤ 任務完了")) { phase_ = Phase::PHASE_5_MISSION_ACCOMPLISHED; phaseTimer_ = 0.0f; }
+        if (ImGui::Button("⑤ 任務完了")) { SetPhase(Phase::PHASE_5_MISSION_ACCOMPLISHED); phaseTimer_ = 0.0f; }
     }
 }

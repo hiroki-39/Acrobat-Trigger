@@ -12,6 +12,22 @@ public:
         data_->radialBlurIntensity = 0.02f;
     }
 
+    void ApplyToData(PostProcessData& data) const override {
+        data.enableRadialBlur = 1;
+    }
+
+    void SaveToJson(nlohmann::json& effectJson) const override {
+        effectJson["centerX"] = data_->radialBlurCenterX;
+        effectJson["centerY"] = data_->radialBlurCenterY;
+        effectJson["intensity"] = data_->radialBlurIntensity;
+    }
+
+    void LoadFromJson(const nlohmann::json& effectJson) override {
+        if (effectJson.contains("centerX")) data_->radialBlurCenterX = effectJson["centerX"];
+        if (effectJson.contains("centerY")) data_->radialBlurCenterY = effectJson["centerY"];
+        if (effectJson.contains("intensity")) data_->radialBlurIntensity = effectJson["intensity"];
+    }
+
     void DrawImGui() override {
 #ifdef USE_IMGUI
         ImGui::SliderFloat("Center X", &data_->radialBlurCenterX, 0.0f, 1.0f);

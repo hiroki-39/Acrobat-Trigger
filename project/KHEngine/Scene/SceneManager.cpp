@@ -20,7 +20,125 @@ namespace
 	}
 }
 
-SceneManager::SceneManager() = default;
+class SceneManager::NoneTransitionState final : public ITransitionState
+{
+public:
+	void Update(SceneManager& mgr, float dt) override;
+	int GetStateIndex() const override { return static_cast<int>(SceneManager::TransitionState::None); }
+	bool IsTransitioning() const override { return false; }
+};
+
+class SceneManager::FadeOutTransitionState final : public ITransitionState
+{
+public:
+	void Update(SceneManager& mgr, float dt) override;
+	int GetStateIndex() const override { return static_cast<int>(SceneManager::TransitionState::FadeOut); }
+};
+
+class SceneManager::FadeOutHoldTransitionState final : public ITransitionState
+{
+public:
+	void Update(SceneManager& mgr, float dt) override;
+	int GetStateIndex() const override { return static_cast<int>(SceneManager::TransitionState::FadeOutHold); }
+	bool ShouldHoldFullBlack() const override { return true; }
+};
+
+class SceneManager::LoadingTransitionState final : public ITransitionState
+{
+public:
+	void Update(SceneManager& mgr, float dt) override;
+	int GetStateIndex() const override { return static_cast<int>(SceneManager::TransitionState::Loading); }
+	bool ShouldHoldFullBlack() const override { return true; }
+};
+
+class SceneManager::FadeInWaitTransitionState final : public ITransitionState
+{
+public:
+	void Update(SceneManager& mgr, float dt) override;
+	int GetStateIndex() const override { return static_cast<int>(SceneManager::TransitionState::FadeInWait); }
+	bool IsOpening() const override { return true; }
+};
+
+class SceneManager::FadeInTransitionState final : public ITransitionState
+{
+public:
+	void Update(SceneManager& mgr, float dt) override;
+	int GetStateIndex() const override { return static_cast<int>(SceneManager::TransitionState::FadeIn); }
+	bool IsOpening() const override { return true; }
+};
+
+void SceneManager::NoneTransitionState::Update(SceneManager& mgr, float /*dt*/)
+{
+	mgr.UpdateCurrentScene();
+}
+
+void SceneManager::FadeOutTransitionState::Update(SceneManager& mgr, float dt)
+{
+	mgr.UpdateCurrentScene();
+
+	mgr.fadeTimer_ += dt;
+	float t = std::clamp(mgr.fadeTimer_ / mgr.fadeDuration_, 0.0f, 1.0f);
+	mgr.transitionProgress_ = SmoothStep(t);
+
+	if (mgr.fadeTimer_ >= mgr.fadeDuration_)
+	{
+		mgr.transitionProgress_ = 1.0f;
+		mgr.holdFrames_ = 0;
+		mgr.ChangeTransitionState(std::make_unique<FadeOutHoldTransitionState>());
+	}
+}
+
+void SceneManager::FadeOutHoldTransitionState::Update(SceneManager& mgr, float /*dt*/)
+{
+	mgr.transitionProgress_ = 1.0f;
+	mgr.holdFrames_++;
+	if (mgr.holdFrames_ >= 2)
+	{
+		mgr.ChangeTransitionState(std::make_unique<LoadingTransitionState>());
+	}
+}
+
+void SceneManager::LoadingTransitionState::Update(SceneManager& mgr, float /*dt*/)
+{
+	mgr.transitionProgress_ = 1.0f;
+	mgr.PerformSceneLoad();
+	mgr.holdFrames_ = 0;
+	mgr.ChangeTransitionState(std::make_unique<FadeInWaitTransitionState>());
+}
+
+void SceneManager::FadeInWaitTransitionState::Update(SceneManager& mgr, float /*dt*/)
+{
+	mgr.transitionProgress_ = 0.0f;
+	mgr.UpdateCurrentScene();
+
+	mgr.holdFrames_++;
+	if (mgr.holdFrames_ >= 2)
+	{
+		mgr.fadeTimer_ = 0.0f;
+		mgr.transitionProgress_ = 0.0f;
+		mgr.ChangeTransitionState(std::make_unique<FadeInTransitionState>());
+	}
+}
+
+void SceneManager::FadeInTransitionState::Update(SceneManager& mgr, float dt)
+{
+	mgr.UpdateCurrentScene();
+
+	mgr.fadeTimer_ += dt;
+	float t = std::clamp(mgr.fadeTimer_ / mgr.fadeDuration_, 0.0f, 1.0f);
+	mgr.transitionProgress_ = SmoothStep(t);
+
+	if (mgr.fadeTimer_ >= mgr.fadeDuration_)
+	{
+		mgr.ResetTransitionParamsAfterComplete();
+		mgr.ChangeTransitionState(std::make_unique<NoneTransitionState>());
+	}
+}
+
+SceneManager::SceneManager()
+{
+	state_ = std::make_unique<NoneTransitionState>();
+}
 
 SceneManager::~SceneManager()
 {
@@ -58,6 +176,53 @@ void SceneManager::InitTransition()
 	}
 }
 
+void SceneManager::ChangeTransitionState(std::unique_ptr<ITransitionState> nextState)
+{
+	state_ = std::move(nextState);
+}
+
+void SceneManager::UpdateCurrentScene()
+{
+	if (scene_)
+	{
+		scene_->Update();
+	}
+}
+
+void SceneManager::PerformSceneLoad()
+{
+	if (scene_)
+	{
+		scene_->Finalize();
+		scene_.reset();
+	}
+
+	assert(sceneFactory_);
+	scene_ = sceneFactory_->CreateScene(nextSceneName_);
+	if (scene_)
+	{
+		currentSceneName_ = nextSceneName_;
+		scene_->SetSceneManager(this);
+
+#ifdef ENABLE_EDITOR
+		// エディタモード時は新シーン移行時に停止状態にし、再生ボタンが押されるまでBGM/SEを待機
+		if (EngineServices::GetInstance()->GetEditorMode())
+		{
+			EngineServices::GetInstance()->SetGamePlaying(false);
+		}
+#endif
+
+		scene_->Initialize();
+		UITextManager::GetInstance()->SetCurrentScene(currentSceneName_);
+	}
+}
+
+void SceneManager::ResetTransitionParamsAfterComplete()
+{
+	transitionProgress_ = 0.0f;
+	transitionType_ = defaultTransitionType_;
+}
+
 void SceneManager::Update()
 {
 	float dt = EngineServices::GetInstance()->GetDeltaTime();
@@ -66,123 +231,9 @@ void SceneManager::Update()
 		dt = 1.0f / 60.0f;
 	}
 
-	switch (transitionState_)
+	if (state_)
 	{
-	case TransitionState::None:
-		if (scene_)
-		{
-			scene_->Update();
-		}
-		break;
-
-	case TransitionState::FadeOut:
-		// 旧シーンを通常更新（アニメーションや演出が止まらない）
-		if (scene_)
-		{
-			scene_->Update();
-		}
-
-		fadeTimer_ += dt;
-		{
-			float t = std::clamp(fadeTimer_ / fadeDuration_, 0.0f, 1.0f);
-			transitionProgress_ = SmoothStep(t);
-		}
-
-		if (fadeTimer_ >= fadeDuration_)
-		{
-			// 左右端から中央まで閉じた（完全暗転）
-			transitionProgress_ = 1.0f;
-			transitionState_ = TransitionState::FadeOutHold;
-			holdFrames_ = 0;
-		}
-		break;
-
-	case TransitionState::FadeOutHold:
-		// 完全な黒画面が画面（フロントバッファ・バックバッファ）に描画・表示されるのを待つ
-		transitionProgress_ = 1.0f;
-
-		holdFrames_++;
-		if (holdFrames_ >= 2)
-		{
-			// 画面が完全に閉じた状態で、ロードステートへ
-			transitionState_ = TransitionState::Loading;
-		}
-		break;
-
-	case TransitionState::Loading:
-		// 画面は100%真っ黒。この裏で新シーンを生成・初期化
-		transitionProgress_ = 1.0f;
-
-		if (scene_)
-		{
-			scene_->Finalize();
-			scene_.reset();
-		}
-
-		assert(sceneFactory_);
-		scene_ = sceneFactory_->CreateScene(nextSceneName_);
-		if (scene_)
-		{
-			currentSceneName_ = nextSceneName_;
-			scene_->SetSceneManager(this);
-
-#ifdef ENABLE_EDITOR
-			// エディタモード時は新シーン移行時に停止状態にし、再生ボタンが押されるまでBGM/SEを待機
-			if (EngineServices::GetInstance()->GetEditorMode())
-			{
-				EngineServices::GetInstance()->SetGamePlaying(false);
-			}
-#endif
-
-			scene_->Initialize();
-			UITextManager::GetInstance()->SetCurrentScene(currentSceneName_);
-		}
-
-		// ロード完了：ロード時の重いフレーム（0.6秒など）によるdeltaTime急増を吸収するため、ウェイト状態へ
-		transitionState_ = TransitionState::FadeInWait;
-		holdFrames_ = 0;
-		break;
-
-	case TransitionState::FadeInWait:
-		// 暗転中に新シーンの初期配置（行列計算・カメラ更新等）を1フレーム先行更新
-		transitionProgress_ = 0.0f; // アウト（開く）の開始点: 0.0（全閉）から中央が開く
-
-		if (scene_)
-		{
-			scene_->Update();
-		}
-
-		holdFrames_++;
-		if (holdFrames_ >= 2)
-		{
-			// アウト（明転・開く）開始
-			transitionState_ = TransitionState::FadeIn;
-			fadeTimer_ = 0.0f;
-			transitionProgress_ = 0.0f;
-		}
-		break;
-
-	case TransitionState::FadeIn:
-		// フェードイン中は新シーンを更新
-		if (scene_)
-		{
-			scene_->Update();
-		}
-
-		fadeTimer_ += dt;
-		{
-			float t = std::clamp(fadeTimer_ / fadeDuration_, 0.0f, 1.0f);
-			transitionProgress_ = SmoothStep(t);
-		}
-
-		if (fadeTimer_ >= fadeDuration_)
-		{
-			// 中央から左右端へ完全に開いた（遷移完了）
-			transitionState_ = TransitionState::None;
-			transitionProgress_ = 0.0f;
-			transitionType_ = defaultTransitionType_;
-		}
-		break;
+		state_->Update(*this, dt);
 	}
 }
 
@@ -224,13 +275,13 @@ void SceneManager::DrawUI()
 void SceneManager::DrawTransition()
 {
 // ルール画像トランジション（最前面）描画
-	if (transitionState_ != TransitionState::None && transitionRenderer_ && ruleTextureIndex_ != UINT32_MAX)
+	if (state_ && state_->IsTransitioning() && transitionRenderer_ && ruleTextureIndex_ != UINT32_MAX)
 	{
-		bool isOpening = (transitionState_ == TransitionState::FadeIn || transitionState_ == TransitionState::FadeInWait);
+		bool isOpening = state_->IsOpening();
 		float prog = transitionProgress_;
 
 		// 完全暗転ホールド中またはロード中は確実に全閉（prog = 1.0f, isOpening = false）
-		if (transitionState_ == TransitionState::FadeOutHold || transitionState_ == TransitionState::Loading)
+		if (state_->ShouldHoldFullBlack())
 		{
 			prog = 1.0f;
 			isOpening = false;
@@ -247,7 +298,7 @@ void SceneManager::ChangeScene(const std::string& sceneName, float fadeDuration,
 	assert(sceneFactory_);
 
 	// 既に遷移中の場合は二重リクエストを無視
-	if (transitionState_ != TransitionState::None)
+	if (IsTransitioning())
 	{
 		return;
 	}
@@ -263,7 +314,7 @@ void SceneManager::ChangeScene(const std::string& sceneName, float fadeDuration,
 			scene_->Initialize();
 			UITextManager::GetInstance()->SetCurrentScene(currentSceneName_);
 		}
-		transitionState_ = TransitionState::None;
+		ChangeTransitionState(std::make_unique<NoneTransitionState>());
 		transitionProgress_ = 0.0f;
 		return;
 	}
@@ -284,7 +335,7 @@ void SceneManager::ChangeScene(const std::string& sceneName, float fadeDuration,
 			scene_->Initialize();
 			UITextManager::GetInstance()->SetCurrentScene(currentSceneName_);
 		}
-		transitionState_ = TransitionState::None;
+		ChangeTransitionState(std::make_unique<NoneTransitionState>());
 		transitionProgress_ = 0.0f;
 		return;
 	}
@@ -310,7 +361,7 @@ void SceneManager::ChangeScene(const std::string& sceneName, float fadeDuration,
 	fadeTimer_ = 0.0f;
 	transitionProgress_ = 0.0f;
 	holdFrames_ = 0;
-	transitionState_ = TransitionState::FadeOut;
+	ChangeTransitionState(std::make_unique<FadeOutTransitionState>());
 
 	InitTransition();
 }

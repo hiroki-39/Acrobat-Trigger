@@ -1,4 +1,4 @@
-#include "CyberBitWeapon.h"
+﻿#include "CyberBitWeapon.h"
 #include "Game/System/CyberVfxSystem.h"
 #include "Game/Actor/Player/Player.h"
 #include "Game/Actor/Bullet/PlayerBullet.h"
@@ -8,6 +8,225 @@
 #include "KHEngine/Input/Input.h"
 #include <algorithm>
 #include <cmath>
+
+class CyberBitWeapon::IdleHoverBitState final : public CyberBitWeapon::IBitFlightState {
+public:
+    void Update(CyberBitWeapon& weapon, BitUnit& b, int index,
+                const Vector3& /*playerPos*/, const Vector3& homeStation,
+                ArmoredTrainBoss* /*boss*/, float gameSpeed, Vector3& outLookDir) override {
+        float lerpRate = 0.22f * gameSpeed;
+        b.position.x += (homeStation.x - b.position.x) * lerpRate;
+        b.position.y += (homeStation.y - b.position.y) * lerpRate;
+        b.position.z += (homeStation.z - b.position.z) * lerpRate;
+        b.prevPosition = b.position;
+
+        if (index < static_cast<int>(weapon.multiLockedEnemies_.size())) {
+            const auto& t = weapon.multiLockedEnemies_[index];
+            Vector3 tPos = { 0.0f, 0.0f, 0.0f };
+            bool hasTarget = false;
+            if (t.boss && !t.boss->IsDefeated() && !t.boss->IsCarriageDestroyed(t.carriageIndex)) {
+                tPos = t.boss->GetCarriagePosition(t.carriageIndex);
+                hasTarget = true;
+            } else if (t.enemy && !t.enemy->IsDead()) {
+                tPos = t.enemy->GetColliderCenter();
+                hasTarget = true;
+            }
+            if (hasTarget) {
+                Vector3 toT = { tPos.x - b.position.x, tPos.y - b.position.y, tPos.z - b.position.z };
+                float len = std::sqrtf(toT.x * toT.x + toT.y * toT.y + toT.z * toT.z);
+                if (len > 0.001f) {
+                    outLookDir = { toT.x / len, toT.y / len, toT.z / len };
+                }
+            }
+        }
+    }
+    BitFlightState GetType() const override { return BitFlightState::IDLE_HOVER; }
+};
+
+class CyberBitWeapon::ReturningBitState final : public CyberBitWeapon::IBitFlightState {
+public:
+    void Update(CyberBitWeapon& /*weapon*/, BitUnit& b, int /*index*/,
+                const Vector3& /*playerPos*/, const Vector3& homeStation,
+                ArmoredTrainBoss* /*boss*/, float gameSpeed, Vector3& outLookDir) override {
+        b.flightTimer += gameSpeed;
+        b.prevPosition = b.position;
+
+        Vector3 toHome = { homeStation.x - b.position.x, homeStation.y - b.position.y, homeStation.z - b.position.z };
+        float hDist = std::sqrtf(toHome.x * toHome.x + toHome.y * toHome.y + toHome.z * toHome.z);
+
+        if (hDist < 3.5f || b.flightTimer >= 45.0f) {
+            b.velocity = { 0.0f, 0.0f, 0.0f };
+            b.targetEnemy = nullptr;
+            b.targetBoss = nullptr;
+            b.targetCarriageIndex = -1;
+            b.flightTimer = 0.0f;
+            b.hasHitTarget = false;
+            b.flightState = std::make_unique<IdleHoverBitState>();
+            return;
+        }
+
+        if (hDist < 9.0f) {
+            float dockLerp = (std::min)(1.0f, 0.36f * gameSpeed);
+            b.position.x += (homeStation.x - b.position.x) * dockLerp;
+            b.position.y += (homeStation.y - b.position.y) * dockLerp;
+            b.position.z += (homeStation.z - b.position.z) * dockLerp;
+            b.velocity = { 0.0f, 0.0f, 0.0f };
+            return;
+        }
+
+        float returnSpeed = (std::min)(6.5f, (std::max)(2.4f, hDist * 0.45f));
+        Vector3 desiredVel = {
+            (toHome.x / hDist) * returnSpeed,
+            (toHome.y / hDist) * returnSpeed,
+            (toHome.z / hDist) * returnSpeed
+        };
+
+        float steerRate = 0.28f * gameSpeed;
+        b.velocity.x += (desiredVel.x - b.velocity.x) * steerRate;
+        b.velocity.y += (desiredVel.y - b.velocity.y) * steerRate;
+        b.velocity.z += (desiredVel.z - b.velocity.z) * steerRate;
+
+        float curSpeed = std::sqrtf(b.velocity.x * b.velocity.x + b.velocity.y * b.velocity.y + b.velocity.z * b.velocity.z);
+        if (curSpeed > 0.001f) {
+            b.velocity.x = (b.velocity.x / curSpeed) * returnSpeed;
+            b.velocity.y = (b.velocity.y / curSpeed) * returnSpeed;
+            b.velocity.z = (b.velocity.z / curSpeed) * returnSpeed;
+        }
+
+        b.position.x += b.velocity.x * gameSpeed;
+        b.position.y += b.velocity.y * gameSpeed;
+        b.position.z += b.velocity.z * gameSpeed;
+
+        float vLen = std::sqrtf(b.velocity.x * b.velocity.x + b.velocity.y * b.velocity.y + b.velocity.z * b.velocity.z);
+        if (vLen > 0.001f) {
+            outLookDir = { b.velocity.x / vLen, b.velocity.y / vLen, b.velocity.z / vLen };
+        }
+    }
+    BitFlightState GetType() const override { return BitFlightState::RETURNING; }
+};
+
+class CyberBitWeapon::HomingAttackBitState final : public CyberBitWeapon::IBitFlightState {
+public:
+    void Update(CyberBitWeapon& weapon, BitUnit& b, int /*index*/,
+                const Vector3& playerPos, const Vector3& /*homeStation*/,
+                ArmoredTrainBoss* boss, float gameSpeed, Vector3& outLookDir) override {
+        b.flightTimer += gameSpeed;
+        b.prevPosition = b.position;
+
+        Vector3 targetPos = playerPos;
+        bool targetAlive = false;
+
+        if (b.targetBoss && boss && boss->IsActive()) {
+            if (!boss->IsDefeated() && !boss->IsCarriageDestroyed(b.targetCarriageIndex)) {
+                targetPos = boss->GetCarriagePosition(b.targetCarriageIndex);
+                targetAlive = true;
+            }
+        } else if (b.targetEnemy) {
+            if (!b.targetEnemy->IsDead()) {
+                targetPos = b.targetEnemy->GetColliderCenter();
+                targetAlive = true;
+            }
+        }
+
+        if (targetAlive) {
+            Vector3 toTarget = { targetPos.x - b.position.x, targetPos.y - b.position.y, targetPos.z - b.position.z };
+            float dist = std::sqrtf(toTarget.x * toTarget.x + toTarget.y * toTarget.y + toTarget.z * toTarget.z);
+
+            if (dist > 0.001f) {
+                float targetSpeed = (std::min)(3.6f, 2.2f + b.flightTimer * 0.04f);
+                Vector3 desiredVel = {
+                    (toTarget.x / dist) * targetSpeed,
+                    (toTarget.y / dist) * targetSpeed,
+                    (toTarget.z / dist) * targetSpeed
+                };
+
+                float steerRate = 0.22f * gameSpeed;
+                b.velocity.x += (desiredVel.x - b.velocity.x) * steerRate;
+                b.velocity.y += (desiredVel.y - b.velocity.y) * steerRate;
+                b.velocity.z += (desiredVel.z - b.velocity.z) * steerRate;
+
+                float curSpeed = std::sqrtf(b.velocity.x * b.velocity.x + b.velocity.y * b.velocity.y + b.velocity.z * b.velocity.z);
+                if (curSpeed > 0.001f) {
+                    b.velocity.x = (b.velocity.x / curSpeed) * targetSpeed;
+                    b.velocity.y = (b.velocity.y / curSpeed) * targetSpeed;
+                    b.velocity.z = (b.velocity.z / curSpeed) * targetSpeed;
+                }
+            }
+
+            b.position.x += b.velocity.x * gameSpeed;
+            b.position.y += b.velocity.y * gameSpeed;
+            b.position.z += b.velocity.z * gameSpeed;
+
+            Vector3 moveDelta = { b.position.x - b.prevPosition.x, b.position.y - b.prevPosition.y, b.position.z - b.prevPosition.z };
+            Vector3 toPrev = { targetPos.x - b.prevPosition.x, targetPos.y - b.prevPosition.y, targetPos.z - b.prevPosition.z };
+            float moveLenSq = moveDelta.x * moveDelta.x + moveDelta.y * moveDelta.y + moveDelta.z * moveDelta.z;
+            float t = (moveLenSq > 0.0001f) ? (toPrev.x * moveDelta.x + toPrev.y * moveDelta.y + toPrev.z * moveDelta.z) / moveLenSq : 0.0f;
+            t = std::clamp(t, 0.0f, 1.0f);
+            Vector3 closestPt = { b.prevPosition.x + moveDelta.x * t, b.prevPosition.y + moveDelta.y * t, b.prevPosition.z + moveDelta.z * t };
+            Vector3 diff = { targetPos.x - closestPt.x, targetPos.y - closestPt.y, targetPos.z - closestPt.z };
+            float closestDistSq = diff.x * diff.x + diff.y * diff.y + diff.z * diff.z;
+
+            float hitRadius = 3.5f;
+            if ((dist < hitRadius || closestDistSq <= hitRadius * hitRadius) && !b.hasHitTarget) {
+                b.hasHitTarget = true;
+                if (weapon.GetVfxSystem()) {
+                    weapon.GetVfxSystem()->TriggerBulletHit(closestPt, b.velocity);
+                }
+                if (b.targetBoss && boss) {
+                    boss->OnDamaged(b.targetCarriageIndex, 3);
+                } else if (b.targetEnemy) {
+                    b.targetEnemy->Kill();
+                }
+                b.flightTimer = 0.0f;
+                b.flightState = std::make_unique<ReturningBitState>();
+                return;
+            }
+        } else {
+            b.position.x += b.velocity.x * gameSpeed;
+            b.position.y += b.velocity.y * gameSpeed;
+            b.position.z += b.velocity.z * gameSpeed;
+            b.flightTimer = 0.0f;
+            b.flightState = std::make_unique<ReturningBitState>();
+            return;
+        }
+
+        float vLen = std::sqrtf(b.velocity.x * b.velocity.x + b.velocity.y * b.velocity.y + b.velocity.z * b.velocity.z);
+        if (vLen > 0.001f) {
+            outLookDir = { b.velocity.x / vLen, b.velocity.y / vLen, b.velocity.z / vLen };
+        }
+
+        if (b.flightTimer > 180.0f) {
+            b.flightTimer = 0.0f;
+            b.flightState = std::make_unique<ReturningBitState>();
+        }
+    }
+    BitFlightState GetType() const override { return BitFlightState::HOMING_ATTACK; }
+    bool IsAttackFlight() const override { return true; }
+};
+
+class CyberBitWeapon::ArcOutwardBitState final : public CyberBitWeapon::IBitFlightState {
+public:
+    void Update(CyberBitWeapon& /*weapon*/, BitUnit& b, int /*index*/,
+                const Vector3& /*playerPos*/, const Vector3& /*homeStation*/,
+                ArmoredTrainBoss* /*boss*/, float gameSpeed, Vector3& outLookDir) override {
+        b.flightTimer += gameSpeed;
+        b.prevPosition = b.position;
+        b.position.x += b.velocity.x * gameSpeed;
+        b.position.y += b.velocity.y * gameSpeed;
+        b.position.z += b.velocity.z * gameSpeed;
+
+        float vLen = std::sqrtf(b.velocity.x * b.velocity.x + b.velocity.y * b.velocity.y + b.velocity.z * b.velocity.z);
+        if (vLen > 0.001f) {
+            outLookDir = { b.velocity.x / vLen, b.velocity.y / vLen, b.velocity.z / vLen };
+        }
+
+        if (b.flightTimer >= 10.0f) {
+            b.flightState = std::make_unique<HomingAttackBitState>();
+        }
+    }
+    BitFlightState GetType() const override { return BitFlightState::ARC_OUTWARD; }
+    bool IsAttackFlight() const override { return true; }
+};
 
 void CyberBitWeapon::Initialize(Player* owner, Object3dCommon* object3dCommon) {
     owner_ = owner;
@@ -33,7 +252,7 @@ void CyberBitWeapon::Initialize(Player* owner, Object3dCommon* object3dCommon) {
     // 2. 4基のファンネル（サイバービット）端末を生成・セットアップ
     for (int i = 0; i < BIT_COUNT; ++i) {
         auto& b = bits_[i];
-        b.state = BitFlightState::IDLE_HOVER;
+        b.flightState = std::make_unique<IdleHoverBitState>();
         b.flightTimer = 0.0f;
         b.hasHitTarget = false;
         b.targetEnemy = nullptr;
@@ -124,7 +343,7 @@ void CyberBitWeapon::Reset() {
         const Matrix4x4& mat = owner_->GetObject3d()->GetmatWorld();
         Vector3 playerPos = { mat.m[3][0], mat.m[3][1], mat.m[3][2] };
         for (auto& b : bits_) {
-            b.state = BitFlightState::IDLE_HOVER;
+            b.flightState = std::make_unique<IdleHoverBitState>();
             b.position = playerPos;
             b.prevPosition = playerPos;
             b.velocity = { 0.0f, 0.0f, 0.0f };
@@ -183,226 +402,8 @@ void CyberBitWeapon::Update(float gameSpeed, const std::list<std::unique_ptr<Ene
 
         Vector3 lookDir = pForward;
 
-        switch (b.state) {
-        case BitFlightState::IDLE_HOVER: {
-            // 自機周囲に滑らかに追従
-            float lerpRate = 0.22f * gameSpeed;
-            b.position.x += (homeStation.x - b.position.x) * lerpRate;
-            b.position.y += (homeStation.y - b.position.y) * lerpRate;
-            b.position.z += (homeStation.z - b.position.z) * lerpRate;
-            b.prevPosition = b.position;
-
-            // ロックオン中の敵がいればそちらへエイム
-            if (i < static_cast<int>(multiLockedEnemies_.size())) {
-                const auto& t = multiLockedEnemies_[i];
-                Vector3 tPos = { 0.0f, 0.0f, 0.0f };
-                bool hasTarget = false;
-                if (t.boss && !t.boss->IsDefeated() && !t.boss->IsCarriageDestroyed(t.carriageIndex)) {
-                    tPos = t.boss->GetCarriagePosition(t.carriageIndex);
-                    hasTarget = true;
-                } else if (t.enemy && !t.enemy->IsDead()) {
-                    tPos = t.enemy->GetColliderCenter();
-                    hasTarget = true;
-                }
-                if (hasTarget) {
-                    Vector3 toT = { tPos.x - b.position.x, tPos.y - b.position.y, tPos.z - b.position.z };
-                    float len = std::sqrtf(toT.x * toT.x + toT.y * toT.y + toT.z * toT.z);
-                    if (len > 0.001f) {
-                        lookDir = { toT.x / len, toT.y / len, toT.z / len };
-                    }
-                }
-            }
-            break;
-        }
-
-        case BitFlightState::ARC_OUTWARD: {
-            // 弧の初期展開フェーズ：外側へ綺麗に広がりながら前進
-            b.flightTimer += gameSpeed;
-            b.prevPosition = b.position;
-            b.position.x += b.velocity.x * gameSpeed;
-            b.position.y += b.velocity.y * gameSpeed;
-            b.position.z += b.velocity.z * gameSpeed;
-
-            // 速度ベクトル方向を向く
-            float vLen = std::sqrtf(b.velocity.x * b.velocity.x + b.velocity.y * b.velocity.y + b.velocity.z * b.velocity.z);
-            if (vLen > 0.001f) {
-                lookDir = { b.velocity.x / vLen, b.velocity.y / vLen, b.velocity.z / vLen };
-            }
-
-            // 10フレーム（約0.16秒）外側へ弧を広げたら、ターゲットへのホーミング誘導へ移行
-            if (b.flightTimer >= 10.0f) {
-                b.state = BitFlightState::HOMING_ATTACK;
-            }
-            break;
-        }
-
-        case BitFlightState::HOMING_ATTACK: {
-            b.flightTimer += gameSpeed;
-            b.prevPosition = b.position;
-
-            // ターゲット座標の取得
-            Vector3 targetPos = playerPos;
-            bool targetAlive = false;
-
-            if (b.targetBoss && boss && boss->IsActive()) {
-                if (!boss->IsDefeated() && !boss->IsCarriageDestroyed(b.targetCarriageIndex)) {
-                    targetPos = boss->GetCarriagePosition(b.targetCarriageIndex);
-                    targetAlive = true;
-                }
-            } else if (b.targetEnemy) {
-                if (!b.targetEnemy->IsDead()) {
-                    targetPos = b.targetEnemy->GetColliderCenter();
-                    targetAlive = true;
-                }
-            }
-
-            // ターゲットが生存していればターゲットへ向けて操舵
-            if (targetAlive) {
-                Vector3 toTarget = { targetPos.x - b.position.x, targetPos.y - b.position.y, targetPos.z - b.position.z };
-                float dist = std::sqrtf(toTarget.x * toTarget.x + toTarget.y * toTarget.y + toTarget.z * toTarget.z);
-
-                // 孤を描く誘導ステアリング（徐々に加速しながら敵へ向かってカーブ旋回）
-                if (dist > 0.001f) {
-                    float targetSpeed = (std::min)(3.6f, 2.2f + b.flightTimer * 0.04f);
-                    Vector3 desiredVel = {
-                        (toTarget.x / dist) * targetSpeed,
-                        (toTarget.y / dist) * targetSpeed,
-                        (toTarget.z / dist) * targetSpeed
-                    };
-
-                    float steerRate = 0.22f * gameSpeed;
-                    b.velocity.x += (desiredVel.x - b.velocity.x) * steerRate;
-                    b.velocity.y += (desiredVel.y - b.velocity.y) * steerRate;
-                    b.velocity.z += (desiredVel.z - b.velocity.z) * steerRate;
-
-                    // 速度を targetSpeed に正規化
-                    float curSpeed = std::sqrtf(b.velocity.x * b.velocity.x + b.velocity.y * b.velocity.y + b.velocity.z * b.velocity.z);
-                    if (curSpeed > 0.001f) {
-                        b.velocity.x = (b.velocity.x / curSpeed) * targetSpeed;
-                        b.velocity.y = (b.velocity.y / curSpeed) * targetSpeed;
-                        b.velocity.z = (b.velocity.z / curSpeed) * targetSpeed;
-                    }
-                }
-
-                // 移動更新
-                b.position.x += b.velocity.x * gameSpeed;
-                b.position.y += b.velocity.y * gameSpeed;
-                b.position.z += b.velocity.z * gameSpeed;
-
-                // トンネリング防止：移動線分と敵コライダー球（半径3.5m）の衝突判定
-                Vector3 moveDelta = { b.position.x - b.prevPosition.x, b.position.y - b.prevPosition.y, b.position.z - b.prevPosition.z };
-                Vector3 toPrev = { targetPos.x - b.prevPosition.x, targetPos.y - b.prevPosition.y, targetPos.z - b.prevPosition.z };
-                float moveLenSq = moveDelta.x * moveDelta.x + moveDelta.y * moveDelta.y + moveDelta.z * moveDelta.z;
-                float t = (moveLenSq > 0.0001f) ? (toPrev.x * moveDelta.x + toPrev.y * moveDelta.y + toPrev.z * moveDelta.z) / moveLenSq : 0.0f;
-                t = std::clamp(t, 0.0f, 1.0f);
-                Vector3 closestPt = { b.prevPosition.x + moveDelta.x * t, b.prevPosition.y + moveDelta.y * t, b.prevPosition.z + moveDelta.z * t };
-                Vector3 diff = { targetPos.x - closestPt.x, targetPos.y - closestPt.y, targetPos.z - closestPt.z };
-                float closestDistSq = diff.x * diff.x + diff.y * diff.y + diff.z * diff.z;
-
-                float hitRadius = 3.5f;
-                if ((dist < hitRadius || closestDistSq <= hitRadius * hitRadius) && !b.hasHitTarget) {
-                    b.hasHitTarget = true;
-                    if (GetVfxSystem()) {
-                        GetVfxSystem()->TriggerBulletHit(closestPt, b.velocity);
-                    }
-                    // ダメージ・撃破付与
-                    if (b.targetBoss && boss) {
-                        boss->OnDamaged(b.targetCarriageIndex, 3);
-                    } else if (b.targetEnemy) {
-                        b.targetEnemy->Kill(); // 一撃で確実に撃破！
-                    }
-                    // 攻撃完了 -> 弧を描いて自機へ帰還
-                    b.state = BitFlightState::RETURNING;
-                    b.flightTimer = 0.0f;
-                    break;
-                }
-            } else {
-                // ターゲット喪失時は直進して帰還へ移行
-                b.position.x += b.velocity.x * gameSpeed;
-                b.position.y += b.velocity.y * gameSpeed;
-                b.position.z += b.velocity.z * gameSpeed;
-                b.state = BitFlightState::RETURNING;
-                b.flightTimer = 0.0f;
-            }
-
-            float vLen = std::sqrtf(b.velocity.x * b.velocity.x + b.velocity.y * b.velocity.y + b.velocity.z * b.velocity.z);
-            if (vLen > 0.001f) {
-                lookDir = { b.velocity.x / vLen, b.velocity.y / vLen, b.velocity.z / vLen };
-            }
-
-            // 最大飛行時間（約3秒）を超えたら強制帰還
-            if (b.flightTimer > 180.0f) {
-                b.state = BitFlightState::RETURNING;
-                b.flightTimer = 0.0f;
-            }
-            break;
-        }
-
-        case BitFlightState::RETURNING: {
-            b.flightTimer += gameSpeed;
-            b.prevPosition = b.position;
-
-            // 自機の待機ステーションへ向かって弧を描いて旋回帰還
-            Vector3 toHome = { homeStation.x - b.position.x, homeStation.y - b.position.y, homeStation.z - b.position.z };
-            float hDist = std::sqrtf(toHome.x * toHome.x + toHome.y * toHome.y + toHome.z * toHome.z);
-
-            // 1. 緩めのドッキング判定（3.5m以内）または帰還時間45フレーム（約0.75秒）経過で待機状態へ移行
-            //    瞬間ワープせず、IDLE_HOVER の滑らかな位置補間にそのまま引き継ぐ
-            if (hDist < 3.5f || b.flightTimer >= 45.0f) {
-                b.state = BitFlightState::IDLE_HOVER;
-                b.velocity = { 0.0f, 0.0f, 0.0f };
-                b.targetEnemy = nullptr;
-                b.targetBoss = nullptr;
-                b.targetCarriageIndex = -1;
-                b.hasHitTarget = false;
-                break;
-            }
-
-            // 2. 近距離アプローチ（9.0m以内）：高速Lerp吸着で自機の前進に置いていかれないようにする
-            if (hDist < 9.0f) {
-                float dockLerp = (std::min)(1.0f, 0.36f * gameSpeed);
-                b.position.x += (homeStation.x - b.position.x) * dockLerp;
-                b.position.y += (homeStation.y - b.position.y) * dockLerp;
-                b.position.z += (homeStation.z - b.position.z) * dockLerp;
-                b.velocity = { 0.0f, 0.0f, 0.0f };
-
-                // 姿勢は正面へスムーズに移行
-                lookDir.x += (pForward.x - lookDir.x) * 0.25f;
-                lookDir.y += (pForward.y - lookDir.y) * 0.25f;
-                lookDir.z += (pForward.z - lookDir.z) * 0.25f;
-                break;
-            }
-
-            // 3. 遠距離アプローチ：自機の前進・ブーストに追いつける十分な帰還速度を確保
-            float returnSpeed = (std::min)(6.5f, (std::max)(2.4f, hDist * 0.45f));
-            Vector3 desiredVel = {
-                (toHome.x / hDist) * returnSpeed,
-                (toHome.y / hDist) * returnSpeed,
-                (toHome.z / hDist) * returnSpeed
-            };
-
-            float steerRate = 0.28f * gameSpeed;
-            b.velocity.x += (desiredVel.x - b.velocity.x) * steerRate;
-            b.velocity.y += (desiredVel.y - b.velocity.y) * steerRate;
-            b.velocity.z += (desiredVel.z - b.velocity.z) * steerRate;
-
-            float curSpeed = std::sqrtf(b.velocity.x * b.velocity.x + b.velocity.y * b.velocity.y + b.velocity.z * b.velocity.z);
-            if (curSpeed > 0.001f) {
-                b.velocity.x = (b.velocity.x / curSpeed) * returnSpeed;
-                b.velocity.y = (b.velocity.y / curSpeed) * returnSpeed;
-                b.velocity.z = (b.velocity.z / curSpeed) * returnSpeed;
-            }
-
-            b.position.x += b.velocity.x * gameSpeed;
-            b.position.y += b.velocity.y * gameSpeed;
-            b.position.z += b.velocity.z * gameSpeed;
-
-            float vLen = std::sqrtf(b.velocity.x * b.velocity.x + b.velocity.y * b.velocity.y + b.velocity.z * b.velocity.z);
-            if (vLen > 0.001f) {
-                lookDir = { b.velocity.x / vLen, b.velocity.y / vLen, b.velocity.z / vLen };
-            }
-            break;
-        }
+        if (b.flightState) {
+            b.flightState->Update(*this, b, i, playerPos, homeStation, boss, gameSpeed, lookDir);
         }
 
         b.lastLookDir = lookDir;
@@ -419,7 +420,7 @@ void CyberBitWeapon::Update(float gameSpeed, const std::list<std::unique_ptr<Ene
 
         // 飛翔時・待機時の動的スケーリング（攻撃飛翔中は大型化し、帰還開始と同時に定位置サイズ 0.45f へ戻す）
         float targetScaleVal = 0.45f;
-        if (b.state == BitFlightState::ARC_OUTWARD || b.state == BitFlightState::HOMING_ATTACK) {
+        if (b.IsAttackFlight()) {
             // 攻撃飛翔時は基本 1.1f、さらに奥へ進むほど遠近感の縮小を補正してしっかり見えるサイズに
             float dz = (std::max)(0.0f, b.position.z - playerPos.z);
             targetScaleVal = 1.10f + std::clamp(dz * 0.012f, 0.0f, 0.90f);
@@ -628,7 +629,7 @@ void CyberBitWeapon::Attack(Input* input,
             if (isDead) continue;
 
             auto& b = bits_[i];
-            b.state = BitFlightState::ARC_OUTWARD;
+            b.flightState = std::make_unique<ArcOutwardBitState>();
             b.flightTimer = 0.0f;
             b.hasHitTarget = false;
             b.targetEnemy = t.enemy;
@@ -757,7 +758,7 @@ void CyberBitWeapon::DrawUI() {
 bool CyberBitWeapon::IsDepleted() const {
     if (ammo_ > 0 || !multiLockedEnemies_.empty()) return false;
     for (const auto& b : bits_) {
-        if (b.state != BitFlightState::IDLE_HOVER) return false;
+        if (b.GetStateType() != BitFlightState::IDLE_HOVER) return false;
     }
     return true;
 }
@@ -782,7 +783,7 @@ void CyberBitWeapon::GetBitTrailStates(std::vector<Vector3>& outPositions, std::
     outIsAttacking.reserve(bits_.size());
     for (const auto& b : bits_) {
         outPositions.push_back(b.position);
-        bool isAttackFlight = (b.state == BitFlightState::ARC_OUTWARD || b.state == BitFlightState::HOMING_ATTACK);
+        bool isAttackFlight = b.IsAttackFlight();
         outIsAttacking.push_back(isAttackFlight ? 1 : 0);
     }
 }

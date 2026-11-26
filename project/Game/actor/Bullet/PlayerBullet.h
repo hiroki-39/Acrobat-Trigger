@@ -1,10 +1,11 @@
 #pragma once
+#include "BaseBullet.h"
 #include "KHEngine/Graphics/3d/Object/Object3d.h"
 #include <memory>
 
 class Enemy;
 
-class PlayerBullet {
+class PlayerBullet : public BaseBullet {
 public:
     /// <summary>
     /// 初期化
@@ -14,9 +15,9 @@ public:
     /// <summary>
     /// 更新
     /// </summary>
-    void Update(float gameSpeed = 1.0f);
+    void Update(float gameSpeed = 1.0f) override;
 
-    void Update3DObjectOnly() {
+    void Update3DObjectOnly() override {
         if (object_) object_->Update();
         if (trailObject_) trailObject_->Update();
     }
@@ -24,18 +25,18 @@ public:
     /// <summary>
     /// 描画
     /// </summary>
-    void Draw();
+    void Draw() override;
 
-    void DrawCollider();
+    void DrawCollider() override;
 
     // デッドフラグ
-    bool IsDead() const { return isDead_; }
+    bool IsDead() const override { return isDead_; }
 
-    const Vector3& GetPosition() const { return object_ ? object_->GetTranslate() : velocity_; }
-    const Vector3& GetPreviousPosition() const { return previousPosition_; }
+    const Vector3& GetPosition() const override { return object_ ? object_->GetTranslate() : velocity_; }
+    const Vector3& GetPreviousPosition() const override { return previousPosition_; }
     const Vector3& GetVelocity() const { return velocity_; }
 
-    void OnCollision() {
+    void OnCollision() override {
         if (isPenetrating_) {
             penetrationCount_--;
             if (penetrationCount_ <= 0) {

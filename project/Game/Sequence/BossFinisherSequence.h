@@ -31,8 +31,19 @@ public:
         COMPLETED                    // シークエンス完了（リザルト画面展開へ引き渡す待機状態）
     };
 
-    BossFinisherSequence() = default;
-    ~BossFinisherSequence() = default;
+    struct UIDrawContext;
+
+    class IPhaseState {
+    public:
+        virtual ~IPhaseState() = default;
+        virtual void Update(BossFinisherSequence& seq, float dt, ArmoredTrainBoss* boss, Player* player, float& inOutGameSpeed) = 0;
+        virtual void Draw3D(BossFinisherSequence&) {}
+        virtual void DrawUI(BossFinisherSequence&, const UIDrawContext&) {}
+        virtual Phase GetPhase() const = 0;
+    };
+
+    BossFinisherSequence();
+    ~BossFinisherSequence();
 
     void Initialize(Object3dCommon* object3dCommon, Camera* camera, RailCameraController* railCam, uint32_t skyboxTexIndex);
     void SetTerrainObjects(const std::vector<std::unique_ptr<Object3d>>* terrainObjects) { terrainObjects_ = terrainObjects; }
@@ -44,20 +55,21 @@ public:
     void DrawUI();
     void DrawImGuiDebug(ArmoredTrainBoss* boss, Player* player);
 
-    bool IsActive() const { return phase_ != Phase::INACTIVE && phase_ != Phase::COMPLETED; }
-    bool IsCompleted() const { return phase_ == Phase::COMPLETED; }
+    bool IsActive() const { Phase p = GetCurrentPhase(); return p != Phase::INACTIVE && p != Phase::COMPLETED; }
+    bool IsCompleted() const { return GetCurrentPhase() == Phase::COMPLETED; }
     bool IsRedMemoryAbsorbed() const { return isRedMemoryAbsorbed_; }
-    bool HasFiredMissiles() const { return phase_ >= Phase::PHASE_3_FINISHER_FIRE; }
+    bool HasFiredMissiles() const { return GetCurrentPhase() >= Phase::PHASE_3_FINISHER_FIRE; }
     bool IsMoviePhase() const {
-        return phase_ == Phase::PHASE_3_FINISHER_FIRE ||
-               phase_ == Phase::PHASE_4_DATA_COLLAPSE ||
-               phase_ == Phase::PHASE_5_MISSION_ACCOMPLISHED ||
-               phase_ == Phase::COMPLETED;
+        Phase p = GetCurrentPhase();
+        return p == Phase::PHASE_3_FINISHER_FIRE ||
+               p == Phase::PHASE_4_DATA_COLLAPSE ||
+               p == Phase::PHASE_5_MISSION_ACCOMPLISHED ||
+               p == Phase::COMPLETED;
     }
-    Phase GetCurrentPhase() const { return phase_; }
+    Phase GetCurrentPhase() const { return phaseState_ ? phaseState_->GetPhase() : Phase::INACTIVE; }
 
     // 強制的にフェーズをジャンプ（デバッグ用）
-    void SetPhase(Phase p) { phase_ = p; phaseTimer_ = 0.0f; }
+    void SetPhase(Phase p);
 
 private:
     // 各フェーズの個別更新処理
@@ -68,6 +80,10 @@ private:
     void UpdatePhase5MissionAccomplished(float dt, ArmoredTrainBoss* boss, Player* player);
 
     // ヘルパー
+    void DrawCollapseAndTrailParticles3D();
+    void DrawLetterboxUI(const UIDrawContext& uiCtx, float barProgress) const;
+    void DrawChargeBarUI(const UIDrawContext& uiCtx) const;
+    void DrawLockOnReticleUI(const UIDrawContext& uiCtx) const;
     void SetupCores(ArmoredTrainBoss* boss);
     void FireExecutionMissiles(Player* player);
     void SpawnCollapseShards(ArmoredTrainBoss* boss);
@@ -75,13 +91,22 @@ private:
     Vector3 ResolveSafeCameraLocalPos(const Vector3& desiredLocal, const Vector3& anchorOrigin, const Vector3& pRight, const Vector3& pUp, const Vector3& pFwd, const Vector3& bossHeadLocal, const Vector3& bossFwd) const;
 
 private:
+    class InactivePhaseState;
+    class Phase1TransitionState;
+    class Phase2AutoLockOnState;
+    class Phase3FinisherFireState;
+    class Phase4DataCollapseState;
+    class Phase5MissionAccomplishedState;
+    class CompletedPhaseState;
+    void ChangePhaseState(std::unique_ptr<IPhaseState> nextState);
+    std::unique_ptr<IPhaseState> phaseState_;
+
     Object3dCommon* object3dCommon_ = nullptr;
     Camera* camera_ = nullptr;
     RailCameraController* railCam_ = nullptr;
     std::function<void(const Vector3&, int, float, float)> onVoxelHit_;
     uint32_t skyboxTexIndex_ = 0;
 
-    Phase phase_ = Phase::INACTIVE;
     float phaseTimer_ = 0.0f;
     float defaultCameraFov_ = 0.45f;
 
