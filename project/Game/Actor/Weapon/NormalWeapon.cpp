@@ -85,9 +85,9 @@ void NormalWeapon::Attack(Input* input,
             leftBullet->Initialize(object3dCommon_, leftOffset, leftVelocity, parentCamera, hoverEnemy);
             bullets.push_back(std::move(leftBullet));
 
-            if (vfxSystem_) {
-                vfxSystem_->TriggerMuzzleFlash(rightOffset, 0.85f);
-                vfxSystem_->TriggerMuzzleFlash(leftOffset, 0.85f);
+            if (GetVfxSystem()) {
+                GetVfxSystem()->TriggerMuzzleFlash(rightOffset, 0.85f);
+                GetVfxSystem()->TriggerMuzzleFlash(leftOffset, 0.85f);
             }
         } else {
             // 通常の1発発射: 機首銃口から奥照準の中心へ向けて射出（弾サイズに合わせて前方へオフセット）
@@ -113,8 +113,8 @@ void NormalWeapon::Attack(Input* input,
             newBullet->Initialize(object3dCommon_, muzzlePos, velocity, parentCamera, hoverEnemy);
             bullets.push_back(std::move(newBullet));
 
-            if (vfxSystem_) {
-                vfxSystem_->TriggerMuzzleFlash(muzzlePos, 1.0f);
+            if (GetVfxSystem()) {
+                GetVfxSystem()->TriggerMuzzleFlash(muzzlePos, 1.0f);
             }
         }
 

@@ -43,8 +43,24 @@
 
 class GamePlayScene : public BaseScene
 {
-    friend class GamePlayEditor;
 public:
+    enum class GamePhase {
+        START_CUTSCENE,
+        PLAYING,
+        GAMEOVER,
+        CLEAR
+    };
+
+    class PhaseState {
+    public:
+        virtual ~PhaseState() = default;
+        virtual void Update(GamePlayScene& scene, float dt, float& unscaledGameSpeed) = 0;
+        virtual GamePhase GetPhase() const = 0;
+    };
+
+    GamePlayScene();
+    ~GamePlayScene() override;
+
     void Initialize() override;
     void Update() override;
     void Draw() override;
@@ -61,6 +77,61 @@ public:
     
     void ReloadEnemiesOnly();
     void SeamlessResetForRetry();
+
+    // エディタ・外部連携用アクセサ
+    void ApplyVirtualSpaceStyle();
+    void SpawnMemoryItem(const Vector3& pos, MemoryType type = MemoryType::CYBER_BIT) { world_.SpawnMemoryItem(pos, type, memoryItems_); }
+    void ClearMemoryItems() { memoryItems_.clear(); }
+    void TriggerTimeOverCannonSequence(bool nonLethal = true);
+    void StartBossWarningSequence();
+    void StartOpeningCutscene();
+    void StartGameOverSequence();
+    void StartClearSequence();
+
+    Player* GetPlayer() const { return player_.get(); }
+    SceneManager* GetSceneManager() const { return BaseScene::GetSceneManager(); }
+    Camera* GetMainCamera() const { return camera.get(); }
+    RailCameraController* GetRailCameraController() const { return railCameraController_.get(); }
+    ArmoredTrainBoss* GetArmoredTrainBoss() const { return armoredTrainBoss_.get(); }
+    BossBattleController* GetBossBattleController() { return &bossBattle_; }
+    GamePlayHUD* GetHUD() { return &hud_; }
+    DemoPlayController* GetDemoController() { return &demoController_; }
+    GameOverSequence* GetGameOverSequence() { return &gameOverSequence_; }
+    GameClearSequence* GetClearSequence() { return &clearSequence_; }
+    OpeningCutsceneSequence* GetOpeningSequence() { return &openingSequence_; }
+    BossFinisherSequence* GetBossFinisherSequence() const { return bossFinisherSequence_.get(); }
+    const std::vector<std::unique_ptr<Rail>>& GetMainRails() const { return mainRails_; }
+    Rail* GetBossRail() const { return bossRail_.get(); }
+    const std::vector<std::unique_ptr<Object3d>>& GetModelInstances() const { return modelInstances; }
+    const std::list<std::unique_ptr<Enemy>>& GetEnemies() const { return enemies_; }
+    const std::list<std::unique_ptr<Obstacle>>& GetObstacles() const { return obstacles_; }
+    const std::list<std::unique_ptr<MemoryItem>>& GetMemoryItems() const { return memoryItems_; }
+
+    bool IsPlaying() const { return isPlaying_; }
+    void SetPlaying(bool playing) { isPlaying_ = playing; }
+    bool IsBossSpawned() const { return isBossSpawned_; }
+    void SetBossSpawned(bool spawned) { isBossSpawned_ = spawned; }
+    bool IsDrawRail() const { return isDrawRail_; }
+    void SetDrawRail(bool draw) { isDrawRail_ = draw; }
+    bool IsDrawCollider() const { return isDrawCollider_; }
+    void SetDrawCollider(bool draw) { isDrawCollider_ = draw; }
+    bool IsDrawTerrainWireframe() const { return isDrawTerrainWireframe_; }
+    void SetDrawTerrainWireframe(bool draw) { isDrawTerrainWireframe_ = draw; }
+    bool IsVirtualSpace() const { return isVirtualSpace_; }
+    void SetVirtualSpace(bool v) { isVirtualSpace_ = v; }
+    float GetBaseGameSpeed() const { return baseGameSpeed_; }
+    void SetBaseGameSpeed(float speed) { baseGameSpeed_ = speed; }
+    float GetTerrainMaterializeProgress() const { return terrainMaterializeProgress_; }
+    void SetTerrainMaterializeProgress(float p) { terrainMaterializeProgress_ = p; }
+    float GetLastLoadTimeMs() const { return lastLoadTimeMs_; }
+    GamePhase GetGamePhase() const { return phaseState_ ? phaseState_->GetPhase() : GamePhase::START_CUTSCENE; }
+    void SetGamePhase(GamePhase phase);
+    void ResetCameraState(const Vector3& rot = {0.0f, 0.0f, 0.0f}, float yaw = 0.0f, float bank = 0.0f)
+    {
+        currentCameraRot_ = rot;
+        lastCameraYaw_ = yaw;
+        currentCameraBank_ = bank;
+    }
 
 private:
     GamePlayLevelManager levelManager_;
@@ -94,7 +165,6 @@ private:
     bool isDrawRail_ = false;
     std::unique_ptr<Skybox> skybox_;
     bool isVirtualSpace_ = true; // スターフォックス風サイバー仮想空間ビジュアル有効フラグ
-    void ApplyVirtualSpaceStyle();
 #ifdef ENABLE_EDITOR
     bool isPlaying_ = false;
 #else
@@ -143,8 +213,6 @@ private:
     // ボス戦進行・タイムオーバー演出・専用UI・設定I/O管理
     BossBattleController bossBattle_;
     BossBattleContext BuildBossBattleContext();
-    void TriggerTimeOverCannonSequence(bool nonLethal = true);
-    void StartBossWarningSequence();
     void UpdateBossBattle(float dt);
 
     std::list<std::unique_ptr<EnemyBullet>> enemyBullets_;
@@ -153,7 +221,6 @@ private:
     std::list<std::unique_ptr<Obstacle>> obstacles_;
     std::list<std::unique_ptr<EnhanceRing>> enhanceRings_;
     std::list<std::unique_ptr<MemoryItem>> memoryItems_;
-    void SpawnMemoryItem(const Vector3& pos, MemoryType type = MemoryType::CYBER_BIT) { world_.SpawnMemoryItem(pos, type, memoryItems_); }
 
     
 #ifdef USE_IMGUI
@@ -173,14 +240,12 @@ private:
     float stageElapsedTime_ = 0.0f;
     float bossElapsedTime_ = 0.0f;
 
-    // 進行フェーズ
-    enum class GamePhase {
-        START_CUTSCENE,
-        PLAYING,
-        GAMEOVER,
-        CLEAR
-    };
-    GamePhase gamePhase_ = GamePhase::START_CUTSCENE;
+    class StartCutscenePhaseState;
+    class PlayingPhaseState;
+    class GameOverPhaseState;
+    class ClearPhaseState;
+    void ChangePhaseState(std::unique_ptr<PhaseState> nextState);
+    std::unique_ptr<PhaseState> phaseState_;
 
     // スタート演出（仮想空間地形形成 ＆ 自機復元マテリアライズ）用進行度（ゲームオーバー演出でも共有）
     float terrainMaterializeProgress_ = 1.0f;
@@ -188,7 +253,6 @@ private:
     OpeningCutsceneSequence openingSequence_;
     OpeningCutsceneContext BuildOpeningContext();
 
-    void StartOpeningCutscene();
     void UpdateOpeningCutscene(float dt);
 
     // ポーズメニュー（Pause Menu）
@@ -198,13 +262,11 @@ private:
     // ゲームオーバー演出（GameOver Sequence）
     GameOverSequence gameOverSequence_;
     GameOverContext BuildGameOverContext();
-    void StartGameOverSequence();
     void UpdateGameOverSequence(float dt);
 
     // ゲームクリア演出（GameClear Sequence）
     GameClearSequence clearSequence_;
     GameClearContext BuildClearContext();
-    void StartClearSequence();
     void UpdateClearSequence(float dt);
 
     // Update() 内部フェーズ分割ヘルパー

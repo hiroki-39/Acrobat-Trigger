@@ -115,8 +115,8 @@ void SpreadWeapon::Attack(Input* input,
                 bullets.push_back(std::move(bullet));
             }
 
-            if (vfxSystem_) {
-                vfxSystem_->TriggerSpreadMuzzle(muzzlePos);
+            if (GetVfxSystem()) {
+                GetVfxSystem()->TriggerSpreadMuzzle(muzzlePos);
             }
 
             SoundManager::GetInstance()->PlaySE("shot.mp3", 0.8f);

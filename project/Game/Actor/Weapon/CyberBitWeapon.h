@@ -14,7 +14,7 @@ class ArmoredTrainBoss;
 /// 自機周囲に4基展開。スペースキー長押しで敵をマルチロックオンし、
 /// キー解放でファンネル端末自体が外側へ美しい弧を描いて敵へ突翔・急襲攻撃し、自機へ帰還する
 /// </summary>
-class CyberBitWeapon : public IWeapon {
+class CyberBitWeapon : public ILockOnWeapon {
 public:
     static const int MAX_TARGETS = 8;
     static const int BIT_COUNT = 4;
@@ -26,6 +26,21 @@ public:
         RETURNING      // 攻撃完了後、弧を描いて自機へ帰還
     };
 
+    struct BitUnit;
+
+    /// <summary>
+    /// サイバービットの飛行状態を表すState基底クラス
+    /// </summary>
+    class IBitFlightState {
+    public:
+        virtual ~IBitFlightState() = default;
+        virtual void Update(CyberBitWeapon& weapon, BitUnit& b, int index,
+                            const Vector3& playerPos, const Vector3& homeStation,
+                            ArmoredTrainBoss* boss, float gameSpeed, Vector3& outLookDir) = 0;
+        virtual BitFlightState GetType() const = 0;
+        virtual bool IsAttackFlight() const { return false; }
+    };
+
     struct LockOnTarget {
         Enemy* enemy = nullptr;
         ArmoredTrainBoss* boss = nullptr;
@@ -34,7 +49,9 @@ public:
     };
 
     struct BitUnit {
-        BitFlightState state = BitFlightState::IDLE_HOVER;
+        std::unique_ptr<IBitFlightState> flightState;
+        BitFlightState GetStateType() const { return flightState ? flightState->GetType() : BitFlightState::IDLE_HOVER; }
+        bool IsAttackFlight() const { return flightState && flightState->IsAttackFlight(); }
         Vector3 position = { 0.0f, 0.0f, 0.0f };
         Vector3 prevPosition = { 0.0f, 0.0f, 0.0f };
         Vector3 velocity = { 0.0f, 0.0f, 0.0f };
@@ -94,6 +111,11 @@ public:
     void GetBitTrailStates(std::vector<Vector3>& outPositions, std::vector<uint8_t>& outIsAttacking) const;
 
 private:
+    class IdleHoverBitState;
+    class ArcOutwardBitState;
+    class HomingAttackBitState;
+    class ReturningBitState;
+
     Player* owner_ = nullptr;
     Object3dCommon* object3dCommon_ = nullptr;
 

@@ -139,11 +139,27 @@ void EditorSystem::DrawMenuBar() {
             }
             ImGui::Separator();
             ImGui::MenuItem("UIテキストエディタ", nullptr, &showUITextEditor_);
-            ImGui::MenuItem("エフェクト画面 (ビューポート)", nullptr, &EffectStudio::GetInstance()->GetShowViewport());
-            ImGui::MenuItem("エフェクトエディター", nullptr, &EffectStudio::GetInstance()->GetShowEditor());
+            {
+                bool showEffectViewport = EffectStudio::GetInstance()->IsShowViewport();
+                if (ImGui::MenuItem("エフェクト画面 (ビューポート)", nullptr, &showEffectViewport)) {
+                    EffectStudio::GetInstance()->SetShowViewport(showEffectViewport);
+                }
+                bool showEffectEditor = EffectStudio::GetInstance()->IsShowEditor();
+                if (ImGui::MenuItem("エフェクトエディター", nullptr, &showEffectEditor)) {
+                    EffectStudio::GetInstance()->SetShowEditor(showEffectEditor);
+                }
+            }
             ImGui::Separator();
-            ImGui::MenuItem("エネミー画面 (ビューポート)", nullptr, &EnemyStudio::GetInstance()->GetShowViewport());
-            ImGui::MenuItem("エネミーエディター", nullptr, &EnemyStudio::GetInstance()->GetShowEditor());
+            {
+                bool showEnemyViewport = EnemyStudio::GetInstance()->IsShowViewport();
+                if (ImGui::MenuItem("エネミー画面 (ビューポート)", nullptr, &showEnemyViewport)) {
+                    EnemyStudio::GetInstance()->SetShowViewport(showEnemyViewport);
+                }
+                bool showEnemyEditor = EnemyStudio::GetInstance()->IsShowEditor();
+                if (ImGui::MenuItem("エネミーエディター", nullptr, &showEnemyEditor)) {
+                    EnemyStudio::GetInstance()->SetShowEditor(showEnemyEditor);
+                }
+            }
             ImGui::EndMenu();
         }
 

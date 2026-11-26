@@ -197,7 +197,7 @@ public:
     float GetTotalHpRate() const;
     const Vector3& GetPosition() const { return position_; }
     const std::vector<TrainCarriage>& GetCarriages() const { return carriages_; }
-    std::vector<TrainCarriage>& GetCarriagesMutable() { return carriages_; }
+    void DrawPartsEditorImGui();
     void ApplyTransforms() { UpdateCarriageTransforms(); }
 
     // デジタル・グリッド・ディゾルブ用のアルファ値一括設定 (1.0f = 通常実体, 0.0f = 完全消滅)

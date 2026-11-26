@@ -11,7 +11,7 @@
 /// 外枠ケージ（bom_1）＋多面体コア（bom_core）の二重構造と、
 /// 白→シアン→マゼンタの3色グラデーション×多層幾何学VFX（加算合成）を備える
 /// </summary>
-class BombWeapon : public IWeapon {
+class BombWeapon : public IAmmoWeapon {
 public:
     static constexpr size_t kMaxBombPool = 3;
     static constexpr size_t kMaxVoxelPool = 180;

@@ -49,7 +49,7 @@ public://メンバ関数
 	const DirectX::TexMetadata& GetMetaData(uint32_t textureIndex);
 
 	// SRVインデックスの開始番号（UI用表示オフセット）
-	static uint32_t kSRVIndexTop;
+	static constexpr uint32_t kSRVIndexTop = 1;
 
 	// テクスチャ番号をファイルパスから取得（生インデックスを返す）
 	uint32_t GetTextureIndexByFilePath(const std::string& filePath);

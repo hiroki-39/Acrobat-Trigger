@@ -56,9 +56,9 @@ void GamePlayWorld::UpdateActorsAndCollisions(float dt, float unscaledGameSpeed,
 
 			if (ctx.player->ConsumeDodgeTrigger())
 			{
-				ctx.vfx->Dodge().SetParentMatrix(&ctx.player->GetObject3d()->GetmatWorld());
-				ctx.vfx->Dodge().SetPosition({ 0.0f, 0.0f, -1.5f });
-				ctx.vfx->Dodge().Play();
+				ctx.vfx->GetDodgeEffect()->SetParentMatrix(&ctx.player->GetObject3d()->GetmatWorld());
+				ctx.vfx->GetDodgeEffect()->SetPosition({ 0.0f, 0.0f, -1.5f });
+				ctx.vfx->GetDodgeEffect()->Play();
 			}
 		}
 		else
@@ -90,8 +90,8 @@ void GamePlayWorld::UpdateActorsAndCollisions(float dt, float unscaledGameSpeed,
 
 			if ((*it)->GetCurrentPhase() == PlayerMissile::Phase::FLIGHT)
 			{
-				ctx.vfx->MissileSmoke().SetPosition((*it)->GetPosition());
-				ctx.vfx->MissileSmoke().Play();
+				ctx.vfx->GetMissileSmokeEffect()->SetPosition((*it)->GetPosition());
+				ctx.vfx->GetMissileSmokeEffect()->Play();
 			}
 
 			if ((*it)->IsDead())
@@ -205,8 +205,8 @@ void GamePlayWorld::UpdateActorsAndCollisions(float dt, float unscaledGameSpeed,
 		colCtx.terrainModels = &(*ctx.modelInstances);
 		colCtx.cameraObject = ctx.cameraObject;
 
-		colCtx.hitEffect = &ctx.vfx->Hit();
-		colCtx.explosionEffect = &ctx.vfx->Explosion();
+		colCtx.hitEffect = ctx.vfx->GetHitEffect();
+		colCtx.explosionEffect = ctx.vfx->GetExplosionEffect();
 		colCtx.onSpawnVoxelHit = [ctx, this](const Vector3& pos, int count, float minSz, float maxSz) {
 			ctx.vfx->SpawnVoxelHitParticles(pos, ctx.activeCamera, count, minSz, maxSz);
 		};
@@ -222,9 +222,9 @@ void GamePlayWorld::UpdateActorsAndCollisions(float dt, float unscaledGameSpeed,
 		colCtx.onSpawnRingPass = [ctx](const Vector3& pos, bool isHeal) {
 			ctx.vfx->SpawnRingPassParticles(pos, isHeal);
 		};
-		colCtx.dodgeEffect = &ctx.vfx->Dodge();
-		colCtx.ringEffect = &ctx.vfx->Ring();
-		colCtx.healRingEffect = &ctx.vfx->HealRing();
+		colCtx.dodgeEffect = ctx.vfx->GetDodgeEffect();
+		colCtx.ringEffect = ctx.vfx->GetRingEffect();
+		colCtx.healRingEffect = ctx.vfx->GetHealRingEffect();
 
 		colCtx.isDemoMode = EngineServices::GetInstance()->IsDemoMode();
 		colCtx.score = &(*ctx.score);
@@ -232,8 +232,10 @@ void GamePlayWorld::UpdateActorsAndCollisions(float dt, float unscaledGameSpeed,
 		colCtx.isJustDodgeActive = &(*ctx.isJustDodgeActive);
 		colCtx.justDodgeTimer = &(*ctx.justDodgeTimer);
 		colCtx.justDodgeMaxTime = ctx.justDodgeMaxTime;
-		colCtx.acquiredEnhanceRingCount = &ctx.hud->AcquiredEnhanceRingCount();
-		colCtx.maxEnhanceRingIcons = GamePlayHUD::kMaxEnhanceRingIcons;
+		colCtx.onPowerUpRingCollected = [ctx]() -> int {
+			ctx.hud->IncrementEnhanceRingCount();
+			return ctx.hud->GetAcquiredEnhanceRingCount();
+		};
 
 		colCtx.onBossDefeated = [ctx, this]() {
 			if (ctx.bossBattle->GetStep() == BossBattleController::Step::BATTLE)

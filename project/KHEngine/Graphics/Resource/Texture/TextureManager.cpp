@@ -9,10 +9,6 @@
 #include <fstream>
 #include <DirectXTex.h> 
 
-// UI表示用に 1 を足すための定数（内部は生インデックスを使う）
-uint32_t TextureManager::kSRVIndexTop = 1;
-
-
 TextureManager* TextureManager::GetInstance()
 {
 	static TextureManager instance;

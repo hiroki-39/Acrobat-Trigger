@@ -4,12 +4,22 @@
 
 class GaussianFilterEffect : public IPostProcess {
 public:
-    GaussianFilterEffect(PostProcessData* data) : data_(data) {
-        name_ = "GaussianFilter";
-    }
+    GaussianFilterEffect(PostProcessData* data) : IPostProcess("GaussianFilter"), data_(data) {}
 
     void Initialize() override {
         data_->gaussianSigma = 2.0f;
+    }
+
+    void ApplyToData(PostProcessData& data) const override {
+        data.enableGaussian = 1;
+    }
+
+    void SaveToJson(nlohmann::json& effectJson) const override {
+        effectJson["sigma"] = data_->gaussianSigma;
+    }
+
+    void LoadFromJson(const nlohmann::json& effectJson) override {
+        if (effectJson.contains("sigma")) data_->gaussianSigma = effectJson["sigma"];
     }
 
     void DrawImGui() override {

@@ -64,9 +64,14 @@ public:
 	/// </summary>
 	void DrawOverlayUI(bool isPlayingPhase, bool isFinisherMovie, Player* player, Camera* activeCamera);
 
-	int& AcquiredEnhanceRingCount() { return acquiredEnhanceRingCount_; }
-	Vector4& RingIconColor() { return ringIconColor_; }
-	Vector4& RingOutlineColor() { return ringOutlineColor_; }
+	int GetAcquiredEnhanceRingCount() const { return acquiredEnhanceRingCount_; }
+	void SetAcquiredEnhanceRingCount(int count) { acquiredEnhanceRingCount_ = std::clamp(count, 0, kMaxEnhanceRingIcons); }
+	void IncrementEnhanceRingCount() { acquiredEnhanceRingCount_ = std::min(kMaxEnhanceRingIcons, acquiredEnhanceRingCount_ + 1); }
+
+	const Vector4& GetRingIconColor() const { return ringIconColor_; }
+	void SetRingIconColor(const Vector4& color) { ringIconColor_ = color; }
+	const Vector4& GetRingOutlineColor() const { return ringOutlineColor_; }
+	void SetRingOutlineColor(const Vector4& color) { ringOutlineColor_ = color; }
 
 private:
 	struct ScorePopup

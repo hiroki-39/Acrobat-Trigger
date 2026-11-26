@@ -464,7 +464,9 @@ void GamePlayLevelManager::ReloadLevel(const LevelLoadContext& ctx)
 		cachedLevelData_ = std::move(levelData);
 		for (const auto& objData : cachedLevelData_->objects)
 		{
-			CreateObjectFromNode(objData, nullptr, (*ctx.modelInstances), (*ctx.mainRails), (*ctx.bossRail), ctx.bossBattle->SpawnProgressThreshold(), object3dCommon, ctx.skybox->GetCubemapSrvIndex(), (*ctx.enemies), (*ctx.obstacles), (*ctx.enhanceRings));
+			float spawnThreshold = ctx.bossBattle->GetSpawnProgressThreshold();
+			CreateObjectFromNode(objData, nullptr, (*ctx.modelInstances), (*ctx.mainRails), (*ctx.bossRail), spawnThreshold, object3dCommon, ctx.skybox->GetCubemapSrvIndex(), (*ctx.enemies), (*ctx.obstacles), (*ctx.enhanceRings));
+			ctx.bossBattle->SetSpawnProgressThreshold(spawnThreshold);
 		}
 		ApplyVirtualSpaceStyle((*ctx.modelInstances), (*ctx.obstacles), ctx.skybox, ctx.isVirtualSpace);
 		OutputDebugStringA("LevelLoader: Successfully reloaded objects.\n");
@@ -477,10 +479,10 @@ void GamePlayLevelManager::ReloadLevel(const LevelLoadContext& ctx)
 		// BossRailが存在する場合、マップからの指定がなければ始点近傍のメインレール進行度を自動算出
 		if ((*ctx.bossRail) && (*ctx.bossRail)->IsValid() && !(*ctx.mainRails).empty() && (*ctx.mainRails)[0]->IsValid())
 		{
-			if (ctx.bossBattle->SpawnProgressThreshold() == 0.60f)
+			if (ctx.bossBattle->GetSpawnProgressThreshold() == 0.60f)
 			{
 				Vector3 bossStartPos = (*ctx.bossRail)->GetPosition(0.0f);
-				ctx.bossBattle->SpawnProgressThreshold() = (*ctx.mainRails)[0]->GetClosestProgress(bossStartPos);
+				ctx.bossBattle->SetSpawnProgressThreshold((*ctx.mainRails)[0]->GetClosestProgress(bossStartPos));
 			}
 		}
 

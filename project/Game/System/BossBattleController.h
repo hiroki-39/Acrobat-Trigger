@@ -44,8 +44,6 @@ struct BossBattleContext
 /// </summary>
 class BossBattleController
 {
-	friend class GamePlayEditor;
-
 public:
 	enum class Step
 	{
@@ -56,6 +54,17 @@ public:
 		TIME_OVER_ATTACK,  // タイムオーバー即死攻撃中
 		FINISHED           // 撃破完了
 	};
+
+	class State
+	{
+	public:
+		virtual ~State() = default;
+		virtual void Update(BossBattleController& ctrl, float dt, const BossBattleContext& ctx) = 0;
+		virtual Step GetStep() const = 0;
+	};
+
+	BossBattleController();
+	~BossBattleController();
 
 	/// <summary>
 	/// タイムオーバー大砲用3Dオブジェクトとボス専用UIスプライトの初期化
@@ -103,12 +112,34 @@ public:
 	void LoadSettings(ArmoredTrainBoss* boss);
 	void SaveSettings(ArmoredTrainBoss* boss);
 
-	Step GetStep() const { return bossBattleStep_; }
-	void SetDefeated() { bossBattleStep_ = Step::DEFEATED_SEQUENCE; bossDefeatTimer_ = 0.0f; }
-	float& SpawnProgressThreshold() { return bossSpawnProgressThreshold_; }
+	Step GetStep() const { return state_ ? state_->GetStep() : Step::NOT_ACTIVE; }
+	void SetDefeated();
+	float GetSpawnProgressThreshold() const { return bossSpawnProgressThreshold_; }
+	void SetSpawnProgressThreshold(float threshold) { bossSpawnProgressThreshold_ = threshold; }
+
+	// エディタ・デバッグ制御用インターフェース
+	void ForceStartBattle();
+	void AbortTimeOverTest();
+	void ResetToNotActive();
+	bool IsTimeOverDebugNonLethal() const { return isTimeOverDebugNonLethal_; }
+	void SetTimeOverDebugNonLethal(bool v) { isTimeOverDebugNonLethal_ = v; }
+	bool IsTimeOverDebugLoop() const { return isTimeOverDebugLoop_; }
+	void SetTimeOverDebugLoop(bool v) { isTimeOverDebugLoop_ = v; }
+	float GetTimeOverTimer() const { return bossTimeOverTimer_; }
+	float GetTimeOverDuration() const { return kBossTimeOverDuration; }
 
 private:
-	Step bossBattleStep_ = Step::NOT_ACTIVE;
+	class NotActiveState;
+	class WarningAlertState;
+	class BattleState;
+	class TimeOverAttackState;
+	class DefeatedSequenceState;
+	class FinishedState;
+
+	void ChangeState(std::unique_ptr<State> nextState);
+	void UpdateTimeOverCannonEffects(float dt, const BossBattleContext& ctx);
+
+	std::unique_ptr<State> state_;
 	float bossSpawnProgressThreshold_ = 0.60f; // 自動出現するレール進行度閾値（60%地点）
 	float bossWarningTimer_ = 0.0f;
 	static constexpr float kBossWarningDuration = 2.8f;

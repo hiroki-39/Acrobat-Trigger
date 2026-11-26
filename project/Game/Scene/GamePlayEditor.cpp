@@ -109,9 +109,9 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 		float frameTime = 1000.0f / (fps > 0.0f ? fps : 1.0f);
 
 		ImGui::Text("FPS: %.1f (%.2f ms)", fps, frameTime);
-		if (scene.lastLoadTimeMs_ > 0.0f)
+		if (scene.GetLastLoadTimeMs() > 0.0f)
 		{
-			ImGui::TextDisabled("Load: %.1f ms", scene.lastLoadTimeMs_);
+			ImGui::TextDisabled("Load: %.1f ms", scene.GetLastLoadTimeMs());
 		}
 
 						fpsHistory_[historyOffset_] = fps;
@@ -145,18 +145,18 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 			{
 				bool doReset = false;
 
-				if (scene.isPlaying_)
+				if (scene.IsPlaying())
 				{
 					if (ImGui::Button("一時停止 (Pause)", ImVec2(130, 36)))
 					{
-						scene.isPlaying_ = false;
+						scene.SetPlaying(false);
 						services->SetGamePlaying(false);
 					}
 					ImGui::SameLine();
 					if (ImGui::Button("リセット (Reset)", ImVec2(110, 36)))
 					{
 						doReset = true;
-						scene.isPlaying_ = false;
+						scene.SetPlaying(false);
 						services->SetGamePlaying(false);
 					}
 					ImGui::SameLine();
@@ -171,13 +171,13 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 				{
 					if (ImGui::Button("開始 (Play)", ImVec2(130, 36)))
 					{
-						scene.isPlaying_ = true;
+						scene.SetPlaying(true);
 						services->SetGamePlaying(true);
 					}
 					ImGui::SameLine();
 					if (ImGui::Button("全画面プレイ", ImVec2(140, 36)))
 					{
-						scene.isPlaying_ = true;
+						scene.SetPlaying(true);
 						services->SetGamePlaying(true);
 						services->SetEditorMode(false);
 					}
@@ -195,93 +195,98 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 				ImGui::TextDisabled("--- シネマティック演出テスト ---");
 				if (ImGui::Button("降下演出を再生 (Replay Cutscene)", ImVec2(240, 34)))
 				{
-					scene.isPlaying_ = true;
+					scene.SetPlaying(true);
 					services->SetGamePlaying(true);
 					scene.StartOpeningCutscene();
 				}
-				if (scene.gamePhase_ == GamePlayScene::GamePhase::START_CUTSCENE)
+				if (scene.GetGamePhase() == GamePlayScene::GamePhase::START_CUTSCENE)
 				{
 					ImGui::SameLine();
-					ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "進行中: %.2f / %.2f 秒", scene.openingSequence_.GetTimer(), scene.openingSequence_.GetDuration());
+					ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "進行中: %.2f / %.2f 秒", scene.GetOpeningSequence()->GetTimer(), scene.GetOpeningSequence()->GetDuration());
 				}
 
 				ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.45f, 0.25f, 1.0f));
 				ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.25f, 0.65f, 0.35f, 1.0f));
 				if (ImGui::Button("クリア演出を再生 (Test Clear)", ImVec2(240, 34)))
 				{
-					scene.isPlaying_ = true;
+					scene.SetPlaying(true);
 					services->SetGamePlaying(true);
-					if (scene.player_) scene.player_->SetDead(false);
-					scene.gamePhase_ = GamePlayScene::GamePhase::PLAYING;
+					if (scene.GetPlayer()) scene.GetPlayer()->SetDead(false);
+					scene.SetGamePhase(GamePlayScene::GamePhase::PLAYING);
 					scene.StartClearSequence();
 				}
 				ImGui::PopStyleColor(2);
-				if (scene.gamePhase_ == GamePlayScene::GamePhase::CLEAR)
+				if (scene.GetGamePhase() == GamePlayScene::GamePhase::CLEAR)
 				{
 					ImGui::SameLine();
-					ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.2f, 1.0f), "クリア進行中 (Timer: %.2fs)", scene.clearSequence_.GetTotalTimer());
+					ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.2f, 1.0f), "クリア進行中 (Timer: %.2fs)", scene.GetClearSequence()->GetTotalTimer());
 				}
 
 				ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.55f, 0.12f, 0.35f, 1.0f));
 				ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.75f, 0.20f, 0.50f, 1.0f));
 				if (ImGui::Button("【処刑テスト】ボスHPを1にする（処刑可能化 & プレイヤー射撃へ）", ImVec2(380, 34)))
 				{
-					scene.isPlaying_ = true;
+					scene.SetPlaying(true);
 					services->SetGamePlaying(true);
 
 					// オープニングカットシーン中だった場合も即座に全地形・自機を実体化
-					scene.openingSequence_.ForceComplete(scene.terrainMaterializeProgress_);
-					for (auto& model : scene.modelInstances) { if (model) model->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f }); }
-					for (auto& obstacle : scene.obstacles_) { if (obstacle && obstacle->GetObject3d()) obstacle->GetObject3d()->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f }); }
-					if (scene.player_)
+					float terrainProg = scene.GetTerrainMaterializeProgress();
+					scene.GetOpeningSequence()->ForceComplete(terrainProg);
+					scene.SetTerrainMaterializeProgress(terrainProg);
+					for (const auto& model : scene.GetModelInstances()) { if (model) model->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f }); }
+					for (const auto& obstacle : scene.GetObstacles()) { if (obstacle && obstacle->GetObject3d()) obstacle->GetObject3d()->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f }); }
+					if (auto* player = scene.GetPlayer())
 					{
-						scene.player_->SetDead(false);
-						scene.player_->SetCutsceneOverride(false);
-						scene.player_->SetCutsceneBoosting(false);
-						scene.player_->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
-						scene.player_->SetVisible(true);
+						player->SetDead(false);
+						player->SetCutsceneOverride(false);
+						player->SetCutsceneBoosting(false);
+						player->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+						player->SetVisible(true);
 					}
-					if (scene.railCameraController_)
+					if (auto* railCam = scene.GetRailCameraController())
 					{
-						scene.railCameraController_->SetCinematicCamera(false, { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f }, 0.0f);
-						scene.railCameraController_->SetBaseSpeed(50.0f);
-						scene.railCameraController_->SetSpeedMultiplier(1.0f);
+						railCam->SetCinematicCamera(false, { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f }, 0.0f);
+						railCam->SetBaseSpeed(50.0f);
+						railCam->SetSpeedMultiplier(1.0f);
 					}
 
-					scene.gamePhase_ = GamePlayScene::GamePhase::PLAYING;
-					bool wasNotSpawned = (!scene.isBossSpawned_ || scene.bossBattle_.bossBattleStep_ == BossBattleController::Step::NOT_ACTIVE);
-					scene.isBossSpawned_ = true;
-					scene.bossBattle_.bossBattleStep_ = BossBattleController::Step::BATTLE;
-					scene.bossBattle_.bossRemainingTime_ = scene.bossBattle_.bossTimeLimit_;
+					scene.SetGamePhase(GamePlayScene::GamePhase::PLAYING);
+					auto* bossBattle = scene.GetBossBattleController();
+					bool wasNotSpawned = (!scene.IsBossSpawned() || bossBattle->GetStep() == BossBattleController::Step::NOT_ACTIVE);
+					scene.SetBossSpawned(true);
+					bossBattle->ForceStartBattle();
 
-					if (scene.armoredTrainBoss_)
+					if (auto* boss = scene.GetArmoredTrainBoss())
 					{
 						if (wasNotSpawned)
 						{
-							scene.armoredTrainBoss_->ResetChaseState();
-							if (scene.bossRail_ && scene.bossRail_->IsValid())
+							boss->ResetChaseState();
+							if (auto* bossRail = scene.GetBossRail(); bossRail && bossRail->IsValid())
 							{
-								if (scene.railCameraController_ && scene.railCameraController_->GetProgress() < scene.bossBattle_.bossSpawnProgressThreshold_)
+								if (auto* railCam = scene.GetRailCameraController())
 								{
-									scene.railCameraController_->SetProgress(scene.bossBattle_.bossSpawnProgressThreshold_);
+									if (railCam->GetProgress() < bossBattle->GetSpawnProgressThreshold())
+									{
+										railCam->SetProgress(bossBattle->GetSpawnProgressThreshold());
+									}
 								}
-								scene.armoredTrainBoss_->SetRail(scene.bossRail_.get());
-								scene.armoredTrainBoss_->SetRailProgress(0.12f);
+								boss->SetRail(bossRail);
+								boss->SetRailProgress(0.12f);
 							}
-							else if (scene.railCameraController_ && !scene.mainRails_.empty())
+							else if (auto* railCam = scene.GetRailCameraController(); railCam && !scene.GetMainRails().empty())
 							{
-								float bCurProg = scene.railCameraController_->GetProgress();
+								float bCurProg = railCam->GetProgress();
 								float bossProg = (std::min)(0.98f, bCurProg + 0.08f);
-								scene.armoredTrainBoss_->SetRail(scene.mainRails_[0].get());
-								scene.armoredTrainBoss_->SetRailProgress(bossProg);
+								boss->SetRail(scene.GetMainRails()[0].get());
+								boss->SetRailProgress(bossProg);
 							}
 						}
-						scene.armoredTrainBoss_->SetHpToOneForExecution();
-						scene.armoredTrainBoss_->SetActive(true);
+						boss->SetHpToOneForExecution();
+						boss->SetActive(true);
 					}
-					if (scene.bossFinisherSequence_)
+					if (auto* finisher = scene.GetBossFinisherSequence())
 					{
-						scene.bossFinisherSequence_->StartSequence(scene.armoredTrainBoss_.get(), scene.player_.get());
+						finisher->StartSequence(scene.GetArmoredTrainBoss(), scene.GetPlayer());
 					}
 				}
 				ImGui::PopStyleColor(2);
@@ -290,15 +295,20 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 				ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.65f, 0.25f, 0.25f, 1.0f));
 				if (ImGui::Button("ゲームオーバー演出を再生 (Test GameOver)", ImVec2(240, 34)))
 				{
-					scene.isPlaying_ = true;
+					scene.SetPlaying(true);
 					services->SetGamePlaying(true);
-					scene.gamePhase_ = GamePlayScene::GamePhase::PLAYING;
+					scene.SetGamePhase(GamePlayScene::GamePhase::PLAYING);
 					scene.StartGameOverSequence();
 				}
 				ImGui::PopStyleColor(2);
 				if (ImGui::TreeNode("ゲームオーバーUI・アンダーバー設定 (GameOver Underline)"))
 				{
-					ImGui::Checkbox("UIプレビュー表示 (Preview UI)", &scene.gameOverSequence_.DebugPreviewUI());
+					auto* goSeq = scene.GetGameOverSequence();
+					bool debugPreview = goSeq->IsDebugPreviewUI();
+					if (ImGui::Checkbox("UIプレビュー表示 (Preview UI)", &debugPreview))
+					{
+						goSeq->SetDebugPreviewUI(debugPreview);
+					}
 					ImGui::SameLine();
 					ImGui::TextDisabled("※即座に画面上で確認可能");
 
@@ -328,22 +338,27 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 					}
 					else
 					{
-						ImGui::Checkbox("アンダーバーを表示", &scene.gameOverSequence_.BarVisible());
-						ImGui::SliderFloat("線の幅 (Width)", &scene.gameOverSequence_.BarWidth(), 0.0f, 800.0f, "%.1f px");
-						ImGui::SliderFloat("線の太さ (Thickness)", &scene.gameOverSequence_.BarThickness(), 0.5f, 20.0f, "%.1f px");
-						ImGui::SliderFloat("Yオフセット (Offset Y)", &scene.gameOverSequence_.BarOffsetY(), -50.0f, 150.0f, "%.1f px");
-						float col[4] = { scene.gameOverSequence_.BarColor().x, scene.gameOverSequence_.BarColor().y, scene.gameOverSequence_.BarColor().z, scene.gameOverSequence_.BarColor().w };
+						bool barVis = goSeq->IsBarVisible();
+						if (ImGui::Checkbox("アンダーバーを表示", &barVis)) goSeq->SetBarVisible(barVis);
+						float barW = goSeq->GetBarWidth();
+						if (ImGui::SliderFloat("線の幅 (Width)", &barW, 0.0f, 800.0f, "%.1f px")) goSeq->SetBarWidth(barW);
+						float barT = goSeq->GetBarThickness();
+						if (ImGui::SliderFloat("線の太さ (Thickness)", &barT, 0.5f, 20.0f, "%.1f px")) goSeq->SetBarThickness(barT);
+						float barY = goSeq->GetBarOffsetY();
+						if (ImGui::SliderFloat("Yオフセット (Offset Y)", &barY, -50.0f, 150.0f, "%.1f px")) goSeq->SetBarOffsetY(barY);
+						const Vector4& bc = goSeq->GetBarColor();
+						float col[4] = { bc.x, bc.y, bc.z, bc.w };
 						if (ImGui::ColorEdit4("線の色 (Color)", col))
 						{
-							scene.gameOverSequence_.BarColor() = { col[0], col[1], col[2], col[3] };
+							goSeq->SetBarColor({ col[0], col[1], col[2], col[3] });
 						}
 					}
 					ImGui::TreePop();
 				}
-				if (scene.gamePhase_ == GamePlayScene::GamePhase::GAMEOVER)
+				if (scene.GetGamePhase() == GamePlayScene::GamePhase::GAMEOVER)
 				{
 					ImGui::SameLine();
-					ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "ゲームオーバー進行中 (Timer: %.2fs)", scene.gameOverSequence_.GetTimer());
+					ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "ゲームオーバー進行中 (Timer: %.2fs)", scene.GetGameOverSequence()->GetTimer());
 				}
 
 				ImGui::Separator();
@@ -358,15 +373,19 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 				}
 
 				ImGui::Separator();
-				if (scene.railCameraController_)
+				if (auto* railCam = scene.GetRailCameraController())
 				{
-					float p = scene.railCameraController_->GetProgress();
+					float p = railCam->GetProgress();
 					if (ImGui::SliderFloat("レール進行度 (Progress)", &p, 0.0f, 1.0f, "%.3f"))
 					{
-						scene.railCameraController_->SetProgress(p);
+						railCam->SetProgress(p);
 					}
 				}
-				ImGui::SliderFloat("ゲーム速度 (Game Speed)", &scene.baseGameSpeed_, 0.0f, 5.0f, "%.2fx");
+				float baseSpeed = scene.GetBaseGameSpeed();
+				if (ImGui::SliderFloat("ゲーム速度 (Game Speed)", &baseSpeed, 0.0f, 5.0f, "%.2fx"))
+				{
+					scene.SetBaseGameSpeed(baseSpeed);
+				}
 				float bgmVol = SoundManager::GetInstance()->GetBGMVolume();
 				if (ImGui::SliderFloat("BGM音量", &bgmVol, 0.0f, 1.0f, "%.2f"))
 				{
@@ -375,13 +394,18 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 
 				if (services && services->IsDemoMode())
 				{
+					auto* demoCtrl = scene.GetDemoController();
 					ImGui::Separator();
 					ImGui::TextColored(ImVec4(0.0f, 0.9f, 1.0f, 1.0f), "【デモプレイ制御 (Demo Mode)】");
-					ImGui::SliderFloat("スタート演出完了後の待機時間 (秒)##DemoPostIntro", &scene.demoController_.PostIntroDuration(), 0.5f, 6.0f, "%.1f 秒");
-					if (scene.gamePhase_ != GamePlayScene::GamePhase::START_CUTSCENE)
+					float postIntro = demoCtrl->GetPostIntroDuration();
+					if (ImGui::SliderFloat("スタート演出完了後の待機時間 (秒)##DemoPostIntro", &postIntro, 0.5f, 6.0f, "%.1f 秒"))
 					{
-						ImGui::ProgressBar(std::clamp(scene.demoController_.Timer() / scene.demoController_.PostIntroDuration(), 0.0f, 1.0f), ImVec2(-1, 14));
-						ImGui::TextColored(ImVec4(0.2f, 0.9f, 0.5f, 1.0f), "タイトル帰還まで: %.1f / %.1f 秒", scene.demoController_.Timer(), scene.demoController_.PostIntroDuration());
+						demoCtrl->SetPostIntroDuration(postIntro);
+					}
+					if (scene.GetGamePhase() != GamePlayScene::GamePhase::START_CUTSCENE)
+					{
+						ImGui::ProgressBar(std::clamp(demoCtrl->GetTimer() / demoCtrl->GetPostIntroDuration(), 0.0f, 1.0f), ImVec2(-1, 14));
+						ImGui::TextColored(ImVec4(0.2f, 0.9f, 0.5f, 1.0f), "タイトル帰還まで: %.1f / %.1f 秒", demoCtrl->GetTimer(), demoCtrl->GetPostIntroDuration());
 					}
 					else
 					{
@@ -392,34 +416,35 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 				// リセット処理
 				if (doReset)
 				{
-					scene.isPlaying_ = false;
-					scene.gamePhase_ = GamePlayScene::GamePhase::PLAYING;
-					if (scene.bossFinisherSequence_)
+					scene.SetPlaying(false);
+					scene.SetGamePhase(GamePlayScene::GamePhase::PLAYING);
+					if (auto* finisher = scene.GetBossFinisherSequence())
 					{
-						scene.bossFinisherSequence_->Reset(scene.player_.get());
+						finisher->Reset(scene.GetPlayer());
 					}
-					if (scene.railCameraController_)
+					if (auto* railCam = scene.GetRailCameraController())
 					{
-						scene.railCameraController_->Reset();
+						railCam->Reset();
 					}
-					if (!scene.mainRails_.empty() && scene.mainRails_[0]->IsValid())
+					if (!scene.GetMainRails().empty() && scene.GetMainRails()[0]->IsValid())
 					{
-						Vector3 railForward = scene.mainRails_[0]->GetForward(0.0f);
+						Vector3 railForward = scene.GetMainRails()[0]->GetForward(0.0f);
 						float yaw = std::atan2(railForward.x, railForward.z);
 						float pitch = std::asin(-railForward.y);
-						float railTilt = scene.mainRails_[0]->GetTilt(0.0f);
-						scene.currentCameraRot_ = { pitch, yaw, 0.0f };
-						scene.lastCameraYaw_ = yaw;
-						scene.currentCameraBank_ = railTilt;
+						float railTilt = scene.GetMainRails()[0]->GetTilt(0.0f);
+						scene.ResetCameraState({ pitch, yaw, 0.0f }, yaw, railTilt);
 					}
 				}
 
 				ImGui::Separator();
-				ImGui::Checkbox("レール軌跡を表示 (Draw Rail)", &scene.isDrawRail_);
+				bool drawRail = scene.IsDrawRail();
+				if (ImGui::Checkbox("レール軌跡を表示 (Draw Rail)", &drawRail)) scene.SetDrawRail(drawRail);
 				ImGui::SameLine();
-				ImGui::Checkbox("コライダーを表示 [F2]", &scene.isDrawCollider_);
+				bool drawCol = scene.IsDrawCollider();
+				if (ImGui::Checkbox("コライダーを表示 [F2]", &drawCol)) scene.SetDrawCollider(drawCol);
 				ImGui::SameLine();
-				ImGui::Checkbox("判定計算ポリゴンのみ表示 [F3]", &scene.isDrawTerrainWireframe_);
+				bool drawWire = scene.IsDrawTerrainWireframe();
+				if (ImGui::Checkbox("判定計算ポリゴンのみ表示 [F3]", &drawWire)) scene.SetDrawTerrainWireframe(drawWire);
 
 				bool showColMonitor = TerrainCollisionDebugger::GetInstance()->IsShowImGuiMonitor();
 				if (ImGui::Checkbox("地形コリジョン解析モニター [F6]", &showColMonitor))
@@ -428,12 +453,12 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 				}
 			}
 
-			if (scene.railCameraController_)
+			if (auto* railCam = scene.GetRailCameraController())
 			{
 				ImGui::Spacing();
 				if (ImGui::CollapsingHeader("レールカメラ設定 (Rail Camera)", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					scene.railCameraController_->DrawImGuiContent();
+					railCam->DrawImGuiContent();
 				}
 			}
 		}
@@ -445,36 +470,41 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 
 			if (ImGui::CollapsingHeader("強化リング獲得UIデバッグ (Enhance Ring Icons)", ImGuiTreeNodeFlags_DefaultOpen))
 			{
-				if (ImGui::SliderInt("獲得リング数", &scene.hud_.AcquiredEnhanceRingCount(), 0, GamePlayHUD::kMaxEnhanceRingIcons))
+				auto* hud = scene.GetHUD();
+				int ringCount = hud->GetAcquiredEnhanceRingCount();
+				if (ImGui::SliderInt("獲得リング数", &ringCount, 0, GamePlayHUD::kMaxEnhanceRingIcons))
 				{
-					if (scene.player_) scene.player_->SetPowerUpLevel(scene.hud_.AcquiredEnhanceRingCount());
+					hud->SetAcquiredEnhanceRingCount(ringCount);
+					if (scene.GetPlayer()) scene.GetPlayer()->SetPowerUpLevel(hud->GetAcquiredEnhanceRingCount());
 				}
 				ImGui::SameLine();
-				if (ImGui::Button("0個")) { scene.hud_.AcquiredEnhanceRingCount() = 0; if (scene.player_) scene.player_->SetPowerUpLevel(0); }
+				if (ImGui::Button("0個")) { hud->SetAcquiredEnhanceRingCount(0); if (scene.GetPlayer()) scene.GetPlayer()->SetPowerUpLevel(0); }
 				ImGui::SameLine();
-				if (ImGui::Button("1個")) { scene.hud_.AcquiredEnhanceRingCount() = 1; if (scene.player_) scene.player_->SetPowerUpLevel(1); }
+				if (ImGui::Button("1個")) { hud->SetAcquiredEnhanceRingCount(1); if (scene.GetPlayer()) scene.GetPlayer()->SetPowerUpLevel(1); }
 				ImGui::SameLine();
-				if (ImGui::Button("2個")) { scene.hud_.AcquiredEnhanceRingCount() = 2; if (scene.player_) scene.player_->SetPowerUpLevel(2); }
+				if (ImGui::Button("2個")) { hud->SetAcquiredEnhanceRingCount(2); if (scene.GetPlayer()) scene.GetPlayer()->SetPowerUpLevel(2); }
 
-				float iconCol[4] = { scene.hud_.RingIconColor().x, scene.hud_.RingIconColor().y, scene.hud_.RingIconColor().z, scene.hud_.RingIconColor().w };
+				const Vector4& iconC = hud->GetRingIconColor();
+				float iconCol[4] = { iconC.x, iconC.y, iconC.z, iconC.w };
 				if (ImGui::ColorEdit4("中身アイコン色", iconCol))
 				{
-					scene.hud_.RingIconColor() = { iconCol[0], iconCol[1], iconCol[2], iconCol[3] };
+					hud->SetRingIconColor({ iconCol[0], iconCol[1], iconCol[2], iconCol[3] });
 				}
 
-				float outlineCol[4] = { scene.hud_.RingOutlineColor().x, scene.hud_.RingOutlineColor().y, scene.hud_.RingOutlineColor().z, scene.hud_.RingOutlineColor().w };
+				const Vector4& outC = hud->GetRingOutlineColor();
+				float outlineCol[4] = { outC.x, outC.y, outC.z, outC.w };
 				if (ImGui::ColorEdit4("外枠アウトライン色", outlineCol))
 				{
-					scene.hud_.RingOutlineColor() = { outlineCol[0], outlineCol[1], outlineCol[2], outlineCol[3] };
+					hud->SetRingOutlineColor({ outlineCol[0], outlineCol[1], outlineCol[2], outlineCol[3] });
 				}
 			}
 
 			if (ImGui::CollapsingHeader("メモリドロップデバッグ (Memory Drop)", ImGuiTreeNodeFlags_DefaultOpen))
 			{
-				Vector3 pPos = scene.player_ ? scene.player_->GetWorldPosition() : Vector3{ 0.0f, 0.0f, 0.0f };
+				Vector3 pPos = scene.GetPlayer() ? scene.GetPlayer()->GetWorldPosition() : Vector3{ 0.0f, 0.0f, 0.0f };
 				if (ImGui::Button("ボム (BOMB)"))
 				{
-					if (scene.player_)
+					if (scene.GetPlayer())
 					{
 						scene.SpawnMemoryItem({ pPos.x, pPos.y, pPos.z + 18.0f }, MemoryType::BOMB);
 					}
@@ -482,7 +512,7 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 				ImGui::SameLine();
 				if (ImGui::Button("拡散弾 (SPREAD)"))
 				{
-					if (scene.player_)
+					if (scene.GetPlayer())
 					{
 						scene.SpawnMemoryItem({ pPos.x, pPos.y, pPos.z + 18.0f }, MemoryType::SPREAD);
 					}
@@ -490,37 +520,42 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 				ImGui::SameLine();
 				if (ImGui::Button("サイバービット (CYBER_BIT)"))
 				{
-					if (scene.player_)
+					if (scene.GetPlayer())
 					{
 						scene.SpawnMemoryItem({ pPos.x, pPos.y, pPos.z + 18.0f }, MemoryType::CYBER_BIT);
 					}
 				}
 
 				{
-					if (scene.player_)
+					if (scene.GetPlayer())
 					{
 
 
 
 					}
 				}
-				ImGui::Text("現在フィールド上のメモリ数: %zu", scene.memoryItems_.size());
+				ImGui::Text("現在フィールド上のメモリ数: %zu", scene.GetMemoryItems().size());
 				if (ImGui::Button("フィールド上のメモリを消去 (Clear)"))
 				{
-					scene.memoryItems_.clear();
+					scene.ClearMemoryItems();
 				}
 
-				ImGui::SliderFloat("メモリスケール倍率", &MemoryItem::s_ScaleMultiplier, 0.5f, 3.0f, "%.2f");
-				float memCol[4] = { MemoryItem::s_CustomBitColor.x, MemoryItem::s_CustomBitColor.y, MemoryItem::s_CustomBitColor.z, MemoryItem::s_CustomBitColor.w };
+				float memScale = MemoryItem::GetScaleMultiplier();
+				if (ImGui::SliderFloat("メモリスケール倍率", &memScale, 0.5f, 3.0f, "%.2f"))
+				{
+					MemoryItem::SetScaleMultiplier(memScale);
+				}
+				const Vector4& bitCol = MemoryItem::GetCustomBitColor();
+				float memCol[4] = { bitCol.x, bitCol.y, bitCol.z, bitCol.w };
 				if (ImGui::ColorEdit4("ビットメモリ発光色", memCol))
 				{
-					MemoryItem::s_CustomBitColor = { memCol[0], memCol[1], memCol[2], memCol[3] };
+					MemoryItem::SetCustomBitColor({ memCol[0], memCol[1], memCol[2], memCol[3] });
 				}
 			}
 
-			if (scene.player_)
+			if (scene.GetPlayer())
 			{
-				scene.player_->DrawImGuiContent();
+				scene.GetPlayer()->DrawImGuiContent();
 			}
 			else
 			{
@@ -533,6 +568,8 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 			ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "■ エネミー・装甲列車ボス (Enemy & Boss)");
 			ImGui::Separator();
 
+			auto* bossBattle = scene.GetBossBattleController();
+
 			// タイムオーバー演出テスト用パネル
 			if (ImGui::CollapsingHeader("【演出デバッグ】巨大主砲タイムオーバー砲撃テスト", ImGuiTreeNodeFlags_DefaultOpen))
 			{
@@ -543,32 +580,36 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 				ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.7f, 0.1f, 0.1f, 1.0f));
 				if (ImGui::Button("【演出再生】タイムオーバー巨大砲撃を開始 (何度でも押せます)", ImVec2(-1, 38)))
 				{
-					scene.TriggerTimeOverCannonSequence(scene.bossBattle_.isTimeOverDebugNonLethal_);
+					scene.TriggerTimeOverCannonSequence(bossBattle->IsTimeOverDebugNonLethal());
 				}
 				ImGui::PopStyleColor(3);
 
-				ImGui::Checkbox("非致死テスト（演出完了後に死なず、何度でも再確認可能）", &scene.bossBattle_.isTimeOverDebugNonLethal_);
-				ImGui::Checkbox("自動ループ再生（演出完了後に最初から自動リピート）", &scene.bossBattle_.isTimeOverDebugLoop_);
-
-				if (scene.bossBattle_.bossBattleStep_ == BossBattleController::Step::TIME_OVER_ATTACK)
+				bool nonLethal = bossBattle->IsTimeOverDebugNonLethal();
+				if (ImGui::Checkbox("非致死テスト（演出完了後に死なず、何度でも再確認可能）", &nonLethal))
 				{
-					float progress = std::clamp(scene.bossBattle_.bossTimeOverTimer_ / scene.bossBattle_.kBossTimeOverDuration, 0.0f, 1.0f);
+					bossBattle->SetTimeOverDebugNonLethal(nonLethal);
+				}
+				bool loopTest = bossBattle->IsTimeOverDebugLoop();
+				if (ImGui::Checkbox("自動ループ再生（演出完了後に最初から自動リピート）", &loopTest))
+				{
+					bossBattle->SetTimeOverDebugLoop(loopTest);
+				}
+
+				if (bossBattle->GetStep() == BossBattleController::Step::TIME_OVER_ATTACK)
+				{
+					float progress = std::clamp(bossBattle->GetTimeOverTimer() / bossBattle->GetTimeOverDuration(), 0.0f, 1.0f);
 					char buf[64];
-					snprintf(buf, sizeof(buf), "砲撃演出再生中: %.1f秒 / %.1f秒", scene.bossBattle_.bossTimeOverTimer_, scene.bossBattle_.kBossTimeOverDuration);
+					snprintf(buf, sizeof(buf), "砲撃演出再生中: %.1f秒 / %.1f秒", bossBattle->GetTimeOverTimer(), bossBattle->GetTimeOverDuration());
 					ImGui::ProgressBar(progress, ImVec2(-1, 24), buf);
 
 					if (ImGui::Button("演出を中断して通常戦闘に戻す (Cancel & Resume)", ImVec2(-1, 28)))
 					{
-						scene.bossBattle_.bossBattleStep_ = BossBattleController::Step::BATTLE;
-						scene.bossBattle_.bossRemainingTime_ = 60.0f;
-						scene.bossBattle_.bossTimeOverTimer_ = 0.0f;
-						scene.bossBattle_.isBossTimeOverFired_ = false;
-						scene.bossBattle_.isTimeOverDebugLoop_ = false;
-						if (scene.player_)
+						bossBattle->AbortTimeOverTest();
+						if (auto* player = scene.GetPlayer())
 						{
-							scene.player_->SetDead(false);
-							scene.player_->SetHp(scene.player_->GetMaxHp());
-							scene.player_->SetEnableInput(true);
+							player->SetDead(false);
+							player->SetHp(player->GetMaxHp());
+							player->SetEnableInput(true);
 						}
 					}
 				}
@@ -577,9 +618,9 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 			ImGui::Separator();
 
 			// 電脳処刑フィニッシャー（クリア演出）デバッグUI
-			if (scene.bossFinisherSequence_)
+			if (auto* finisher = scene.GetBossFinisherSequence())
 			{
-				scene.bossFinisherSequence_->DrawImGuiDebug(scene.armoredTrainBoss_.get(), scene.player_.get());
+				finisher->DrawImGuiDebug(scene.GetArmoredTrainBoss(), scene.GetPlayer());
 			}
 
 			ImGui::Spacing();
@@ -587,82 +628,86 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 
 			if (ImGui::CollapsingHeader("装甲列車（中ボス）制御 (Armored Train Boss)", ImGuiTreeNodeFlags_DefaultOpen))
 			{
-				float curProg = scene.railCameraController_ ? scene.railCameraController_->GetProgress() : 0.0f;
+				float curProg = scene.GetRailCameraController() ? scene.GetRailCameraController()->GetProgress() : 0.0f;
 				ImGui::Text("現在カメラ進行度: %.3f (%.1f%%)", curProg, curProg * 100.0f);
 
 				// ボス出現進行度のスライダー
-				ImGui::SliderFloat("ボス出現進行度", &scene.bossBattle_.bossSpawnProgressThreshold_, 0.0f, 1.0f, "%.3f");
+				float spawnThresh = bossBattle->GetSpawnProgressThreshold();
+				if (ImGui::SliderFloat("ボス出現進行度", &spawnThresh, 0.0f, 1.0f, "%.3f"))
+				{
+					bossBattle->SetSpawnProgressThreshold(spawnThresh);
+				}
 
 				// ワンクリックで現在の自機カメラ位置を出撃地点にするボタン
 				if (ImGui::Button("現在のカメラ進行度を出撃地点にセット", ImVec2(-1, 28)))
 				{
-					scene.bossBattle_.bossSpawnProgressThreshold_ = curProg;
+					bossBattle->SetSpawnProgressThreshold(curProg);
 				}
 
 				// 設定保存ボタン
 				if (ImGui::Button("ボス出現設定を保存 (Save Settings)", ImVec2(-1, 26)))
 				{
-					scene.bossBattle_.SaveSettings(scene.armoredTrainBoss_.get());
+					bossBattle->SaveSettings(scene.GetArmoredTrainBoss());
 				}
 
 				ImGui::Spacing();
-				if (scene.armoredTrainBoss_)
+				if (auto* boss = scene.GetArmoredTrainBoss())
 				{
-					float bScale = scene.armoredTrainBoss_->GetScaleMultiplier();
+					float bScale = boss->GetScaleMultiplier();
 					if (ImGui::SliderFloat("ボス全体スケール倍率 (Scale)", &bScale, 0.5f, 3.0f, "%.2fx"))
 					{
-						scene.armoredTrainBoss_->SetScaleMultiplier(bScale);
+						boss->SetScaleMultiplier(bScale);
 					}
 
-					bool isFollow = scene.armoredTrainBoss_->IsFollowPlayer();
+					bool isFollow = boss->IsFollowPlayer();
 					if (ImGui::Checkbox("プレイヤー連動モード (Follow Player)", &isFollow))
 					{
-						scene.armoredTrainBoss_->SetFollowPlayer(isFollow);
+						boss->SetFollowPlayer(isFollow);
 					}
 					if (isFollow)
 					{
-						float leadDist = scene.armoredTrainBoss_->GetDesiredLeadDistance();
+						float leadDist = boss->GetDesiredLeadDistance();
 						if (ImGui::SliderFloat("並走基準距離(自機前方m)", &leadDist, 50.0f, 200.0f, "%.1f m"))
 						{
-							scene.armoredTrainBoss_->SetDesiredLeadDistance(leadDist);
+							boss->SetDesiredLeadDistance(leadDist);
 						}
-						bool isRandomLead = scene.armoredTrainBoss_->IsRandomLeadDistanceEnabled();
+						bool isRandomLead = boss->IsRandomLeadDistanceEnabled();
 						if (ImGui::Checkbox("ランダム接近チャンス (短縮して攻撃部位を露出)", &isRandomLead))
 						{
-							scene.armoredTrainBoss_->SetRandomLeadDistanceEnabled(isRandomLead);
+							boss->SetRandomLeadDistanceEnabled(isRandomLead);
 						}
-						float rushSpeed = scene.armoredTrainBoss_->GetRushSpeedBonus();
+						float rushSpeed = boss->GetRushSpeedBonus();
 						if (ImGui::SliderFloat("接近/追い抜き追加速度", &rushSpeed, 10.0f, 80.0f, "%.1f m/s"))
 						{
-							scene.armoredTrainBoss_->SetRushSpeedBonus(rushSpeed);
+							boss->SetRushSpeedBonus(rushSpeed);
 						}
 
-						bool isGroundSnap = scene.armoredTrainBoss_->IsGroundSnapEnabled();
+						bool isGroundSnap = boss->IsGroundSnapEnabled();
 						if (ImGui::Checkbox("地面自動吸着 (レイキャスト接地)", &isGroundSnap))
 						{
-							scene.armoredTrainBoss_->SetGroundSnapEnabled(isGroundSnap);
+							boss->SetGroundSnapEnabled(isGroundSnap);
 						}
 						if (isGroundSnap)
 						{
-							float snapOffset = scene.armoredTrainBoss_->GetGroundSnapOffset();
+							float snapOffset = boss->GetGroundSnapOffset();
 							if (ImGui::SliderFloat("接地高さ微調整オフセット(m)", &snapOffset, -5.0f, 5.0f, "%.2f m"))
 							{
-								scene.armoredTrainBoss_->SetGroundSnapOffset(snapOffset);
+								boss->SetGroundSnapOffset(snapOffset);
 							}
 						}
 
 						// リアルタイムチェイス監視情報
 						ImGui::Text("チェイス状態: ");
 						ImGui::SameLine();
-						if (scene.armoredTrainBoss_->IsOvertaking())
+						if (boss->IsOvertaking())
 						{
 							ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "【追い抜き急加速中】");
 						}
-						else if (scene.armoredTrainBoss_->IsShortDistanceOpportunity())
+						else if (boss->IsShortDistanceOpportunity())
 						{
 							ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.1f, 1.0f), "【至近距離攻撃チャンス中！】");
 						}
-						else if (scene.armoredTrainBoss_->IsCloseToPlayer())
+						else if (boss->IsCloseToPlayer())
 						{
 							ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.4f, 1.0f), "【基準距離で並走巡航中】");
 						}
@@ -671,15 +716,15 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 							ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "【遠方から急接近中】");
 						}
 
-						ImGui::Text("目標距離: %.1f m (基準: %.1f m)", scene.armoredTrainBoss_->GetDynamicLeadDistance(), scene.armoredTrainBoss_->GetDesiredLeadDistance());
-						ImGui::Text("自機との前後距離: %.1f m", scene.armoredTrainBoss_->GetRelativeForwardDistance());
-						ImGui::Text("ボス実速度: %.1f m/s (目標: %.1f m/s)", scene.armoredTrainBoss_->GetCurrentSpeed(), scene.armoredTrainBoss_->GetTargetSpeed());
-						ImGui::Text("レール進行度: %.1f%%", scene.armoredTrainBoss_->GetRailProgress() * 100.0f);
+						ImGui::Text("目標距離: %.1f m (基準: %.1f m)", boss->GetDynamicLeadDistance(), boss->GetDesiredLeadDistance());
+						ImGui::Text("自機との前後距離: %.1f m", boss->GetRelativeForwardDistance());
+						ImGui::Text("ボス実速度: %.1f m/s (目標: %.1f m/s)", boss->GetCurrentSpeed(), boss->GetTargetSpeed());
+						ImGui::Text("レール進行度: %.1f%%", boss->GetRailProgress() * 100.0f);
 					}
 				}
 
 				ImGui::Spacing();
-				if (scene.bossRail_ && scene.bossRail_->IsValid())
+				if (scene.GetBossRail() && scene.GetBossRail()->IsValid())
 				{
 					ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.4f, 1.0f), "● ボス専用レール (BossRail): 検出済み");
 				}
@@ -690,14 +735,14 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 				ImGui::Separator();
 
 				const char* stepStr = "未遭遇 (NOT_ACTIVE)";
-				if (scene.bossBattle_.bossBattleStep_ == BossBattleController::Step::WARNING_ALERT) stepStr = "WARNING警告中 (ALERT)";
-				else if (scene.bossBattle_.bossBattleStep_ == BossBattleController::Step::BATTLE) stepStr = "戦闘中 (BATTLE)";
-				else if (scene.bossBattle_.bossBattleStep_ == BossBattleController::Step::TIME_OVER_ATTACK) stepStr = "タイムオーバー即死攻撃中 (TIME_OVER)";
-				else if (scene.bossBattle_.bossBattleStep_ == BossBattleController::Step::DEFEATED_SEQUENCE) stepStr = "撃破演出中 (DEFEATED)";
-				else if (scene.bossBattle_.bossBattleStep_ == BossBattleController::Step::FINISHED) stepStr = "撃破完了 (FINISHED)";
+				if (bossBattle->GetStep() == BossBattleController::Step::WARNING_ALERT) stepStr = "WARNING警告中 (ALERT)";
+				else if (bossBattle->GetStep() == BossBattleController::Step::BATTLE) stepStr = "戦闘中 (BATTLE)";
+				else if (bossBattle->GetStep() == BossBattleController::Step::TIME_OVER_ATTACK) stepStr = "タイムオーバー即死攻撃中 (TIME_OVER)";
+				else if (bossBattle->GetStep() == BossBattleController::Step::DEFEATED_SEQUENCE) stepStr = "撃破演出中 (DEFEATED)";
+				else if (bossBattle->GetStep() == BossBattleController::Step::FINISHED) stepStr = "撃破完了 (FINISHED)";
 				ImGui::Text("ボス戦フェーズ: %s", stepStr);
 
-				if (scene.bossBattle_.bossBattleStep_ == BossBattleController::Step::NOT_ACTIVE)
+				if (bossBattle->GetStep() == BossBattleController::Step::NOT_ACTIVE)
 				{
 					if (ImGui::Button("WARNING演出付きで出現 (Start Boss Encounter)", ImVec2(-1, 38)))
 					{
@@ -705,30 +750,27 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 					}
 					if (ImGui::Button("即座に出現させる (Instant Spawn)", ImVec2(-1, 28)))
 					{
-						scene.isBossSpawned_ = true;
-			scene.bossBattle_.bossRemainingTime_ = scene.bossBattle_.bossTimeLimit_;
-			scene.bossBattle_.bossTimeOverTimer_ = 0.0f;
-			scene.bossBattle_.isBossTimeOverFired_ = false;
-			if (scene.railCameraController_)
-			{
-				scene.railCameraController_->SetBaseSpeed(50.0f);
-			}
-						scene.bossBattle_.bossBattleStep_ = BossBattleController::Step::BATTLE;
-						if (scene.armoredTrainBoss_)
+						scene.SetBossSpawned(true);
+						if (auto* railCam = scene.GetRailCameraController())
 						{
-							if (scene.bossRail_ && scene.bossRail_->IsValid())
+							railCam->SetBaseSpeed(50.0f);
+						}
+						bossBattle->ForceStartBattle();
+						if (auto* boss = scene.GetArmoredTrainBoss())
+						{
+							if (auto* bossRail = scene.GetBossRail(); bossRail && bossRail->IsValid())
 							{
-								scene.armoredTrainBoss_->SetRail(scene.bossRail_.get());
-								scene.armoredTrainBoss_->SetRailProgress(0.0f);
+								boss->SetRail(bossRail);
+								boss->SetRailProgress(0.0f);
 							}
-							else if (scene.railCameraController_ && !scene.mainRails_.empty())
+							else if (auto* railCam = scene.GetRailCameraController(); railCam && !scene.GetMainRails().empty())
 							{
-								float bCurProg = scene.railCameraController_->GetProgress();
+								float bCurProg = railCam->GetProgress();
 								float bossProg = std::min(1.0f, bCurProg + 0.15f);
-								scene.armoredTrainBoss_->SetRailProgress(bossProg);
-								scene.armoredTrainBoss_->SetRail(scene.mainRails_[0].get());
+								boss->SetRailProgress(bossProg);
+								boss->SetRail(scene.GetMainRails()[0].get());
 							}
-							scene.armoredTrainBoss_->SetActive(true);
+							boss->SetActive(true);
 						}
 					}
 				}
@@ -736,30 +778,27 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 				{
 					if (ImGui::Button("装甲列車ボスを退場・リセット (Reset Boss)", ImVec2(-1, 38)))
 					{
-						scene.isBossSpawned_ = false;
-						scene.bossBattle_.bossBattleStep_ = BossBattleController::Step::NOT_ACTIVE;
-						scene.bossBattle_.bossWarningTimer_ = 0.0f;
-						scene.bossBattle_.bossDefeatTimer_ = 0.0f;
-						scene.bossBattle_.bossDisplayedHpRate_ = 1.0f;
-						if (scene.armoredTrainBoss_)
+						scene.SetBossSpawned(false);
+						bossBattle->ResetToNotActive();
+						if (auto* boss = scene.GetArmoredTrainBoss())
 						{
-							scene.armoredTrainBoss_->ResetChaseState();
-							scene.armoredTrainBoss_->SetActive(false);
+							boss->ResetChaseState();
+							boss->SetActive(false);
 						}
-						if (scene.bossFinisherSequence_)
+						if (auto* finisher = scene.GetBossFinisherSequence())
 						{
-							scene.bossFinisherSequence_->Reset(scene.player_.get());
+							finisher->Reset(scene.GetPlayer());
 						}
 					}
 
-					if (scene.armoredTrainBoss_)
+					if (auto* boss = scene.GetArmoredTrainBoss())
 					{
-						float hpRate = scene.armoredTrainBoss_->GetTotalHpRate();
+						float hpRate = boss->GetTotalHpRate();
 						ImGui::ProgressBar(hpRate, ImVec2(-1, 24), "BOSS TOTAL HP");
 
 						ImGui::Separator();
 						ImGui::Text("各車両ステータス:");
-						const auto& cars = scene.armoredTrainBoss_->GetCarriages();
+						const auto& cars = boss->GetCarriages();
 						for (size_t c = 0; c < cars.size(); ++c)
 						{
 							ImGui::Text("[%zu] %s: HP %d / %d %s",
@@ -775,8 +814,8 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 			{
 				if (ImGui::Button("エネミー専用画面 (Enemy Studio) を開く", ImVec2(-1, 36)))
 				{
-					EnemyStudio::GetInstance()->GetShowViewport() = true;
-					EnemyStudio::GetInstance()->GetShowEditor() = true;
+					EnemyStudio::GetInstance()->SetShowViewport(true);
+					EnemyStudio::GetInstance()->SetShowEditor(true);
 				}
 				ImGui::TextDisabled("※敵モデル・陣形・当たり判定（コライダー）の編集は、中央上の「エネミー画面」および右側の「エネミーエディター」で行えます。");
 			}
@@ -789,8 +828,10 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 
 			if (ImGui::CollapsingHeader("サイバー仮想空間ビジュアル (Star Fox Virtual Space)", ImGuiTreeNodeFlags_DefaultOpen))
 			{
-				if (ImGui::Checkbox("スターフォックス風 仮想空間シェーダー有効##GameVirtualSpace", &scene.isVirtualSpace_))
+				bool isVirt = scene.IsVirtualSpace();
+				if (ImGui::Checkbox("スターフォックス風 仮想空間シェーダー有効##GameVirtualSpace", &isVirt))
 				{
+					scene.SetVirtualSpace(isVirt);
 					scene.ApplyVirtualSpaceStyle();
 				}
 				ImGui::TextDisabled("※ONでエメラルドグリッド地面・ホログラム都市・オーロラ宇宙空間になります");
@@ -819,8 +860,8 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 			{
 				if (ImGui::Button("エフェクト専用画面 (Effect Studio) を開く", ImVec2(-1, 36)))
 				{
-					EffectStudio::GetInstance()->GetShowViewport() = true;
-					EffectStudio::GetInstance()->GetShowEditor() = true;
+					EffectStudio::GetInstance()->SetShowViewport(true);
+					EffectStudio::GetInstance()->SetShowEditor(true);
 				}
 				ImGui::TextDisabled("※エフェクトの編集・保存は、中央上部の「エフェクト画面」および右側の「エフェクトエディター」で行えます。");
 			}
@@ -834,44 +875,44 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 			// カメラ設定
 			if (ImGui::CollapsingHeader("カメラ詳細 (Active Camera)", ImGuiTreeNodeFlags_DefaultOpen))
 			{
-				if (scene.camera)
+				if (auto* cam = scene.GetMainCamera())
 				{
-					Vector3 camPosRef = scene.camera->GetTranslate();
+					Vector3 camPosRef = cam->GetTranslate();
 					float camPosArr[3] = { camPosRef.x, camPosRef.y, camPosRef.z };
 					if (ImGui::DragFloat3("座標 (Translate)", camPosArr, 0.1f))
 					{
-						scene.camera->SetTranslate(Vector3(camPosArr[0], camPosArr[1], camPosArr[2]));
+						cam->SetTranslate(Vector3(camPosArr[0], camPosArr[1], camPosArr[2]));
 					}
 
-					Vector3 camRotRef = scene.camera->GetRotation();
+					Vector3 camRotRef = cam->GetRotation();
 					float camRotArr[3] = { camRotRef.x, camRotRef.y, camRotRef.z };
 					if (ImGui::DragFloat3("回転 (Rotation)", camRotArr, 0.1f))
 					{
-						scene.camera->SetRotation(Vector3(camRotArr[0], camRotArr[1], camRotArr[2]));
+						cam->SetRotation(Vector3(camRotArr[0], camRotArr[1], camRotArr[2]));
 					}
 
-					float fov = scene.camera->GetFovY();
+					float fov = cam->GetFovY();
 					if (ImGui::DragFloat("画角 (FOV Y)", &fov, 0.01f, 0.01f, 3.14f))
 					{
-						scene.camera->SetFovY(fov);
+						cam->SetFovY(fov);
 					}
 
-					float aspect = scene.camera->GetAspectRatio();
+					float aspect = cam->GetAspectRatio();
 					if (ImGui::DragFloat("アスペクト比", &aspect, 0.01f, 0.1f, 10.0f))
 					{
-						scene.camera->SetAspectRatio(aspect);
+						cam->SetAspectRatio(aspect);
 					}
 
-					float nearC = scene.camera->GetNearClip();
+					float nearC = cam->GetNearClip();
 					if (ImGui::DragFloat("近クリップ", &nearC, 0.001f, 0.001f, 100.0f))
 					{
-						scene.camera->SetNearClip(nearC);
+						cam->SetNearClip(nearC);
 					}
 
-					float farC = scene.camera->GetFarClip();
+					float farC = cam->GetFarClip();
 					if (ImGui::DragFloat("遠クリップ", &farC, 0.1f, 1.0f, 100000.0f))
 					{
-						scene.camera->SetFarClip(farC);
+						cam->SetFarClip(farC);
 					}
 				}
 			}
@@ -880,7 +921,7 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 			std::vector<Object3d*> allModels;
 			std::vector<std::string> modelNames;
 			int index = 0;
-			for (auto& obj : scene.modelInstances)
+			for (const auto& obj : scene.GetModelInstances())
 			{
 				if (obj)
 				{
@@ -889,16 +930,16 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 				}
 				index++;
 			}
-			if (scene.player_)
+			if (auto* player = scene.GetPlayer())
 			{
-				if (scene.player_->GetObject3d())
+				if (player->GetObject3d())
 				{
-					allModels.push_back(scene.player_->GetObject3d());
+					allModels.push_back(player->GetObject3d());
 					modelNames.push_back("Player");
 				}
-				if (scene.player_->GetReticle())
+				if (player->GetReticle())
 				{
-					allModels.push_back(scene.player_->GetReticle());
+					allModels.push_back(player->GetReticle());
 					modelNames.push_back("Player Reticle");
 				}
 			}
@@ -1223,8 +1264,8 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 	// -------------------------------------------------------------
 	if (ImGui::Begin("タイムライン"))
 	{
-		float currentProgress = scene.railCameraController_ ? scene.railCameraController_->GetProgress() : 0.0f;
-		float totalRailLength = (!scene.mainRails_.empty() && scene.mainRails_[0]->IsValid()) ? scene.mainRails_[0]->GetTotalLength() : 1000.0f;
+		float currentProgress = scene.GetRailCameraController() ? scene.GetRailCameraController()->GetProgress() : 0.0f;
+		float totalRailLength = (!scene.GetMainRails().empty() && scene.GetMainRails()[0]->IsValid()) ? scene.GetMainRails()[0]->GetTotalLength() : 1000.0f;
 		// 想定総時間（秒）: 基準速度での概算時間
 		float estimatedTotalTime = (totalRailLength > 0.0f) ? (totalRailLength / 40.0f) : 60.0f;
 		float currentEstimatedTime = currentProgress * estimatedTotalTime;
@@ -1235,24 +1276,24 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 			// 先頭へ
 			if (ImGui::Button("|< 0%##TL", ImVec2(55, 26)))
 			{
-				if (scene.railCameraController_) scene.railCameraController_->SetProgress(0.0f);
+				if (auto* railCam = scene.GetRailCameraController()) railCam->SetProgress(0.0f);
 			}
 			ImGui::SameLine();
 			// -5%
 			if (ImGui::Button("<< -5%##TL", ImVec2(65, 26)))
 			{
 				float newP = (std::max)(0.0f, currentProgress - 0.05f);
-				if (scene.railCameraController_) scene.railCameraController_->SetProgress(newP);
+				if (auto* railCam = scene.GetRailCameraController()) railCam->SetProgress(newP);
 			}
 			ImGui::SameLine();
 			// 再生 / 一時停止
-			if (scene.isPlaying_)
+			if (scene.IsPlaying())
 			{
 				ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.85f, 0.25f, 0.25f, 1.0f));
 				ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.95f, 0.35f, 0.35f, 1.0f));
 				if (ImGui::Button("一時停止 (Pause)##TL", ImVec2(125, 26)))
 				{
-					scene.isPlaying_ = false;
+					scene.SetPlaying(false);
 					services->SetGamePlaying(false);
 				}
 				ImGui::PopStyleColor(2);
@@ -1263,7 +1304,7 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 				ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.30f, 0.78f, 0.42f, 1.0f));
 				if (ImGui::Button("再生 (Play)##TL", ImVec2(125, 26)))
 				{
-					scene.isPlaying_ = true;
+					scene.SetPlaying(true);
 					services->SetGamePlaying(true);
 				}
 				ImGui::PopStyleColor(2);
@@ -1273,22 +1314,22 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 			if (ImGui::Button("+5% >>##TL", ImVec2(65, 26)))
 			{
 				float newP = (std::min)(1.0f, currentProgress + 0.05f);
-				if (scene.railCameraController_) scene.railCameraController_->SetProgress(newP);
+				if (auto* railCam = scene.GetRailCameraController()) railCam->SetProgress(newP);
 			}
 			ImGui::SameLine();
 			// 末尾へ
 			if (ImGui::Button("100% >|##TL", ImVec2(65, 26)))
 			{
-				if (scene.railCameraController_) scene.railCameraController_->SetProgress(1.0f);
+				if (auto* railCam = scene.GetRailCameraController()) railCam->SetProgress(1.0f);
 			}
 			ImGui::SameLine();
 			if (ImGui::Button("リセット##TL", ImVec2(65, 26)))
 			{
-				scene.isPlaying_ = false;
+				scene.SetPlaying(false);
 				services->SetGamePlaying(false);
-				scene.gamePhase_ = GamePlayScene::GamePhase::PLAYING;
-				if (scene.bossFinisherSequence_) scene.bossFinisherSequence_->Reset(scene.player_.get());
-				if (scene.railCameraController_) scene.railCameraController_->Reset();
+				scene.SetGamePhase(GamePlayScene::GamePhase::PLAYING);
+				if (auto* finisher = scene.GetBossFinisherSequence()) finisher->Reset(scene.GetPlayer());
+				if (auto* railCam = scene.GetRailCameraController()) railCam->Reset();
 				scene.ReloadEnemiesOnly();
 			}
 			ImGui::SameLine();
@@ -1300,10 +1341,10 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 			ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.45f, 0.25f, 1.0f));
 			if (ImGui::Button("クリア演出##TL", ImVec2(95, 26)))
 			{
-				scene.isPlaying_ = true;
+				scene.SetPlaying(true);
 				services->SetGamePlaying(true);
-				if (scene.player_) scene.player_->SetDead(false);
-				scene.gamePhase_ = GamePlayScene::GamePhase::PLAYING;
+				if (auto* player = scene.GetPlayer()) player->SetDead(false);
+				scene.SetGamePhase(GamePlayScene::GamePhase::PLAYING);
 				scene.StartClearSequence();
 			}
 			ImGui::PopStyleColor();
@@ -1312,11 +1353,12 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 			ImGui::TextDisabled("|");
 			ImGui::SameLine();
 			ImGui::SetNextItemWidth(110.0f);
-			ImGui::SliderFloat("速度##TL", &scene.baseGameSpeed_, 0.1f, 3.0f, "%.2fx");
+			float baseSpeedTL = scene.GetBaseGameSpeed();
+			if (ImGui::SliderFloat("速度##TL", &baseSpeedTL, 0.1f, 3.0f, "%.2fx")) scene.SetBaseGameSpeed(baseSpeedTL);
 			ImGui::SameLine();
-			if (ImGui::SmallButton("1.0x##TL")) scene.baseGameSpeed_ = 1.0f;
+			if (ImGui::SmallButton("1.0x##TL")) scene.SetBaseGameSpeed(1.0f);
 			ImGui::SameLine();
-			if (ImGui::SmallButton("2.0x##TL")) scene.baseGameSpeed_ = 2.0f;
+			if (ImGui::SmallButton("2.0x##TL")) scene.SetBaseGameSpeed(2.0f);
 		}
 		ImGui::EndGroup();
 
@@ -1336,9 +1378,9 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 		drawList->AddRect(canvasPos, ImVec2(canvasPos.x + canvasSize.x, canvasPos.y + canvasSize.y), IM_COL32(60, 65, 75, 255), 4.0f);
 
 		// 狭小ゾーン (Narrow Zones) の帯を描画
-		if (!scene.mainRails_.empty() && scene.mainRails_[0]->IsValid())
+		if (!scene.GetMainRails().empty() && scene.GetMainRails()[0]->IsValid())
 		{
-			const auto& zones = scene.mainRails_[0]->GetNarrowZones();
+			const auto& zones = scene.GetMainRails()[0]->GetNarrowZones();
 			for (const auto& zone : zones)
 			{
 				float x0 = canvasPos.x + zone.startT * canvasSize.x;
@@ -1357,9 +1399,9 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 		};
 		std::vector<EnemyMarkerItem> enemyMarkers;
 
-		const Rail* mainRail = (!scene.mainRails_.empty() && scene.mainRails_[0]->IsValid()) ? scene.mainRails_[0].get() : nullptr;
+		const Rail* mainRail = (!scene.GetMainRails().empty() && scene.GetMainRails()[0]->IsValid()) ? scene.GetMainRails()[0].get() : nullptr;
 
-		for (const auto& enemy : scene.enemies_)
+		for (const auto& enemy : scene.GetEnemies())
 		{
 			if (!enemy) continue;
 			float sp = enemy->GetRailProgress();
@@ -1410,9 +1452,9 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 			ImVec2 mousePos = ImGui::GetMousePos();
 			float newT = (mousePos.x - canvasPos.x) / canvasSize.x;
 			newT = (std::max)(0.0f, (std::min)(1.0f, newT));
-			if (scene.railCameraController_)
+			if (auto* railCam = scene.GetRailCameraController())
 			{
-				scene.railCameraController_->SetProgress(newT);
+				railCam->SetProgress(newT);
 			}
 		}
 
@@ -1453,9 +1495,9 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 		ImGui::SameLine();
 		ImGui::TextDisabled(" [敵総数: %zu体]", enemyMarkers.size());
 
-		if (!scene.mainRails_.empty() && scene.mainRails_[0]->IsValid())
+		if (!scene.GetMainRails().empty() && scene.GetMainRails()[0]->IsValid())
 		{
-			const auto& zones = scene.mainRails_[0]->GetNarrowZones();
+			const auto& zones = scene.GetMainRails()[0]->GetNarrowZones();
 			ImGui::TextDisabled("ジャンプ: ");
 
 			if (!zones.empty())
@@ -1467,7 +1509,7 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 					snprintf(btnLabel, sizeof(btnLabel), "ゾーン%zu (%.0f%%)##Jump", zIdx + 1, zones[zIdx].startT * 100.0f);
 					if (ImGui::SmallButton(btnLabel))
 					{
-						if (scene.railCameraController_) scene.railCameraController_->SetProgress(zones[zIdx].startT);
+						if (auto* railCam = scene.GetRailCameraController()) railCam->SetProgress(zones[zIdx].startT);
 					}
 				}
 			}
@@ -1498,7 +1540,7 @@ void GamePlayEditor::Draw(GamePlayScene& scene)
 					snprintf(btnLabel, sizeof(btnLabel), "敵群%zu (%.0f%%)##EJump", eIdx + 1, enemyJumpPoints[eIdx] * 100.0f);
 					if (ImGui::SmallButton(btnLabel))
 					{
-						if (scene.railCameraController_) scene.railCameraController_->SetProgress(enemyJumpPoints[eIdx]);
+						if (auto* railCam = scene.GetRailCameraController()) railCam->SetProgress(enemyJumpPoints[eIdx]);
 					}
 				}
 			}

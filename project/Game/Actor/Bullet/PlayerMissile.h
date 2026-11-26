@@ -1,11 +1,12 @@
 #pragma once
+#include "BaseBullet.h"
 #include "KHEngine/Graphics/3d/Object/Object3d.h"
 #include <memory>
 
 class Enemy;
 class ArmoredTrainBoss;
 
-class PlayerMissile {
+class PlayerMissile : public BaseBullet {
 public:
     enum class Phase {
         DROP,    // 発射直後、自機から落下・分離するフェーズ
@@ -13,17 +14,17 @@ public:
     };
 
     void Initialize(Object3dCommon* object3dCommon, const Vector3& position, const Vector3& rotation, const Vector3& velocity, Object3d* parent, Enemy* targetEnemy = nullptr, ArmoredTrainBoss* targetBoss = nullptr, int targetCarriageIndex = -1);
-    void Update(float gameSpeed = 1.0f);
-    void Update3DObjectOnly() { if (object_) object_->Update(); }
-    void Draw();
-    void DrawCollider();
+    void Update(float gameSpeed = 1.0f) override;
+    void Update3DObjectOnly() override { if (object_) object_->Update(); }
+    void Draw() override;
+    void DrawCollider() override;
 
-    bool IsDead() const { return isDead_; }
-    const Vector3& GetPosition() const { return object_ ? object_->GetTranslate() : position_; }
-    const Vector3& GetPreviousPosition() const { return previousPosition_; }
+    bool IsDead() const override { return isDead_; }
+    const Vector3& GetPosition() const override { return object_ ? object_->GetTranslate() : position_; }
+    const Vector3& GetPreviousPosition() const override { return previousPosition_; }
     
     // 衝突時の処理
-    void OnCollision() { isDead_ = true; }
+    void OnCollision() override { isDead_ = true; }
 
     Phase GetCurrentPhase() const { return currentPhase_; }
 

@@ -348,7 +348,7 @@ void TitleScene::Initialize()
 
         windEffect_.Initialize(dxCommon, srvManager);
         windEffect_.LoadFromJson("wind.json");
-        for (auto& node : windEffect_.GetNodes())
+        for (const auto& node : windEffect_.GetNodes())
         {
             node->emitter.SetUseBillboard(true);
             auto param = node->emitter.GetParameter();
@@ -1111,13 +1111,7 @@ void TitleScene::Update()
                 flightProgressZ_ -= kLoopPeriodZ;
 
                 // ワールド座標で発生しているスピードライン（気流粒子）も同距離分シフトし、継ぎ目なく連続表示させる
-                for (auto& node : windEffect_.GetNodes())
-                {
-                    if (node)
-                    {
-                        node->emitter.OffsetParticles({ 0.0f, 0.0f, -kLoopPeriodZ });
-                    }
-                }
+                windEffect_.OffsetAllParticles({ 0.0f, 0.0f, -kLoopPeriodZ });
             }
         }
 
@@ -2023,10 +2017,9 @@ void TitleScene::Update()
 
                 ImGui::Spacing();
                 ImGui::TextColored(ImVec4(0.4f, 0.85f, 1.0f, 1.0f), "■ スピードライン演出 (Speed Line)");
-                auto& speedNodes = windEffect_.GetNodes();
-                if (!speedNodes.empty())
+                if (auto* speedNode = windEffect_.GetNode(0))
                 {
-                    auto& emitter = speedNodes[0]->emitter;
+                    auto& emitter = speedNode->emitter;
                     auto param = emitter.GetParameter();
                     float currentSpeed = -param.minVelocity.z;
                     if (ImGui::SliderFloat("ライン速度 (Speed)", &currentSpeed, 10.0f, 200.0f, "%.1f"))
@@ -2195,8 +2188,8 @@ void TitleScene::Update()
             {
                 if (ImGui::Button("エフェクト専用画面 (Effect Studio) を開く", ImVec2(-1, 36)))
                 {
-                    EffectStudio::GetInstance()->GetShowViewport() = true;
-                    EffectStudio::GetInstance()->GetShowEditor() = true;
+                    EffectStudio::GetInstance()->SetShowViewport(true);
+                    EffectStudio::GetInstance()->SetShowEditor(true);
                 }
                 ImGui::TextDisabled("※エフェクトの編集・作成・保存は「エフェクト画面」および「エフェクトエディター」で行えます。");
             }

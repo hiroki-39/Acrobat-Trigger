@@ -4,12 +4,22 @@
 
 class SmoothingEffect : public IPostProcess {
 public:
-    SmoothingEffect(PostProcessData* data) : data_(data) {
-        name_ = "Smoothing";
-    }
+    SmoothingEffect(PostProcessData* data) : IPostProcess("Smoothing"), data_(data) {}
 
     void Initialize() override {
         data_->smoothingKernelSize = 2.0f;
+    }
+
+    void ApplyToData(PostProcessData& data) const override {
+        data.enableSmoothing = 1;
+    }
+
+    void SaveToJson(nlohmann::json& effectJson) const override {
+        effectJson["kernelSize"] = data_->smoothingKernelSize;
+    }
+
+    void LoadFromJson(const nlohmann::json& effectJson) override {
+        if (effectJson.contains("kernelSize")) data_->smoothingKernelSize = effectJson["kernelSize"];
     }
 
     void DrawImGui() override {

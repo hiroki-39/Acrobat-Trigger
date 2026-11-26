@@ -281,16 +281,8 @@ void PostProcess::Draw(bool drawToSwapchain)
 	data_.enableRandom = 0;
 
 	for (auto& effect : effects_) {
-		if (effect->isActive_) {
-			if (effect->name_ == "Grayscale") data_.enableGrayscale = 1;
-			else if (effect->name_ == "Sepia") data_.enableSepia = 1;
-			else if (effect->name_ == "Vignetting") data_.enableVignette = 1;
-			else if (effect->name_ == "Smoothing") data_.enableSmoothing = 1;
-			else if (effect->name_ == "GaussianFilter") data_.enableGaussian = 1;
-			else if (effect->name_ == "Outline") data_.enableOutline = 1;
-			else if (effect->name_ == "RadialBlur") data_.enableRadialBlur = 1;
-			else if (effect->name_ == "Dissolve") data_.enableDissolve = 1;
-			else if (effect->name_ == "Random(Glitch)") data_.enableRandom = 1;
+		if (effect->IsActive()) {
+			effect->ApplyToData(data_);
 		}
 	}
 
@@ -376,11 +368,15 @@ void PostProcess::DrawImGuiContent()
 {
 #ifdef USE_IMGUI
 	for (auto& effect : effects_) {
-		ImGui::PushID(effect->name_.c_str());
-		ImGui::Checkbox(effect->name_.c_str(), &effect->isActive_);
+		const std::string& name = effect->GetName();
+		bool isActive = effect->IsActive();
+		ImGui::PushID(name.c_str());
+		if (ImGui::Checkbox(name.c_str(), &isActive)) {
+			effect->SetActive(isActive);
+		}
 		
 		// ONの時だけ詳細なパラメータUIを表示
-		if (effect->isActive_) {
+		if (effect->IsActive()) {
 			ImGui::Indent();
 			effect->DrawImGui();
 			ImGui::Unindent();
@@ -405,33 +401,9 @@ void PostProcess::SaveToJson()
 
 	for (const auto& effect : effects_) {
 		nlohmann::json effectJson;
-		effectJson["isActive"] = effect->isActive_;
-		
-		if (effect->name_ == "Sepia") {
-			effectJson["strength"] = data_.sepiaStrength;
-		} else if (effect->name_ == "Vignetting") {
-			effectJson["intensity"] = data_.vignetteIntensity;
-			effectJson["power"] = data_.vignettePower;
-		} else if (effect->name_ == "Smoothing") {
-			effectJson["kernelSize"] = data_.smoothingKernelSize;
-		} else if (effect->name_ == "GaussianFilter") {
-			effectJson["sigma"] = data_.gaussianSigma;
-		} else if (effect->name_ == "Outline") {
-			effectJson["threshold"] = data_.outlineThreshold;
-		} else if (effect->name_ == "RadialBlur") {
-			effectJson["centerX"] = data_.radialBlurCenterX;
-			effectJson["centerY"] = data_.radialBlurCenterY;
-			effectJson["intensity"] = data_.radialBlurIntensity;
-		} else if (effect->name_ == "Dissolve") {
-			effectJson["threshold"] = data_.dissolveThreshold;
-			effectJson["edgeWidth"] = data_.dissolveEdgeWidth;
-			effectJson["edgeColor"] = { data_.dissolveEdgeColor[0], data_.dissolveEdgeColor[1], data_.dissolveEdgeColor[2] };
-		} else if (effect->name_ == "Random(Glitch)") {
-			effectJson["glitchStrength"] = data_.glitchStrength;
-			effectJson["noiseStrength"] = data_.noiseStrength;
-		}
-
-		j[effect->name_] = effectJson;
+		effectJson["isActive"] = effect->IsActive();
+		effect->SaveToJson(effectJson);
+		j[effect->GetName()] = effectJson;
 	}
 
 	std::ofstream file("resources/json/settings/postprocess.json");
@@ -449,38 +421,11 @@ void PostProcess::LoadFromJson()
 	file >> j;
 
 	for (auto& effect : effects_) {
-		if (j.contains(effect->name_)) {
-			auto& effectJson = j[effect->name_];
-			
-			if (effectJson.contains("isActive")) effect->isActive_ = effectJson["isActive"];
-			
-			if (effect->name_ == "Sepia" && effectJson.contains("strength")) {
-				data_.sepiaStrength = effectJson["strength"];
-			} else if (effect->name_ == "Vignetting") {
-				if (effectJson.contains("intensity")) data_.vignetteIntensity = effectJson["intensity"];
-				if (effectJson.contains("power")) data_.vignettePower = effectJson["power"];
-			} else if (effect->name_ == "Smoothing") {
-				if (effectJson.contains("kernelSize")) data_.smoothingKernelSize = effectJson["kernelSize"];
-			} else if (effect->name_ == "GaussianFilter") {
-				if (effectJson.contains("sigma")) data_.gaussianSigma = effectJson["sigma"];
-			} else if (effect->name_ == "Outline") {
-				if (effectJson.contains("threshold")) data_.outlineThreshold = effectJson["threshold"];
-			} else if (effect->name_ == "RadialBlur") {
-				if (effectJson.contains("centerX")) data_.radialBlurCenterX = effectJson["centerX"];
-				if (effectJson.contains("centerY")) data_.radialBlurCenterY = effectJson["centerY"];
-				if (effectJson.contains("intensity")) data_.radialBlurIntensity = effectJson["intensity"];
-			} else if (effect->name_ == "Dissolve") {
-				if (effectJson.contains("threshold")) data_.dissolveThreshold = effectJson["threshold"];
-				if (effectJson.contains("edgeWidth")) data_.dissolveEdgeWidth = effectJson["edgeWidth"];
-				if (effectJson.contains("edgeColor")) {
-					data_.dissolveEdgeColor[0] = effectJson["edgeColor"][0];
-					data_.dissolveEdgeColor[1] = effectJson["edgeColor"][1];
-					data_.dissolveEdgeColor[2] = effectJson["edgeColor"][2];
-				}
-			} else if (effect->name_ == "Random(Glitch)") {
-				if (effectJson.contains("glitchStrength")) data_.glitchStrength = effectJson["glitchStrength"];
-				if (effectJson.contains("noiseStrength")) data_.noiseStrength = effectJson["noiseStrength"];
-			}
+		const std::string& name = effect->GetName();
+		if (j.contains(name)) {
+			const auto& effectJson = j[name];
+			if (effectJson.contains("isActive")) effect->SetActive(effectJson["isActive"]);
+			effect->LoadFromJson(effectJson);
 		}
 	}
 }

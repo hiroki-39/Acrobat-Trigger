@@ -494,12 +494,12 @@ void CollisionManager::CheckEnhanceRingsVsPlayer(CollisionContext& ctx)
             {
                 if ((*it)->GetType() == RingType::POWER_UP)
                 {
-                    if (ctx.acquiredEnhanceRingCount)
+                    if (ctx.onPowerUpRingCollected)
                     {
-                        *ctx.acquiredEnhanceRingCount = std::min(ctx.maxEnhanceRingIcons, *ctx.acquiredEnhanceRingCount + 1);
+                        int newPowerUpLevel = ctx.onPowerUpRingCollected();
                         if (ctx.player)
                         {
-                            ctx.player->SetPowerUpLevel(*ctx.acquiredEnhanceRingCount);
+                            ctx.player->SetPowerUpLevel(newPowerUpLevel);
                         }
                     }
                     SoundManager::GetInstance()->PlaySE("powerup.mp3", 0.9f);

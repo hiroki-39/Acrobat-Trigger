@@ -7,7 +7,7 @@
 /// 拡散弾兵器（スプレッドショット / 5-Wayマルチスプレッド）
 /// 扇状に5発の高速プラズマ弾を同時発射し、敵編隊の一掃や至近距離での大ダメージを狙う
 /// </summary>
-class SpreadWeapon : public IWeapon {
+class SpreadWeapon : public IAmmoWeapon {
 public:
     void Initialize(Player* owner, Object3dCommon* object3dCommon) override;
     void Update(float gameSpeed, const std::list<std::unique_ptr<Enemy>>& enemies, ArmoredTrainBoss* boss, Object3d* parentCamera) override;

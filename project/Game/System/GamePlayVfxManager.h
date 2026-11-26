@@ -95,15 +95,15 @@ public:
 	/// </summary>
 	void Draw(bool drawThruster, bool drawWind, Object3dCommon* object3dCommon);
 
-	ParticleEffect& Thruster() { return thrusterEffect_; }
-	ParticleEffect& Explosion() { return explosionEffect_; }
-	ParticleEffect& Hit() { return hitEffect_; }
-	ParticleEffect& Dodge() { return dodgeEffect_; }
-	ParticleEffect& Trail() { return trailEffect_; }
-	ParticleEffect& MissileSmoke() { return missileSmokeEffect_; }
-	ParticleEffect& Ring() { return ringEffect_; }
-	ParticleEffect& HealRing() { return healRingEffect_; }
-	ParticleEffect& Wind() { return windEffect_; }
+	ParticleEffect* GetThrusterEffect() { return &thrusterEffect_; }
+	ParticleEffect* GetExplosionEffect() { return &explosionEffect_; }
+	ParticleEffect* GetHitEffect() { return &hitEffect_; }
+	ParticleEffect* GetDodgeEffect() { return &dodgeEffect_; }
+	ParticleEffect* GetTrailEffect() { return &trailEffect_; }
+	ParticleEffect* GetMissileSmokeEffect() { return &missileSmokeEffect_; }
+	ParticleEffect* GetRingEffect() { return &ringEffect_; }
+	ParticleEffect* GetHealRingEffect() { return &healRingEffect_; }
+	ParticleEffect* GetWindEffect() { return &windEffect_; }
 
 private:
 	struct VoxelHitParticle

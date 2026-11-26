@@ -16,12 +16,12 @@ void Application::Initialize()
 
     
     EngineServices* services = EngineServices::GetInstance();
-    services->SetObject3dCommon(object3dCommon_.get());
-    services->SetDirectXCommon(dxCommon_.get());
-    services->SetSrvManager(srvManager_);
-    services->SetSpriteCommon(spriteCommon_.get());
-    services->SetInput(input_.get());
-    services->SetImGuiManager(imguiManager_.get());
+    services->SetObject3dCommon(GetObject3dCommon());
+    services->SetDirectXCommon(GetDxCommon());
+    services->SetSrvManager(GetSrvManager());
+    services->SetSpriteCommon(GetSpriteCommon());
+    services->SetInput(GetInput());
+    services->SetImGuiManager(GetImGuiManager());
 
     
     sceneFactory_ = std::make_unique<GameSceneFactory>();

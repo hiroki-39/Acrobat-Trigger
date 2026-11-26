@@ -32,6 +32,84 @@
 #include "externals/nlohmann/json.hpp"
 #include "Game/System/TerrainCollisionDebugger.h"
 
+class GamePlayScene::StartCutscenePhaseState final : public GamePlayScene::PhaseState
+{
+public:
+	void Update(GamePlayScene& scene, float dt, float& unscaledGameSpeed) override
+	{
+		scene.UpdateOpeningCutscene(dt);
+		unscaledGameSpeed = scene.baseGameSpeed_;
+		if (scene.railCameraController_) { scene.railCameraController_->SetSpeedMultiplier(1.0f); }
+	}
+	GamePhase GetPhase() const override { return GamePhase::START_CUTSCENE; }
+};
+
+class GamePlayScene::PlayingPhaseState final : public GamePlayScene::PhaseState
+{
+public:
+	void Update(GamePlayScene& scene, float dt, float& unscaledGameSpeed) override
+	{
+		scene.openingSequence_.TickMissionStartText(dt);
+		if (scene.bossFinisherSequence_ && scene.bossFinisherSequence_->IsMoviePhase())
+		{
+			unscaledGameSpeed = 0.0f;
+			if (scene.railCameraController_) { scene.railCameraController_->SetSpeedMultiplier(0.0f); }
+		}
+		else
+		{
+			scene.stageElapsedTime_ += dt;
+		}
+	}
+	GamePhase GetPhase() const override { return GamePhase::PLAYING; }
+};
+
+class GamePlayScene::GameOverPhaseState final : public GamePlayScene::PhaseState
+{
+public:
+	void Update(GamePlayScene& scene, float dt, float& unscaledGameSpeed) override
+	{
+		scene.UpdateGameOverSequence(dt);
+		unscaledGameSpeed = 0.0f;
+		if (scene.railCameraController_) { scene.railCameraController_->SetSpeedMultiplier(0.0f); }
+	}
+	GamePhase GetPhase() const override { return GamePhase::GAMEOVER; }
+};
+
+class GamePlayScene::ClearPhaseState final : public GamePlayScene::PhaseState
+{
+public:
+	void Update(GamePlayScene& scene, float dt, float& unscaledGameSpeed) override
+	{
+		scene.UpdateClearSequence(dt);
+		unscaledGameSpeed = 0.0f;
+		if (scene.railCameraController_) { scene.railCameraController_->SetSpeedMultiplier(0.0f); }
+	}
+	GamePhase GetPhase() const override { return GamePhase::CLEAR; }
+};
+
+GamePlayScene::GamePlayScene()
+{
+	phaseState_ = std::make_unique<StartCutscenePhaseState>();
+}
+
+GamePlayScene::~GamePlayScene() = default;
+
+void GamePlayScene::ChangePhaseState(std::unique_ptr<PhaseState> nextState)
+{
+	phaseState_ = std::move(nextState);
+}
+
+void GamePlayScene::SetGamePhase(GamePhase phase)
+{
+	switch (phase)
+	{
+	case GamePhase::START_CUTSCENE: ChangePhaseState(std::make_unique<StartCutscenePhaseState>()); break;
+	case GamePhase::PLAYING:        ChangePhaseState(std::make_unique<PlayingPhaseState>()); break;
+	case GamePhase::GAMEOVER:       ChangePhaseState(std::make_unique<GameOverPhaseState>()); break;
+	case GamePhase::CLEAR:          ChangePhaseState(std::make_unique<ClearPhaseState>()); break;
+	}
+}
+
 void GamePlayScene::Initialize()
 {
 	auto initStartTime = std::chrono::high_resolution_clock::now();
@@ -133,7 +211,7 @@ void GamePlayScene::ReloadLevel()
 {
 	bullets_.clear();
 	missiles_.clear();
-	hud_.AcquiredEnhanceRingCount() = 0;
+	hud_.SetAcquiredEnhanceRingCount(0);
 	stageElapsedTime_ = 0.0f;
 	bossElapsedTime_ = 0.0f;
 	levelManager_.ReloadLevel(BuildLevelContext());
@@ -163,7 +241,7 @@ void GamePlayScene::SeamlessResetForRetry()
 	obstacles_.clear();
 	enhanceRings_.clear();
 	memoryItems_.clear();
-	hud_.AcquiredEnhanceRingCount() = 0;
+	hud_.SetAcquiredEnhanceRingCount(0);
 
 	levelManager_.RespawnActorsFromCache(BuildLevelContext());
 
@@ -189,7 +267,7 @@ void GamePlayScene::Finalize()
 		bossFinisherSequence_->Reset(player_.get());
 	}
 
-	sprites.clear();
+	ClearSprites();
 	modelInstances.clear();
 
 	vfx_.ResetPostProcess(EngineServices::GetInstance()->GetPostProcess());
@@ -318,7 +396,7 @@ void GamePlayScene::Update()
 		}
 
 		// ポーズメニューの開閉判定（プレイ中、かつゲームオーバーやクリア中でない場合）
-		if (isPlaying_ && gamePhase_ != GamePhase::GAMEOVER && gamePhase_ != GamePhase::CLEAR)
+		if (isPlaying_ && GetGamePhase() != GamePhase::GAMEOVER && GetGamePhase() != GamePhase::CLEAR)
 		{
 			if (input)
 			{
@@ -353,7 +431,7 @@ void GamePlayScene::Update()
 		}
 	}
 
-	hud_.UpdateHudTexts(player_.get(), bossFinisherSequence_.get(), score_, gamePhase_ == GamePhase::START_CUTSCENE, gamePhase_ == GamePhase::GAMEOVER, gamePhase_ == GamePhase::CLEAR, openingSequence_.GetTimer());
+	hud_.UpdateHudTexts(player_.get(), bossFinisherSequence_.get(), score_, GetGamePhase() == GamePhase::START_CUTSCENE, GetGamePhase() == GamePhase::GAMEOVER, GetGamePhase() == GamePhase::CLEAR, openingSequence_.GetTimer());
 
 #ifdef ENABLE_EDITOR
 	editor_.Draw(*this);
@@ -398,7 +476,7 @@ void GamePlayScene::HandleGlobalHotkeys(EngineServices* services, Input* input)
 
 void GamePlayScene::UpdateDemoPlay(EngineServices* services, float dt)
 {
-	demoController_.Update(services, dt, gamePhase_ == GamePhase::PLAYING, player_.get(), bossFinisherSequence_.get(), &bossBattle_, armoredTrainBoss_.get(), bullets_, [this]() { StartBossWarningSequence(); });
+	demoController_.Update(services, dt, GetGamePhase() == GamePhase::PLAYING, player_.get(), bossFinisherSequence_.get(), &bossBattle_, armoredTrainBoss_.get(), bullets_, [this]() { StartBossWarningSequence(); });
 }
 
 void GamePlayScene::UpdateRailAndCamera(EngineServices* services, float dt, float& unscaledGameSpeed)
@@ -411,36 +489,9 @@ void GamePlayScene::UpdateRailAndCamera(EngineServices* services, float dt, floa
 		railCameraController_->SetSpeedMultiplier(isBoosting ? 1.5f : 1.0f);
 	}
 
-	if (gamePhase_ == GamePhase::START_CUTSCENE)
+	if (phaseState_)
 	{
-		UpdateOpeningCutscene(dt);
-		unscaledGameSpeed = baseGameSpeed_;
-		if (railCameraController_) { railCameraController_->SetSpeedMultiplier(1.0f); }
-	}
-	else if (gamePhase_ == GamePhase::GAMEOVER)
-	{
-		UpdateGameOverSequence(dt);
-		unscaledGameSpeed = 0.0f;
-		if (railCameraController_) { railCameraController_->SetSpeedMultiplier(0.0f); }
-	}
-	else if (gamePhase_ == GamePhase::CLEAR)
-	{
-		UpdateClearSequence(dt);
-		unscaledGameSpeed = 0.0f;
-		if (railCameraController_) { railCameraController_->SetSpeedMultiplier(0.0f); }
-	}
-	else if (gamePhase_ == GamePhase::PLAYING)
-	{
-		openingSequence_.TickMissionStartText(dt);
-		if (bossFinisherSequence_ && bossFinisherSequence_->IsMoviePhase())
-		{
-			unscaledGameSpeed = 0.0f;
-			if (railCameraController_) { railCameraController_->SetSpeedMultiplier(0.0f); }
-		}
-		else
-		{
-			stageElapsedTime_ += dt;
-		}
+		phaseState_->Update(*this, dt, unscaledGameSpeed);
 	}
 
 	vfx_.UpdatePostProcessEffects(
@@ -461,9 +512,9 @@ void GamePlayScene::UpdateRailAndCamera(EngineServices* services, float dt, floa
 
 	world_.UpdateCameraFovAndRail(BuildWorldContext(), clearSequence_.GetStartPlayerPos());
 
-	if (gamePhase_ == GamePhase::PLAYING && bossBattle_.GetStep() == BossBattleController::Step::NOT_ACTIVE && railCameraController_)
+	if (GetGamePhase() == GamePhase::PLAYING && bossBattle_.GetStep() == BossBattleController::Step::NOT_ACTIVE && railCameraController_)
 	{
-		if (railCameraController_->GetProgress() >= bossBattle_.SpawnProgressThreshold())
+		if (railCameraController_->GetProgress() >= bossBattle_.GetSpawnProgressThreshold())
 		{
 			StartBossWarningSequence();
 		}
@@ -515,10 +566,10 @@ GamePlayWorldContext GamePlayScene::BuildWorldContext()
 	ctx.score = &score_;
 	ctx.killedEnemiesCount = &killedEnemiesCount_;
 	ctx.terrainMaterializeProgress = terrainMaterializeProgress_;
-	ctx.isStartCutscenePhase = (gamePhase_ == GamePhase::START_CUTSCENE);
-	ctx.isPlayingPhase = (gamePhase_ == GamePhase::PLAYING);
-	ctx.isGameOverPhase = (gamePhase_ == GamePhase::GAMEOVER);
-	ctx.isClearPhase = (gamePhase_ == GamePhase::CLEAR);
+	ctx.isStartCutscenePhase = (GetGamePhase() == GamePhase::START_CUTSCENE);
+	ctx.isPlayingPhase = (GetGamePhase() == GamePhase::PLAYING);
+	ctx.isGameOverPhase = (GetGamePhase() == GamePhase::GAMEOVER);
+	ctx.isClearPhase = (GetGamePhase() == GamePhase::CLEAR);
 	return ctx;
 }
 
@@ -534,7 +585,7 @@ void GamePlayScene::UpdateCameraShakeAndVfx(float dt)
 		hud_.UpdateScorePopups((1.0f / 60.0f) * gameSpeed_);
 	}
 	world_.UpdateCameraAndEnvironment(BuildWorldContext());
-	vfx_.UpdatePlayerVfx(dt, player_.get(), activeCamera_, isPlaying_, pauseMenu_.IsPaused(), gamePhase_ == GamePhase::START_CUTSCENE, gamePhase_ == GamePhase::PLAYING, gamePhase_ == GamePhase::GAMEOVER, gamePhase_ == GamePhase::CLEAR, openingSequence_.GetTimer(), openingSequence_.IsThrusterReady(), gameSpeed_, randomEngine);
+	vfx_.UpdatePlayerVfx(dt, player_.get(), activeCamera_, isPlaying_, pauseMenu_.IsPaused(), GetGamePhase() == GamePhase::START_CUTSCENE, GetGamePhase() == GamePhase::PLAYING, GetGamePhase() == GamePhase::GAMEOVER, GetGamePhase() == GamePhase::CLEAR, openingSequence_.GetTimer(), openingSequence_.IsThrusterReady(), gameSpeed_, randomEngine);
 }
 
 void GamePlayScene::CheckGameEndConditions()
@@ -546,14 +597,14 @@ void GamePlayScene::CheckGameEndConditions()
 
 	if (player_->GetHp() <= 0)
 	{
-		if (gamePhase_ == GamePhase::PLAYING)
+		if (GetGamePhase() == GamePhase::PLAYING)
 		{
 			StartGameOverSequence();
 		}
 	}
 
 	// 全通常敵撃破後のクリア判定（ボス戦が控えている・戦闘中の場合はボス撃破までクリアにしない）
-	if (hasEnemySpawned_ && enemies_.empty() && gamePhase_ == GamePhase::PLAYING)
+	if (hasEnemySpawned_ && enemies_.empty() && GetGamePhase() == GamePhase::PLAYING)
 	{
 		if (bossBattle_.GetStep() == BossBattleController::Step::FINISHED || (bossBattle_.GetStep() == BossBattleController::Step::NOT_ACTIVE && !armoredTrainBoss_))
 		{
@@ -577,29 +628,29 @@ void GamePlayScene::DrawUI()
 
 	// 通常プレイ時のみHPバー、ブーストバー、強化リングアイコンを描画（スタート演出中・ゲームオーバー・クリア時・処刑ムービー中は非表示）
 	bool isFinisherMovie = (bossFinisherSequence_ && bossFinisherSequence_->IsMoviePhase());
-	if (gamePhase_ == GamePhase::PLAYING && !isFinisherMovie)
+	if (GetGamePhase() == GamePhase::PLAYING && !isFinisherMovie)
 	{
 		hud_.DrawSprites();
-		if (isDisplaySprite) { for (auto& sprite : sprites) if (sprite) { sprite->Update(); sprite->Draw(); } }
+		if (IsDisplaySprite()) { for (auto& sprite : GetSprites()) if (sprite) { sprite->Update(); sprite->Draw(); } }
 
 		// ボス専用HPバースプライト（戦闘中・撃破演出中）
 		bossBattle_.DrawHpSprites(armoredTrainBoss_ ? armoredTrainBoss_->GetTotalHpRate() : 0.0f);
 	}
 
 	// 通常プレイ中のレティクル・ロックオンマーカー・スコアポップアップ描画
-	hud_.DrawOverlayUI(gamePhase_ == GamePhase::PLAYING, (bossFinisherSequence_ && bossFinisherSequence_->IsMoviePhase()), player_.get(), activeCamera_);
+	hud_.DrawOverlayUI(GetGamePhase() == GamePhase::PLAYING, (bossFinisherSequence_ && bossFinisherSequence_->IsMoviePhase()), player_.get(), activeCamera_);
 
 	// スタート演出用UIテキストの描画
-	openingSequence_.DrawUI(gamePhase_ == GamePhase::START_CUTSCENE, gamePhase_ == GamePhase::PLAYING);
+	openingSequence_.DrawUI(GetGamePhase() == GamePhase::START_CUTSCENE, GetGamePhase() == GamePhase::PLAYING);
 
 	// ボス戦用UI（WARNING警告・詳細ボスHPバー・各車両インジケーター）の描画
-	bossBattle_.DrawUI(gamePhase_ == GamePhase::START_CUTSCENE, gamePhase_ == GamePhase::GAMEOVER, gamePhase_ == GamePhase::CLEAR, BuildBossBattleContext());
+	bossBattle_.DrawUI(GetGamePhase() == GamePhase::START_CUTSCENE, GetGamePhase() == GamePhase::GAMEOVER, GetGamePhase() == GamePhase::CLEAR, BuildBossBattleContext());
 
 	// ゲームオーバー演出用UIテキストの描画
-	gameOverSequence_.DrawUI(gamePhase_ == GamePhase::GAMEOVER, GetSceneManager());
+	gameOverSequence_.DrawUI(GetGamePhase() == GamePhase::GAMEOVER, GetSceneManager());
 
 	// ゲームクリア演出用UIテキストの描画
-	clearSequence_.DrawUI(gamePhase_ == GamePhase::CLEAR, BuildClearContext());
+	clearSequence_.DrawUI(GetGamePhase() == GamePhase::CLEAR, BuildClearContext());
 
 	// ポーズメニューUIの描画
 	pauseMenu_.DrawUI();
@@ -619,8 +670,8 @@ OpeningCutsceneContext GamePlayScene::BuildOpeningContext()
 	ctx.railCameraController = railCameraController_.get();
 	ctx.modelInstances = &modelInstances;
 	ctx.obstacles = &obstacles_;
-	ctx.thrusterEffect = &vfx_.Thruster();
-	ctx.windEffect = &vfx_.Wind();
+	ctx.thrusterEffect = vfx_.GetThrusterEffect();
+	ctx.windEffect = vfx_.GetWindEffect();
 	ctx.bossFinisherSequence = bossFinisherSequence_.get();
 	ctx.terrainMaterializeProgress = &terrainMaterializeProgress_;
 	ctx.cameraShakeTimer = &cameraShakeTimer_;
@@ -629,7 +680,7 @@ OpeningCutsceneContext GamePlayScene::BuildOpeningContext()
 
 void GamePlayScene::StartOpeningCutscene()
 {
-	gamePhase_ = GamePhase::START_CUTSCENE;
+	ChangePhaseState(std::make_unique<StartCutscenePhaseState>());
 	openingSequence_.Start(BuildOpeningContext());
 }
 
@@ -637,7 +688,7 @@ void GamePlayScene::UpdateOpeningCutscene(float dt)
 {
 	if (openingSequence_.Update(dt, BuildOpeningContext()))
 	{
-		gamePhase_ = GamePhase::PLAYING;
+		ChangePhaseState(std::make_unique<PlayingPhaseState>());
 	}
 }
 
@@ -656,23 +707,18 @@ GameOverContext GamePlayScene::BuildGameOverContext()
 	ctx.missiles = &missiles_;
 	ctx.enemyBullets = &enemyBullets_;
 	ctx.enhanceRings = &enhanceRings_;
-	ctx.thrusterEffect = &vfx_.Thruster();
-	ctx.windEffect = &vfx_.Wind();
+	ctx.thrusterEffect = vfx_.GetThrusterEffect();
+	ctx.windEffect = vfx_.GetWindEffect();
 	ctx.terrainMaterializeProgress = &terrainMaterializeProgress_;
 	ctx.cameraShakeTimer = &cameraShakeTimer_;
-	ctx.demoDeathLoopCount = &demoController_.DeathLoopCount();
-	ctx.demoSurvivalTimer = &demoController_.SurvivalTimer();
-	ctx.demoBulletSpawned = &demoController_.BulletSpawned();
-	ctx.demoHitTriggered = &demoController_.HitTriggered();
-	ctx.demoGameOverWaitTimer = &demoController_.GameOverWaitTimer();
-	ctx.demoMenuSelectStep = &demoController_.MenuSelectStep();
+	ctx.demoController = &demoController_;
 	ctx.onRetry = [this]() { SeamlessResetForRetry(); };
 	return ctx;
 }
 
 void GamePlayScene::StartGameOverSequence()
 {
-	gamePhase_ = GamePhase::GAMEOVER;
+	ChangePhaseState(std::make_unique<GameOverPhaseState>());
 	gameOverSequence_.Start(BuildGameOverContext());
 }
 
@@ -700,8 +746,8 @@ GameClearContext GamePlayScene::BuildClearContext()
 
 void GamePlayScene::StartClearSequence()
 {
-	if (gamePhase_ != GamePhase::PLAYING) return;
-	gamePhase_ = GamePhase::CLEAR;
+	if (GetGamePhase() != GamePhase::PLAYING) return;
+	ChangePhaseState(std::make_unique<ClearPhaseState>());
 	clearSequence_.Start(BuildClearContext());
 }
 
@@ -717,7 +763,7 @@ BossBattleContext GamePlayScene::BuildBossBattleContext()
 	ctx.bossRail = bossRail_.get();
 	ctx.railCameraController = railCameraController_.get();
 	ctx.gameSpeed = &gameSpeed_;
-	ctx.explosionEffect = &vfx_.Explosion();
+	ctx.explosionEffect = vfx_.GetExplosionEffect();
 	ctx.player = player_.get();
 	ctx.bullets = &bullets_;
 	ctx.missiles = &missiles_;
@@ -726,14 +772,14 @@ BossBattleContext GamePlayScene::BuildBossBattleContext()
 	ctx.bossFinisherSequence = bossFinisherSequence_.get();
 	ctx.cameraShakeTimer = &cameraShakeTimer_;
 	ctx.bossElapsedTime = &bossElapsedTime_;
-	ctx.onGameOver = [this]() { if (gamePhase_ == GamePhase::PLAYING) StartGameOverSequence(); };
+	ctx.onGameOver = [this]() { if (GetGamePhase() == GamePhase::PLAYING) StartGameOverSequence(); };
 	ctx.onClear = [this]() { StartClearSequence(); };
 	return ctx;
 }
 
 void GamePlayScene::TriggerTimeOverCannonSequence(bool nonLethal)
 {
-	gamePhase_ = GamePhase::PLAYING;
+	ChangePhaseState(std::make_unique<PlayingPhaseState>());
 	bossBattle_.TriggerTimeOverCannonSequence(nonLethal, BuildBossBattleContext());
 }
 

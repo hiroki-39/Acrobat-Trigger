@@ -45,8 +45,8 @@ public:
 	/// </summary>
 	void SetEffectActive(const std::string& name, bool isActive) {
 		for (auto& effect : effects_) {
-			if (effect->name_ == name) {
-				effect->isActive_ = isActive;
+			if (effect->GetName() == name) {
+				effect->SetActive(isActive);
 				break;
 			}
 		}

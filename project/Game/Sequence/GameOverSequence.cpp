@@ -1,5 +1,6 @@
 #define NOMINMAX
 #include "GameOverSequence.h"
+#include "Game/System/DemoPlayController.h"
 #include "Game/Actor/Player/Player.h"
 #include "Game/Actor/Obstacle/Obstacle.h"
 #include "Game/Actor/Enemy/Enemy.h"
@@ -32,11 +33,10 @@ void GameOverSequence::Start(const GameOverContext& ctx)
 		gameOverStep_ = Step::HIT_STOP;
 	gameOverSelectedOption_ = MenuOption::Retry;
 	gameOverTimer_ = 0.0f;
-	(*ctx.demoSurvivalTimer) = 0.0f;
-	(*ctx.demoBulletSpawned) = false;
-	(*ctx.demoHitTriggered) = false;
-	(*ctx.demoGameOverWaitTimer) = 0.0f;
-	(*ctx.demoMenuSelectStep) = 0;
+	if (ctx.demoController)
+	{
+		ctx.demoController->ResetCycle();
+	}
 	shockwaveScale_ = 0.2f;
 	shockwaveAlpha_ = 1.0f;
 	gameOverShards_.clear();
@@ -558,31 +558,33 @@ void GameOverSequence::Update(float dt, const GameOverContext& ctx)
 			// デモモード中の自動決定処理（展示用ループ：プレイヤーが選んでいる感を演出）
 			// サイクル1: RETRY -> (1.0s) TITLE -> (1.9s) RETRY -> (2.7s) 決定！
 			// サイクル2: RETRY -> (1.0s) TITLE -> (1.8s) RETRY -> (2.5s) TITLE -> (3.3s) 決定！
-			if (services && services->IsDemoMode())
+			if (services && services->IsDemoMode() && ctx.demoController)
 			{
-				(*ctx.demoGameOverWaitTimer) += dt;
+				ctx.demoController->AddGameOverWaitTimer(dt);
+				float waitTimer = ctx.demoController->GetGameOverWaitTimer();
+				int menuStep = ctx.demoController->GetMenuSelectStep();
 
-				if ((*ctx.demoDeathLoopCount) == 0)
+				if (ctx.demoController->GetDeathLoopCount() == 0)
 				{
 					// ==========================================
 					// --- サイクル1: RETRY を選択・決定する動き ---
 					// ==========================================
 					// ステップ0 (1.0s経過): カーソルを TITLE へ移動（迷っている演出）
-					if ((*ctx.demoGameOverWaitTimer) >= 1.0f && (*ctx.demoMenuSelectStep) == 0)
+					if (waitTimer >= 1.0f && menuStep == 0)
 					{
 						gameOverSelectedOption_ = MenuOption::Title;
 						SoundManager::GetInstance()->PlaySE("select.mp3", 0.6f);
-						(*ctx.demoMenuSelectStep) = 1;
+						ctx.demoController->SetMenuSelectStep(1);
 					}
 					// ステップ1 (1.9s経過): カーソルを RETRY へ戻す
-					else if ((*ctx.demoGameOverWaitTimer) >= 1.9f && (*ctx.demoMenuSelectStep) == 1)
+					else if (waitTimer >= 1.9f && menuStep == 1)
 					{
 						gameOverSelectedOption_ = MenuOption::Retry;
 						SoundManager::GetInstance()->PlaySE("select.mp3", 0.6f);
-						(*ctx.demoMenuSelectStep) = 2;
+						ctx.demoController->SetMenuSelectStep(2);
 					}
 					// ステップ2 (2.7s経過): RETRY を決定！
-					else if ((*ctx.demoGameOverWaitTimer) >= 2.7f && (*ctx.demoMenuSelectStep) == 2)
+					else if (waitTimer >= 2.7f && menuStep == 2)
 					{
 						gameOverSelectedOption_ = MenuOption::Retry;
 
@@ -629,12 +631,8 @@ void GameOverSequence::Update(float dt, const GameOverContext& ctx)
 						SoundManager::GetInstance()->StopBGM();
 						SoundManager::GetInstance()->PlaySE("button.mp3", 0.7f);
 
-						(*ctx.demoDeathLoopCount) = 1; // 次回はタイトルへ
-						(*ctx.demoSurvivalTimer) = 0.0f;
-						(*ctx.demoBulletSpawned) = false;
-						(*ctx.demoHitTriggered) = false;
-						(*ctx.demoGameOverWaitTimer) = 0.0f;
-						(*ctx.demoMenuSelectStep) = 0;
+						ctx.demoController->SetDeathLoopCount(1); // 次回はタイトルへ
+						ctx.demoController->ResetCycle();
 					}
 				}
 				else
@@ -643,28 +641,28 @@ void GameOverSequence::Update(float dt, const GameOverContext& ctx)
 					// --- サイクル2: TITLE を選択・決定する動き ---
 					// ==========================================
 					// ステップ0 (1.0s経過): カーソルを TITLE へ移動
-					if ((*ctx.demoGameOverWaitTimer) >= 1.0f && (*ctx.demoMenuSelectStep) == 0)
+					if (waitTimer >= 1.0f && menuStep == 0)
 					{
 						gameOverSelectedOption_ = MenuOption::Title;
 						SoundManager::GetInstance()->PlaySE("select.mp3", 0.6f);
-						(*ctx.demoMenuSelectStep) = 1;
+						ctx.demoController->SetMenuSelectStep(1);
 					}
 					// ステップ1 (1.8s経過): カーソルを RETRY へ一旦戻す（迷い）
-					else if ((*ctx.demoGameOverWaitTimer) >= 1.8f && (*ctx.demoMenuSelectStep) == 1)
+					else if (waitTimer >= 1.8f && menuStep == 1)
 					{
 						gameOverSelectedOption_ = MenuOption::Retry;
 						SoundManager::GetInstance()->PlaySE("select.mp3", 0.6f);
-						(*ctx.demoMenuSelectStep) = 2;
+						ctx.demoController->SetMenuSelectStep(2);
 					}
 					// ステップ2 (2.5s経過): 再び TITLE へ移動！
-					else if ((*ctx.demoGameOverWaitTimer) >= 2.5f && (*ctx.demoMenuSelectStep) == 2)
+					else if (waitTimer >= 2.5f && menuStep == 2)
 					{
 						gameOverSelectedOption_ = MenuOption::Title;
 						SoundManager::GetInstance()->PlaySE("select.mp3", 0.6f);
-						(*ctx.demoMenuSelectStep) = 3;
+						ctx.demoController->SetMenuSelectStep(3);
 					}
 					// ステップ3 (3.3s経過): TITLE を決定！（CRT電源オフ演出へ）
-					else if ((*ctx.demoGameOverWaitTimer) >= 3.3f && (*ctx.demoMenuSelectStep) == 3)
+					else if (waitTimer >= 3.3f && menuStep == 3)
 					{
 						gameOverSelectedOption_ = MenuOption::Title;
 
@@ -682,12 +680,8 @@ void GameOverSequence::Update(float dt, const GameOverContext& ctx)
 						SoundManager::GetInstance()->PlaySE("button.mp3", 0.7f);
 						sceneManager->ChangeScene("TITLE", 0.90f, { 0.0f, 0.0f, 0.0f, 1.0f }, TransitionType::CRT_Off);
 
-						(*ctx.demoDeathLoopCount) = 0; // 次回はリトライから
-						(*ctx.demoSurvivalTimer) = 0.0f;
-						(*ctx.demoBulletSpawned) = false;
-						(*ctx.demoHitTriggered) = false;
-						(*ctx.demoGameOverWaitTimer) = 0.0f;
-						(*ctx.demoMenuSelectStep) = 0;
+						ctx.demoController->SetDeathLoopCount(0); // 次回はリトライから
+						ctx.demoController->ResetCycle();
 					}
 				}
 			}

@@ -92,25 +92,30 @@ public:
     virtual std::string GetAmmoText() const { return ""; }
 
     /// <summary>
-    /// 現在弾数取得
-    /// </summary>
-    virtual int GetAmmo() const { return 0; }
-
-    /// <summary>
-    /// 最大弾数取得
-    /// </summary>
-    virtual int GetMaxAmmo() const { return 0; }
-
-    /// <summary>
-    /// 2D HUD描画用ロックオンターゲットリスト取得
-    /// </summary>
-    virtual std::vector<LockOnTargetHUD> GetLockOnTargets() const { return {}; }
-
-    /// <summary>
     /// 共通サイバーVFXシステムを設定
     /// </summary>
     void SetVfxSystem(CyberVfxSystem* vfxSystem) { vfxSystem_ = vfxSystem; }
 
 protected:
+    CyberVfxSystem* GetVfxSystem() const { return vfxSystem_; }
+
+private:
     CyberVfxSystem* vfxSystem_ = nullptr;
+};
+
+/// <summary>
+/// 弾数制限を持つ武器の中間基底クラス（飛べない鳥にFly()を押し付けないための2段階継承）
+/// </summary>
+class IAmmoWeapon : public IWeapon {
+public:
+    virtual int GetAmmo() const = 0;
+    virtual int GetMaxAmmo() const = 0;
+};
+
+/// <summary>
+/// マルチロックオン機能を持つ弾数制武器の中間基底クラス
+/// </summary>
+class ILockOnWeapon : public IAmmoWeapon {
+public:
+    virtual std::vector<LockOnTargetHUD> GetLockOnTargets() const = 0;
 };

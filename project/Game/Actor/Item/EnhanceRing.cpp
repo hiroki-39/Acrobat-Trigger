@@ -6,10 +6,8 @@
 void EnhanceRing::Initialize(Object3dCommon* object3dCommon, const Vector3& pos, const Vector3& scale, const Vector3& rotation, const std::string& fileName, RingType type, uint32_t skyboxTexIndex, const LevelCollider& colliderInfo) {
     (void)rotation;
     position_ = pos;
-    // ring_coreがX-Z平面で保存されているため、全軸均一スケールにして楕円化を防ぐ
-    float uniformScale = scale.x > scale.y ? scale.x : scale.y;
-    baseScale_ = { uniformScale, uniformScale, uniformScale };
-    // ring_coreはX-Z平面（寝た状態）のためX軸90度回転で正面に起こす
+    baseScale_ = scale;
+    // 現状モデルが水平（X-Z平面）に寝た状態で描画されるため、X軸に90度回転して正面に起こす
     rotation_ = { 1.5707963f, 0.0f, 0.0f };
     type_ = type;
     collider_ = colliderInfo;
@@ -56,13 +54,13 @@ void EnhanceRing::Initialize(Object3dCommon* object3dCommon, const Vector3& pos,
         object_->SetColor({ 0.20f, 1.0f, 0.35f, 1.0f }); // 緑色
     }
 
-    // 2. ring_1：強化・回復共通の白色＋サイバーシェーダー（元々X-Y平面で正面向きのためX回転なしでZ軸回転）
+    // 2. ring_1：強化・回復共通の白色＋サイバーシェーダー（常時回転＆通過時高速回転）
     ring1Object_ = std::make_unique<Object3d>();
     ring1Object_->Initialize(object3dCommon);
     ring1Object_->SetModel("ring/ring_1/ring_1.obj");
     ring1Object_->SetTranslate(position_);
     ring1Object_->SetScale(baseScale_);
-    ring1Object_->SetRotation({ 0.0f, 0.0f, 0.0f });
+    ring1Object_->SetRotation(rotation_);
     ring1Object_->SetEnableLighting(false);
     ring1Object_->SetEnvironmentCoefficient(0.0f);
     ring1Object_->SetSelectLightings(15);
@@ -129,8 +127,7 @@ void EnhanceRing::Update() {
     if (ring1Object_) {
         ring1Object_->SetScale(currentScale);
         ring1Object_->SetTranslate(position_);
-        // ring_1は元々正面向き（X-Y平面）のため、X軸90度回転は掛けずZ軸のみで回転させる
-        ring1Object_->SetRotation({ 0.0f, 0.0f, rotation_.z + ring1RotZ_ });
+        ring1Object_->SetRotation({ rotation_.x, rotation_.y, rotation_.z + ring1RotZ_ });
         ring1Object_->SetShininess(animTimer_);
         ring1Object_->Update();
     }

@@ -191,13 +191,10 @@ public:
 	/// </summary>
 	void DrawImGui(bool* pOpen = nullptr);
 
-	PaletteConfig& Palette() { return palette_; }
 	const PaletteConfig& Palette() const { return palette_; }
 
-	WeaponVfxConfig& Weapon() { return weapon_; }
 	const WeaponVfxConfig& Weapon() const { return weapon_; }
 
-	ThrusterVfxConfig& Thruster() { return thruster_; }
 	const ThrusterVfxConfig& Thruster() const { return thruster_; }
 
 private:

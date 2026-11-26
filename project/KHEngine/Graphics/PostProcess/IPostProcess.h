@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include "externals/nlohmann/json.hpp"
 
 // 今後増えるエフェクト用パラメータをすべて詰め込む定数バッファ構造体
 struct PostProcessData {
@@ -42,11 +43,20 @@ struct PostProcessData {
 
 class IPostProcess {
 public:
+  explicit IPostProcess(std::string name = "None") : name_(std::move(name)) {}
   virtual ~IPostProcess() = default;
 
   virtual void Initialize() = 0;
   virtual void DrawImGui() = 0;
+  virtual void ApplyToData(PostProcessData& data) const = 0;
+  virtual void SaveToJson(nlohmann::json& effectJson) const { (void)effectJson; }
+  virtual void LoadFromJson(const nlohmann::json& effectJson) { (void)effectJson; }
 
+  bool IsActive() const { return isActive_; }
+  void SetActive(bool active) { isActive_ = active; }
+  const std::string& GetName() const { return name_; }
+
+private:
   bool isActive_ = false;
   std::string name_ = "None";
 };

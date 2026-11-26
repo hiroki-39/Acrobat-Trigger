@@ -21,11 +21,15 @@ public:
     MemoryType GetMemoryType() const { return memoryType_; }
     const Vector3& GetPosition() const { return position_; }
 
-    // デバッグ・調整用グローバル設定
-    static float s_ScaleMultiplier;
-    static Vector4 s_CustomBitColor;
+    // デバッグ・調整用グローバル設定アクセサ
+    static float GetScaleMultiplier() { return s_ScaleMultiplier; }
+    static void SetScaleMultiplier(float multiplier) { s_ScaleMultiplier = multiplier; }
+    static const Vector4& GetCustomBitColor() { return s_CustomBitColor; }
+    static void SetCustomBitColor(const Vector4& color) { s_CustomBitColor = color; }
 
 private:
+    static float s_ScaleMultiplier;
+    static Vector4 s_CustomBitColor;
     static constexpr int kOrbitBitCount = 3;
 
     std::unique_ptr<Object3d> object_ = nullptr;      // memory_core（メモリ種類ごとの色）

@@ -20,6 +20,7 @@ class PlayerMissile;
 class EnemyBullet;
 class EnhanceRing;
 class SceneManager;
+class DemoPlayController;
 
 /// <summary>
 /// ゲームオーバー＆リトライ演出に必要な外部参照コンテキスト
@@ -43,13 +44,8 @@ struct GameOverContext
 	float* terrainMaterializeProgress = nullptr;
 	float* cameraShakeTimer = nullptr;
 
-	// デモプレイ自動遷移用ステート
-	int* demoDeathLoopCount = nullptr;
-	float* demoSurvivalTimer = nullptr;
-	bool* demoBulletSpawned = nullptr;
-	bool* demoHitTriggered = nullptr;
-	float* demoGameOverWaitTimer = nullptr;
-	int* demoMenuSelectStep = nullptr;
+	// デモプレイ自動遷移用コントローラ
+	DemoPlayController* demoController = nullptr;
 
 	// リトライ実行時のコールバック
 	std::function<void()> onRetry;
@@ -106,12 +102,18 @@ public:
 	void SetRetryStartRail(float progress, int index) { retryStartProgress_ = progress; retryStartRailIndex_ = index; }
 
 	// エディタ調整用アクセサ
-	bool& DebugPreviewUI() { return debugPreviewGameOverUI_; }
-	bool& BarVisible() { return gameOverBarVisible_; }
-	float& BarWidth() { return gameOverBarWidth_; }
-	float& BarThickness() { return gameOverBarThickness_; }
-	float& BarOffsetY() { return gameOverBarOffsetY_; }
-	Vector4& BarColor() { return gameOverBarColor_; }
+	bool IsDebugPreviewUI() const { return debugPreviewGameOverUI_; }
+	void SetDebugPreviewUI(bool v) { debugPreviewGameOverUI_ = v; }
+	bool IsBarVisible() const { return gameOverBarVisible_; }
+	void SetBarVisible(bool v) { gameOverBarVisible_ = v; }
+	float GetBarWidth() const { return gameOverBarWidth_; }
+	void SetBarWidth(float v) { gameOverBarWidth_ = v; }
+	float GetBarThickness() const { return gameOverBarThickness_; }
+	void SetBarThickness(float v) { gameOverBarThickness_ = v; }
+	float GetBarOffsetY() const { return gameOverBarOffsetY_; }
+	void SetBarOffsetY(float v) { gameOverBarOffsetY_ = v; }
+	const Vector4& GetBarColor() const { return gameOverBarColor_; }
+	void SetBarColor(const Vector4& v) { gameOverBarColor_ = v; }
 
 private:
 	struct GameOverShard
