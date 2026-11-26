@@ -72,7 +72,19 @@ public:
     void ClearParticles();
 
     // ノードへのアクセス
-    std::vector<std::unique_ptr<Node>>& GetNodes() { return nodes_; }
+    const std::vector<std::unique_ptr<Node>>& GetNodes() const { return nodes_; }
+    size_t GetNodeCount() const { return nodes_.size(); }
+    Node* GetNode(size_t index) { return index < nodes_.size() ? nodes_[index].get() : nullptr; }
+    void SetAllUseBillboard(bool useBillboard) {
+        for (auto& node : nodes_) {
+            if (node) node->emitter.SetUseBillboard(useBillboard);
+        }
+    }
+    void OffsetAllParticles(const Vector3& offset) {
+        for (auto& node : nodes_) {
+            if (node) node->emitter.OffsetParticles(offset);
+        }
+    }
     void ClearNodes() { nodes_.clear(); }
     void SetupRendererForNode(Node* node);
 

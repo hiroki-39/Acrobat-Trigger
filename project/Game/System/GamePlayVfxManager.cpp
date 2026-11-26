@@ -27,10 +27,7 @@ void GamePlayVfxManager::Initialize(DirectXCommon* dxCommon, SrvManager* srvMana
 
 	dodgeEffect_.Initialize(dxCommon, srvManager);
 	dodgeEffect_.LoadFromJson("dodge.json");
-	for (auto& node : dodgeEffect_.GetNodes())
-	{
-		node->emitter.SetUseBillboard(true);
-	}
+	dodgeEffect_.SetAllUseBillboard(true);
 	TextureManager::GetInstance()->LoadTexture("digital_ring.png");
 
 	trailEffect_.Initialize(dxCommon, srvManager);
@@ -48,10 +45,7 @@ void GamePlayVfxManager::Initialize(DirectXCommon* dxCommon, SrvManager* srvMana
 
 	windEffect_.Initialize(dxCommon, srvManager);
 	windEffect_.LoadFromJson("wind.json");
-	for (auto& node : windEffect_.GetNodes())
-	{
-		node->emitter.SetUseBillboard(true);
-	}
+	windEffect_.SetAllUseBillboard(true);
 
 	// プレイヤー被弾用：3D三角形プリズム（正四面体 4面×3頂点=12頂点）＆横長デジタルスパーク
 	TextureManager::GetInstance()->LoadTexture("sprites/white.png");

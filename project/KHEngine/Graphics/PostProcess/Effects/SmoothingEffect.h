@@ -4,9 +4,7 @@
 
 class SmoothingEffect : public IPostProcess {
 public:
-    SmoothingEffect(PostProcessData* data) : data_(data) {
-        name_ = "Smoothing";
-    }
+    SmoothingEffect(PostProcessData* data) : IPostProcess("Smoothing"), data_(data) {}
 
     void Initialize() override {
         data_->smoothingKernelSize = 2.0f;

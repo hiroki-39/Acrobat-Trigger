@@ -31,8 +31,10 @@ public:
     void DrawControlWindow();  // エネミーエディター（設定・ファイル管理）
 
     // 表示フラグ
-    bool& GetShowViewport() { return showViewport_; }
-    bool& GetShowEditor() { return showEditor_; }
+    bool IsShowViewport() const { return showViewport_; }
+    void SetShowViewport(bool show) { showViewport_ = show; }
+    bool IsShowEditor() const { return showEditor_; }
+    void SetShowEditor(bool show) { showEditor_ = show; }
     EditorMode GetEditorMode() const { return editorMode_; }
     void SetEditorMode(EditorMode mode) { editorMode_ = mode; }
 

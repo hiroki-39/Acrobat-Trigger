@@ -302,8 +302,8 @@ void CyberBitWeapon::Update(float gameSpeed, const std::list<std::unique_ptr<Ene
                 float hitRadius = 3.5f;
                 if ((dist < hitRadius || closestDistSq <= hitRadius * hitRadius) && !b.hasHitTarget) {
                     b.hasHitTarget = true;
-                    if (vfxSystem_) {
-                        vfxSystem_->TriggerBulletHit(closestPt, b.velocity);
+                    if (GetVfxSystem()) {
+                        GetVfxSystem()->TriggerBulletHit(closestPt, b.velocity);
                     }
                     // ダメージ・撃破付与
                     if (b.targetBoss && boss) {
@@ -643,8 +643,8 @@ void CyberBitWeapon::Attack(Input* input,
             };
 
             launchedCount++;
-            if (vfxSystem_) {
-                vfxSystem_->TriggerMuzzleFlash(b.position, 0.75f);
+            if (GetVfxSystem()) {
+                GetVfxSystem()->TriggerMuzzleFlash(b.position, 0.75f);
             }
             if (i < lockOnReticles_.size() && lockOnReticles_[i]) {
                 lockOnReticles_[i]->SetScale({ 0.001f, 0.001f, 0.001f });
@@ -680,8 +680,8 @@ void CyberBitWeapon::Attack(Input* input,
             newBullet->Initialize(object3dCommon_, muzzlePos, velocity, parentCamera, hoverEnemy);
             bullets.push_back(std::move(newBullet));
 
-            if (vfxSystem_) {
-                vfxSystem_->TriggerMuzzleFlash(muzzlePos, 0.9f);
+            if (GetVfxSystem()) {
+                GetVfxSystem()->TriggerMuzzleFlash(muzzlePos, 0.9f);
             }
             // SEは鳴らさない
         }

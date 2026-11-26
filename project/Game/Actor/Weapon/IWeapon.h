@@ -112,5 +112,8 @@ public:
     void SetVfxSystem(CyberVfxSystem* vfxSystem) { vfxSystem_ = vfxSystem; }
 
 protected:
+    CyberVfxSystem* GetVfxSystem() const { return vfxSystem_; }
+
+private:
     CyberVfxSystem* vfxSystem_ = nullptr;
 };

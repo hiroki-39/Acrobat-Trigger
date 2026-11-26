@@ -41,14 +41,23 @@ public:
 		const std::function<void()>& onStartBossWarning
 	);
 
-	float& Timer() { return demoTimer_; }
-	float& PostIntroDuration() { return demoPostIntroDuration_; }
-	int& DeathLoopCount() { return demoDeathLoopCount_; }
-	float& SurvivalTimer() { return demoSurvivalTimer_; }
-	bool& BulletSpawned() { return demoBulletSpawned_; }
-	bool& HitTriggered() { return demoHitTriggered_; }
-	float& GameOverWaitTimer() { return demoGameOverWaitTimer_; }
-	int& MenuSelectStep() { return demoMenuSelectStep_; }
+	float GetTimer() const { return demoTimer_; }
+	void SetTimer(float v) { demoTimer_ = v; }
+	float GetPostIntroDuration() const { return demoPostIntroDuration_; }
+	void SetPostIntroDuration(float v) { demoPostIntroDuration_ = v; }
+	int GetDeathLoopCount() const { return demoDeathLoopCount_; }
+	void SetDeathLoopCount(int v) { demoDeathLoopCount_ = v; }
+	float GetSurvivalTimer() const { return demoSurvivalTimer_; }
+	void SetSurvivalTimer(float v) { demoSurvivalTimer_ = v; }
+	bool IsBulletSpawned() const { return demoBulletSpawned_; }
+	void SetBulletSpawned(bool v) { demoBulletSpawned_ = v; }
+	bool IsHitTriggered() const { return demoHitTriggered_; }
+	void SetHitTriggered(bool v) { demoHitTriggered_ = v; }
+	float GetGameOverWaitTimer() const { return demoGameOverWaitTimer_; }
+	void SetGameOverWaitTimer(float v) { demoGameOverWaitTimer_ = v; }
+	void AddGameOverWaitTimer(float dt) { demoGameOverWaitTimer_ += dt; }
+	int GetMenuSelectStep() const { return demoMenuSelectStep_; }
+	void SetMenuSelectStep(int v) { demoMenuSelectStep_ = v; }
 
 private:
 	float demoTimer_ = 0.0f;

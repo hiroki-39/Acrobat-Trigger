@@ -4,9 +4,7 @@
 
 class OutlineEffect : public IPostProcess {
 public:
-    OutlineEffect(PostProcessData* data) : data_(data) {
-        name_ = "Outline";
-    }
+    OutlineEffect(PostProcessData* data) : IPostProcess("Outline"), data_(data) {}
 
     void Initialize() override {
         data_->outlineThreshold = 0.5f;

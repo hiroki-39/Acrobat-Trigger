@@ -42,11 +42,17 @@ struct PostProcessData {
 
 class IPostProcess {
 public:
+  explicit IPostProcess(std::string name = "None") : name_(std::move(name)) {}
   virtual ~IPostProcess() = default;
 
   virtual void Initialize() = 0;
   virtual void DrawImGui() = 0;
 
+  bool IsActive() const { return isActive_; }
+  void SetActive(bool active) { isActive_ = active; }
+  const std::string& GetName() const { return name_; }
+
+private:
   bool isActive_ = false;
   std::string name_ = "None";
 };

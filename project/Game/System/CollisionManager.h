@@ -52,8 +52,7 @@ struct CollisionContext {
     bool* isJustDodgeActive = nullptr;
     float* justDodgeTimer = nullptr;
     float justDodgeMaxTime = 60.0f;
-    int* acquiredEnhanceRingCount = nullptr;
-    int maxEnhanceRingIcons = 2;
+    std::function<int()> onPowerUpRingCollected = nullptr;
 
     // ボス撃破コールバック
     std::function<void()> onBossDefeated = nullptr;

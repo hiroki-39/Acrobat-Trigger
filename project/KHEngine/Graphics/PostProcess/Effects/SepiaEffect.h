@@ -4,9 +4,7 @@
 
 class SepiaEffect : public IPostProcess {
 public:
-    SepiaEffect(PostProcessData* data) : data_(data) {
-        name_ = "Sepia";
-    }
+    SepiaEffect(PostProcessData* data) : IPostProcess("Sepia"), data_(data) {}
 
     void Initialize() override {
         data_->sepiaStrength = 0.8f; // 初期値

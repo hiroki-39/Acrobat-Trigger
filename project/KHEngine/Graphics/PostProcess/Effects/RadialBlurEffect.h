@@ -4,9 +4,7 @@
 
 class RadialBlurEffect : public IPostProcess {
 public:
-    RadialBlurEffect(PostProcessData* data) : data_(data) {
-        name_ = "RadialBlur";
-    }
+    RadialBlurEffect(PostProcessData* data) : IPostProcess("RadialBlur"), data_(data) {}
 
     void Initialize() override {
         data_->radialBlurCenterX = 0.5f;

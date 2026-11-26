@@ -4,9 +4,7 @@
 
 class GaussianFilterEffect : public IPostProcess {
 public:
-    GaussianFilterEffect(PostProcessData* data) : data_(data) {
-        name_ = "GaussianFilter";
-    }
+    GaussianFilterEffect(PostProcessData* data) : IPostProcess("GaussianFilter"), data_(data) {}
 
     void Initialize() override {
         data_->gaussianSigma = 2.0f;

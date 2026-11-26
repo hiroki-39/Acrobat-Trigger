@@ -4,9 +4,7 @@
 
 class DissolveEffect : public IPostProcess {
 public:
-    DissolveEffect(PostProcessData* data) : data_(data) {
-        name_ = "Dissolve";
-    }
+    DissolveEffect(PostProcessData* data) : IPostProcess("Dissolve"), data_(data) {}
 
     void Initialize() override {
         data_->dissolveThreshold = 0.5f;

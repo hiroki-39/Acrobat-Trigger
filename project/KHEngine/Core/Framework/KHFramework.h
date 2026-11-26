@@ -56,6 +56,20 @@ protected:
 
 protected:
 
+    WinApp* GetWinApp() const { return winApp_.get(); }
+    DirectXCommon* GetDxCommon() const { return dxCommon_.get(); }
+    Input* GetInput() const { return input_.get(); }
+    ImGuiManager* GetImGuiManager() const { return imguiManager_.get(); }
+    SpriteCommon* GetSpriteCommon() const { return spriteCommon_.get(); }
+    Object3dCommon* GetObject3dCommon() const { return object3dCommon_.get(); }
+    SrvManager* GetSrvManager() const { return srvManager_; }
+    PostProcess* GetPostProcess() const { return postProcess_.get(); }
+    float GetDeltaTime() const { return kDeltaTime_; }
+    bool IsEndRequested() const { return endRequest_; }
+    void RequestEnd() { endRequest_ = true; }
+
+private:
+
     std::unique_ptr<WinApp> winApp_ = nullptr;
 
     std::unique_ptr<DirectXCommon> dxCommon_ = nullptr;

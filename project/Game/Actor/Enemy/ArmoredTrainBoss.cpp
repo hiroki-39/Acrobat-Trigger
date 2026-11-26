@@ -1689,3 +1689,157 @@ Vector3 ArmoredTrainBoss::GetBigCannonMuzzlePosition() const {
     }
     return position_;
 }
+
+void ArmoredTrainBoss::DrawPartsEditorImGui() {
+#ifdef USE_IMGUI
+    bool needTransformUpdate = false;
+
+    for (int cIdx = 0; cIdx < static_cast<int>(carriages_.size()); ++cIdx) {
+        auto& car = carriages_[cIdx];
+        ImGui::PushID(cIdx);
+
+        std::string headerName = "[" + std::to_string(cIdx + 1) + "両目] " + car.displayName + " (" + car.name + ")";
+        if (ImGui::CollapsingHeader(headerName.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+            // 連結オフセット（先頭車両以外）
+            if (cIdx > 0) {
+                if (ImGui::DragFloat("連結オフセット (Length Offset)", &car.baseLengthOffset, 0.2f, -300.0f, 0.0f, "%.1f m")) {
+                    car.lengthOffset = car.baseLengthOffset * scaleMultiplier_;
+                    needTransformUpdate = true;
+                }
+            }
+
+            // 超巨大主砲 (Car3)
+            if (car.bigCannon) {
+                if (ImGui::TreeNodeEx("超巨大主砲マウント (Big Cannon)", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    if (ImGui::DragFloat3("主砲台座位置 (Base Pos)", &car.bigCannon->baseLocalPos.x, 0.05f)) {
+                        needTransformUpdate = true;
+                    }
+                    if (ImGui::SliderAngle("台座旋回 (Yaw)", &car.bigCannon->baseRot.y, -180.0f, 180.0f)) {
+                        needTransformUpdate = true;
+                    }
+                    if (ImGui::SliderAngle("砲身仰角 (Pitch)", &car.bigCannon->barrelRot.x, -15.0f, 60.0f)) {
+                        needTransformUpdate = true;
+                    }
+                    ImGui::TreePop();
+                }
+            }
+
+            // 砲台リスト
+            std::string turretTreeName = "2連装砲台リスト (" + std::to_string(car.turrets.size()) + "基)";
+            if (ImGui::TreeNode(turretTreeName.c_str())) {
+                int removeIdx = -1;
+                for (int tIdx = 0; tIdx < static_cast<int>(car.turrets.size()); ++tIdx) {
+                    auto& t = car.turrets[tIdx];
+                    ImGui::PushID(tIdx);
+
+                    std::string tLabel = std::to_string(tIdx + 1) + ": " + t.name;
+                    if (ImGui::TreeNode(tLabel.c_str())) {
+                        char nameBuf[64];
+                        strncpy_s(nameBuf, t.name.c_str(), sizeof(nameBuf) - 1);
+                        if (ImGui::InputText("名称", nameBuf, sizeof(nameBuf))) {
+                            t.name = nameBuf;
+                        }
+
+                        if (ImGui::DragFloat3("ローカル位置 (X, Y, Z)", &t.baseLocalPos.x, 0.05f)) {
+                            needTransformUpdate = true;
+                        }
+
+                        Vector3 tRotDeg = {
+                            t.baseLocalRot.x * (180.0f / 3.14159265f),
+                            t.baseLocalRot.y * (180.0f / 3.14159265f),
+                            t.baseLocalRot.z * (180.0f / 3.14159265f)
+                        };
+                        if (ImGui::DragFloat3("初期回転角度 (度: P, Y, R)", &tRotDeg.x, 1.0f, -180.0f, 180.0f, "%.1f°")) {
+                            t.baseLocalRot = {
+                                tRotDeg.x * (3.14159265f / 180.0f),
+                                tRotDeg.y * (3.14159265f / 180.0f),
+                                tRotDeg.z * (3.14159265f / 180.0f)
+                            };
+                            t.currentRot = t.baseLocalRot;
+                            needTransformUpdate = true;
+                        }
+
+                        if (ImGui::Button("この砲台を削除")) {
+                            removeIdx = tIdx;
+                        }
+                        ImGui::TreePop();
+                    }
+                    ImGui::PopID();
+                }
+
+                if (removeIdx >= 0) {
+                    RemoveTurret(cIdx, removeIdx);
+                    needTransformUpdate = true;
+                }
+
+                if (ImGui::Button("+ 砲台を新規追加")) {
+                    AddTurret(cIdx, { 0.0f, 5.0f, 0.0f });
+                    needTransformUpdate = true;
+                }
+
+                ImGui::TreePop();
+            }
+
+            // ミサイルポッドリスト
+            std::string podTreeName = "ミサイルポッドリスト (" + std::to_string(car.missilePods.size()) + "基)";
+            if (ImGui::TreeNode(podTreeName.c_str())) {
+                int removePodIdx = -1;
+                for (int pIdx = 0; pIdx < static_cast<int>(car.missilePods.size()); ++pIdx) {
+                    auto& p = car.missilePods[pIdx];
+                    ImGui::PushID(pIdx);
+
+                    std::string pLabel = std::to_string(pIdx + 1) + ": " + p.name;
+                    if (ImGui::TreeNode(pLabel.c_str())) {
+                        char nameBuf[64];
+                        strncpy_s(nameBuf, p.name.c_str(), sizeof(nameBuf) - 1);
+                        if (ImGui::InputText("名称", nameBuf, sizeof(nameBuf))) {
+                            p.name = nameBuf;
+                        }
+
+                        if (ImGui::DragFloat3("ローカル位置 (X, Y, Z)", &p.baseLocalPos.x, 0.05f)) {
+                            needTransformUpdate = true;
+                        }
+
+                        Vector3 pRotDeg = {
+                            p.baseLocalRot.x * (180.0f / 3.14159265f),
+                            p.baseLocalRot.y * (180.0f / 3.14159265f),
+                            p.baseLocalRot.z * (180.0f / 3.14159265f)
+                        };
+                        if (ImGui::DragFloat3("回転角度 (度: P, Y, R)", &pRotDeg.x, 1.0f, -180.0f, 180.0f, "%.1f°")) {
+                            p.baseLocalRot = {
+                                pRotDeg.x * (3.14159265f / 180.0f),
+                                pRotDeg.y * (3.14159265f / 180.0f),
+                                pRotDeg.z * (3.14159265f / 180.0f)
+                            };
+                            needTransformUpdate = true;
+                        }
+
+                        if (ImGui::Button("このポッドを削除")) {
+                            removePodIdx = pIdx;
+                        }
+                        ImGui::TreePop();
+                    }
+                    ImGui::PopID();
+                }
+
+                if (removePodIdx >= 0) {
+                    RemoveMissilePod(cIdx, removePodIdx);
+                    needTransformUpdate = true;
+                }
+
+                if (ImGui::Button("+ ミサイルポッドを新規追加")) {
+                    AddMissilePod(cIdx, { 0.0f, 5.0f, 0.0f });
+                    needTransformUpdate = true;
+                }
+
+                ImGui::TreePop();
+            }
+        }
+        ImGui::PopID();
+    }
+
+    if (needTransformUpdate) {
+        UpdateCarriageTransforms();
+    }
+#endif
+}

@@ -4,9 +4,7 @@
 
 class GrayscaleEffect : public IPostProcess {
 public:
-    GrayscaleEffect(PostProcessData* data) : data_(data) {
-        name_ = "Grayscale";
-    }
+    GrayscaleEffect(PostProcessData* data) : IPostProcess("Grayscale"), data_(data) {}
 
     void Initialize() override {
         // 初期化処理があればここに

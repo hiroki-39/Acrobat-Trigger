@@ -44,8 +44,6 @@ struct BossBattleContext
 /// </summary>
 class BossBattleController
 {
-	friend class GamePlayEditor;
-
 public:
 	enum class Step
 	{
@@ -105,7 +103,38 @@ public:
 
 	Step GetStep() const { return bossBattleStep_; }
 	void SetDefeated() { bossBattleStep_ = Step::DEFEATED_SEQUENCE; bossDefeatTimer_ = 0.0f; }
-	float& SpawnProgressThreshold() { return bossSpawnProgressThreshold_; }
+	float GetSpawnProgressThreshold() const { return bossSpawnProgressThreshold_; }
+	void SetSpawnProgressThreshold(float threshold) { bossSpawnProgressThreshold_ = threshold; }
+
+	// エディタ・デバッグ制御用インターフェース
+	void ForceStartBattle()
+	{
+		bossBattleStep_ = Step::BATTLE;
+		bossRemainingTime_ = bossTimeLimit_;
+		bossTimeOverTimer_ = 0.0f;
+		isBossTimeOverFired_ = false;
+	}
+	void AbortTimeOverTest()
+	{
+		bossBattleStep_ = Step::BATTLE;
+		bossRemainingTime_ = 60.0f;
+		bossTimeOverTimer_ = 0.0f;
+		isBossTimeOverFired_ = false;
+		isTimeOverDebugLoop_ = false;
+	}
+	void ResetToNotActive()
+	{
+		bossBattleStep_ = Step::NOT_ACTIVE;
+		bossWarningTimer_ = 0.0f;
+		bossDefeatTimer_ = 0.0f;
+		bossDisplayedHpRate_ = 1.0f;
+	}
+	bool IsTimeOverDebugNonLethal() const { return isTimeOverDebugNonLethal_; }
+	void SetTimeOverDebugNonLethal(bool v) { isTimeOverDebugNonLethal_ = v; }
+	bool IsTimeOverDebugLoop() const { return isTimeOverDebugLoop_; }
+	void SetTimeOverDebugLoop(bool v) { isTimeOverDebugLoop_ = v; }
+	float GetTimeOverTimer() const { return bossTimeOverTimer_; }
+	float GetTimeOverDuration() const { return kBossTimeOverDuration; }
 
 private:
 	Step bossBattleStep_ = Step::NOT_ACTIVE;

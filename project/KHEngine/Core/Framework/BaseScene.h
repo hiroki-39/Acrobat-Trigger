@@ -25,21 +25,19 @@ public:
 
 private:
     SceneManager* sceneManager_ = nullptr;
+    std::vector<std::unique_ptr<Sprite>> sprites_;
+    bool isDisplaySprite_ = true;
 
 protected:
     
-    std::vector<std::unique_ptr<Sprite>> sprites;
-    bool isDisplaySprite = true;
-
-    
     void AddSprite(std::unique_ptr<Sprite> s)
     {
-        if (s) sprites.emplace_back(std::move(s));
+        if (s) sprites_.emplace_back(std::move(s));
     }
 
     void UpdateSprites()
     {
-        for (auto& s : sprites) if (s) s->Update();
+        for (auto& s : sprites_) if (s) s->Update();
     }
 
     void DrawSprites()
@@ -48,17 +46,20 @@ protected:
         auto spriteCommon = services->GetSpriteCommon();
         if (spriteCommon) spriteCommon->SetCommonDrawSetting();
 
-        if (isDisplaySprite)
+        if (isDisplaySprite_)
         {
-            for (auto& s : sprites) if (s) s->Draw();
+            for (auto& s : sprites_) if (s) s->Draw();
         }
     }
 
     void ClearSprites()
     {
-        
-        sprites.clear();
+        sprites_.clear();
     }
+
+    void SetDisplaySprite(bool display) { isDisplaySprite_ = display; }
+    bool IsDisplaySprite() const { return isDisplaySprite_; }
+    const std::vector<std::unique_ptr<Sprite>>& GetSprites() const { return sprites_; }
 
     
     EngineServices* Services() const

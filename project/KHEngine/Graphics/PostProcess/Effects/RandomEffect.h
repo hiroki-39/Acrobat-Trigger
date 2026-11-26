@@ -4,9 +4,7 @@
 
 class RandomEffect : public IPostProcess {
 public:
-    RandomEffect(PostProcessData* data) : data_(data) {
-        name_ = "Random(Glitch)";
-    }
+    RandomEffect(PostProcessData* data) : IPostProcess("Random(Glitch)"), data_(data) {}
 
     void Initialize() override {
         data_->glitchStrength = 0.05f;

@@ -30,8 +30,10 @@ public:
     GPUParticleSystem* GetGPUParticleSystem() { return &gpuParticleSystem_; }
 
     // ウィンドウ表示フラグ
-    bool& GetShowViewport() { return showViewport_; }
-    bool& GetShowEditor() { return showEditor_; }
+    bool IsShowViewport() const { return showViewport_; }
+    void SetShowViewport(bool show) { showViewport_ = show; }
+    bool IsShowEditor() const { return showEditor_; }
+    void SetShowEditor(bool show) { showEditor_ = show; }
 
     // ファイルスキャン
     void RefreshFileList();

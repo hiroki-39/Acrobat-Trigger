@@ -4,9 +4,7 @@
 
 class VignettingEffect : public IPostProcess {
 public:
-    VignettingEffect(PostProcessData* data) : data_(data) {
-        name_ = "Vignetting";
-    }
+    VignettingEffect(PostProcessData* data) : IPostProcess("Vignetting"), data_(data) {}
 
     void Initialize() override {
         data_->vignetteIntensity = 1.0f;

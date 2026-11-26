@@ -434,8 +434,8 @@ void FunnelWeapon::Attack(Input* input,
             bullet->SetBulletScale({ 0.45f, 0.45f, 6.0f }); // 小型端末にマッチしたシャープなニードルレーザー
             bullets.push_back(std::move(bullet));
 
-            if (vfxSystem_) {
-                vfxSystem_->TriggerMuzzleFlash(mPos, 0.65f);
+            if (GetVfxSystem()) {
+                GetVfxSystem()->TriggerMuzzleFlash(mPos, 0.65f);
             }
         }
         SoundManager::GetInstance()->PlaySE("shot.mp3", 0.65f);
@@ -475,8 +475,8 @@ void FunnelWeapon::Attack(Input* input,
             bullet->SetBulletScale({ 1.35f, 1.35f, 11.0f });
             bullets.push_back(std::move(bullet));
 
-            if (vfxSystem_) {
-                vfxSystem_->TriggerMuzzleFlash(muzzlePos, 1.0f);
+            if (GetVfxSystem()) {
+                GetVfxSystem()->TriggerMuzzleFlash(muzzlePos, 1.0f);
             }
 
             SoundManager::GetInstance()->PlaySE("shot.mp3", 0.75f);

@@ -133,7 +133,7 @@ void GamePlayScene::ReloadLevel()
 {
 	bullets_.clear();
 	missiles_.clear();
-	hud_.AcquiredEnhanceRingCount() = 0;
+	hud_.SetAcquiredEnhanceRingCount(0);
 	stageElapsedTime_ = 0.0f;
 	bossElapsedTime_ = 0.0f;
 	levelManager_.ReloadLevel(BuildLevelContext());
@@ -163,7 +163,7 @@ void GamePlayScene::SeamlessResetForRetry()
 	obstacles_.clear();
 	enhanceRings_.clear();
 	memoryItems_.clear();
-	hud_.AcquiredEnhanceRingCount() = 0;
+	hud_.SetAcquiredEnhanceRingCount(0);
 
 	levelManager_.RespawnActorsFromCache(BuildLevelContext());
 
@@ -189,7 +189,7 @@ void GamePlayScene::Finalize()
 		bossFinisherSequence_->Reset(player_.get());
 	}
 
-	sprites.clear();
+	ClearSprites();
 	modelInstances.clear();
 
 	vfx_.ResetPostProcess(EngineServices::GetInstance()->GetPostProcess());
@@ -463,7 +463,7 @@ void GamePlayScene::UpdateRailAndCamera(EngineServices* services, float dt, floa
 
 	if (gamePhase_ == GamePhase::PLAYING && bossBattle_.GetStep() == BossBattleController::Step::NOT_ACTIVE && railCameraController_)
 	{
-		if (railCameraController_->GetProgress() >= bossBattle_.SpawnProgressThreshold())
+		if (railCameraController_->GetProgress() >= bossBattle_.GetSpawnProgressThreshold())
 		{
 			StartBossWarningSequence();
 		}
@@ -580,7 +580,7 @@ void GamePlayScene::DrawUI()
 	if (gamePhase_ == GamePhase::PLAYING && !isFinisherMovie)
 	{
 		hud_.DrawSprites();
-		if (isDisplaySprite) { for (auto& sprite : sprites) if (sprite) { sprite->Update(); sprite->Draw(); } }
+		if (IsDisplaySprite()) { for (auto& sprite : GetSprites()) if (sprite) { sprite->Update(); sprite->Draw(); } }
 
 		// ボス専用HPバースプライト（戦闘中・撃破演出中）
 		bossBattle_.DrawHpSprites(armoredTrainBoss_ ? armoredTrainBoss_->GetTotalHpRate() : 0.0f);
@@ -619,8 +619,8 @@ OpeningCutsceneContext GamePlayScene::BuildOpeningContext()
 	ctx.railCameraController = railCameraController_.get();
 	ctx.modelInstances = &modelInstances;
 	ctx.obstacles = &obstacles_;
-	ctx.thrusterEffect = &vfx_.Thruster();
-	ctx.windEffect = &vfx_.Wind();
+	ctx.thrusterEffect = vfx_.GetThrusterEffect();
+	ctx.windEffect = vfx_.GetWindEffect();
 	ctx.bossFinisherSequence = bossFinisherSequence_.get();
 	ctx.terrainMaterializeProgress = &terrainMaterializeProgress_;
 	ctx.cameraShakeTimer = &cameraShakeTimer_;
@@ -656,16 +656,11 @@ GameOverContext GamePlayScene::BuildGameOverContext()
 	ctx.missiles = &missiles_;
 	ctx.enemyBullets = &enemyBullets_;
 	ctx.enhanceRings = &enhanceRings_;
-	ctx.thrusterEffect = &vfx_.Thruster();
-	ctx.windEffect = &vfx_.Wind();
+	ctx.thrusterEffect = vfx_.GetThrusterEffect();
+	ctx.windEffect = vfx_.GetWindEffect();
 	ctx.terrainMaterializeProgress = &terrainMaterializeProgress_;
 	ctx.cameraShakeTimer = &cameraShakeTimer_;
-	ctx.demoDeathLoopCount = &demoController_.DeathLoopCount();
-	ctx.demoSurvivalTimer = &demoController_.SurvivalTimer();
-	ctx.demoBulletSpawned = &demoController_.BulletSpawned();
-	ctx.demoHitTriggered = &demoController_.HitTriggered();
-	ctx.demoGameOverWaitTimer = &demoController_.GameOverWaitTimer();
-	ctx.demoMenuSelectStep = &demoController_.MenuSelectStep();
+	ctx.demoController = &demoController_;
 	ctx.onRetry = [this]() { SeamlessResetForRetry(); };
 	return ctx;
 }
@@ -717,7 +712,7 @@ BossBattleContext GamePlayScene::BuildBossBattleContext()
 	ctx.bossRail = bossRail_.get();
 	ctx.railCameraController = railCameraController_.get();
 	ctx.gameSpeed = &gameSpeed_;
-	ctx.explosionEffect = &vfx_.Explosion();
+	ctx.explosionEffect = vfx_.GetExplosionEffect();
 	ctx.player = player_.get();
 	ctx.bullets = &bullets_;
 	ctx.missiles = &missiles_;
